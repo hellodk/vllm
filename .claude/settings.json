@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git branch*)",
+      "Bash(python -m pytest*)",
+      "Bash(python3 -c*)",
+      "Bash(python inventory_plugin.py*)",
+      "Bash(python scripts/*)",
+      "Bash(find * -type f*)",
+      "Bash(find . *)",
+      "Bash(ls*)",
+      "Bash(mkdir -p*)",
+      "Bash(ansible --version*)",
+      "Bash(ansible-inventory*)",
+      "Bash(ansible-playbook * --check*)",
+      "Bash(ansible-playbook * --check *)"
+    ]
+  }
+}
