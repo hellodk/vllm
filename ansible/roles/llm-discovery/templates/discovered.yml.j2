@@ -11,9 +11,9 @@ providers:
 {% for ep in _endpoints_to_probe %}
   - name: {{ ep.provider }}
     url: {{ ep.url }}
-    port: "{{ ep.url | regex_replace('.*:(\\d+).*', '\\1') }}"
+    port: "{{ ep.port | default(ep.url | regex_replace('.*:(\\d+).*', '\\1')) }}"
     status: up
 {% endfor %}
 {% else %}
-[]
+  []
 {% endif %}
