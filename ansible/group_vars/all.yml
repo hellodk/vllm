@@ -1,0 +1,36 @@
+# ansible/group_vars/all.yml
+
+# Exporter listen ports — fixed, do not change without updating dashboard queries
+hw_exporter_ports:
+  apple: 9101
+  nvidia: 9400
+  amd: 9102
+  none: 9100
+
+# Default LLM provider probe ports (used when llm_endpoints not set in cluster.yml)
+llm_probe_ports:
+  11434: ollama
+  21434: llamacpp
+  8000: vllm-mlx
+  8080: litellm
+
+# OTEL agent download base URL
+otel_agent_download_base: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download"
+
+# node_exporter download base URL
+node_exporter_download_base: "https://github.com/prometheus/node_exporter/releases/download"
+
+# Allowed enum values — inventory_plugin.py validates against these
+valid_os: [macos, linux]
+valid_gpu_providers: [apple, nvidia, amd, none]
+valid_llm_providers: [llamacpp, ollama, vllm-mlx, litellm]
+
+# Hydra directories created on every node
+hydra_dirs:
+  linux:
+    - /etc/hydra
+    - /var/lib/hydra
+    - /usr/local/bin
+  macos:
+    - /Library/Application Support/Hydra
+    - /etc/hydra

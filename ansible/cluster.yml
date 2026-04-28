@@ -1,0 +1,85 @@
+# ansible/cluster.yml
+cluster:
+  name: hydra-prod
+  environment: production
+  otel_gateway:
+    primary: "192.168.1.10:4317"
+    secondary: ""
+  prometheus_url: "http://192.168.1.10:9090"
+  models_dir: "~/models"
+  versions:
+    otel_agent: "0.96.0"
+    dcgm_exporter: "3.3.6"
+    apple_silicon_exporter: "1.0.0"
+    node_exporter: "1.8.2"
+    amdgpu_exporter: "1.0.0"
+
+nodes:
+  - id: p1-m2-8g
+    hostname: mac-m2-8g
+    ip: 192.168.1.21
+    user: dk
+    ssh_port: 22
+    become: true
+    become_method: sudo
+    os: macos
+    gpu_provider: apple
+    chip: m2
+    ram_gb: 8
+    models_dir: "/Users/dk/models"
+    pools: [embed]
+    maintenance: false
+    metric_labels: {}
+    llm_endpoints:
+      - provider: llamacpp
+        url: "http://127.0.0.1:21434/v1"
+        api_key: ~
+
+  - id: p1-m3-16g
+    hostname: mac-m3-16g
+    ip: 192.168.1.24
+    user: dk
+    ssh_port: 22
+    become: true
+    become_method: sudo
+    os: macos
+    gpu_provider: apple
+    chip: m3
+    ram_gb: 16
+    models_dir: "/Users/dk/models"
+    pools: [fast, reason]
+    maintenance: false
+    metric_labels: {}
+    llm_endpoints:
+      - provider: llamacpp
+        url: "http://127.0.0.1:21434/v1"
+        api_key: ~
+      - provider: ollama
+        url: "http://127.0.0.1:11434/v1"
+        api_key: ~
+
+  - id: p1-i7-rtx3050
+    hostname: linux-i7-rtx
+    ip: 192.168.1.30
+    user: dk
+    ssh_port: 22
+    become: true
+    become_method: sudo
+    os: linux
+    gpu_provider: nvidia
+    gpu_model: "RTX 3050"
+    gpu_index: 0
+    vram_gb: 4
+    ram_gb: 64
+    cpu_inference: true
+    models_dir: "/home/dk/models"
+    pools: [fast]
+    maintenance: false
+    metric_labels: {}
+    llm_endpoints:
+      - provider: ollama
+        url: "http://127.0.0.1:11434/v1"
+        api_key: ~
+      - provider: llamacpp
+        url: "http://127.0.0.1:21434/v1"
+        api_key: ~
