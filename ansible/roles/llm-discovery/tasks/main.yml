@@ -1,0 +1,44 @@
+# ansible/roles/llm-discovery/tasks/main.yml
+---
+# Step A: Build endpoint list — use cluster.yml config or auto-probe
+- name: Use explicitly configured endpoints from cluster.yml
+  set_fact:
+    _endpoints_to_probe: "{{ hydra_llm_endpoints }}"
+  when: hydra_llm_endpoints | length > 0
+
+- name: Initialise empty probe list (no endpoints configured)
+  set_fact:
+    _endpoints_to_probe: []
+    _probe_result: { results: [] }
+  when: hydra_llm_endpoints | length == 0
+
+- name: Probe default port {{ item.key }} for provider {{ item.value }}
+  uri:
+    url: "http://127.0.0.1:{{ item.key }}/health"
+    status_code: [200, 404, 405]
+    timeout: 2
+  register: _probe_result
+  ignore_errors: true
+  loop: "{{ llm_probe_ports | dict2items }}"
+  when: hydra_llm_endpoints | length == 0
+
+- name: Build discovered endpoint list from successful probes
+  set_fact:
+    _endpoints_to_probe: >-
+      {{ _endpoints_to_probe + [{'provider': item.item.value,
+         'url': 'http://127.0.0.1:' + item.item.key | string + '/v1',
+         'port': item.item.key | string,
+         'api_key': none}] }}
+  loop: "{{ _probe_result.results | default([]) }}"
+  when:
+    - hydra_llm_endpoints | length == 0
+    - not item.failed | default(true)
+    - item.status | default(0) in [200, 404, 405]
+
+# Step B: Write /etc/hydra/discovered.yml
+- name: Write /etc/hydra/discovered.yml
+  template:
+    src: discovered.yml.j2
+    dest: /etc/hydra/discovered.yml
+    mode: "0644"
+  become: true

@@ -1,0 +1,19 @@
+# Written by llm-discovery role on {{ ansible_date_time.iso8601 }}
+# Re-run: ansible-playbook site.yml --tags llm-discovery,monitoring-cfg
+node_id: {{ hydra_node_id }}
+hostname: {{ hydra_hostname }}
+gpu_provider: {{ hydra_gpu_provider }}
+os: {{ hydra_os }}
+pools: {{ hydra_pools | to_yaml | trim }}
+
+providers:
+{% if _endpoints_to_probe | default([]) | length > 0 %}
+{% for ep in _endpoints_to_probe %}
+  - name: {{ ep.provider }}
+    url: {{ ep.url }}
+    port: "{{ ep.url | regex_replace('.*:(\\d+).*', '\\1') }}"
+    status: up
+{% endfor %}
+{% else %}
+[]
+{% endif %}
