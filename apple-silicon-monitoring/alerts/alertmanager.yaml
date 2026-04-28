@@ -1,0 +1,192 @@
+# Alertmanager Configuration for Apple Silicon LLM Monitoring
+# Configure routing, inhibition, and notification receivers
+
+global:
+  # Global settings
+  resolve_timeout: 5m
+  
+  # SMTP for email notifications
+  smtp_smarthost: 'smtp.company.internal:587'
+  smtp_from: 'alertmanager@company.internal'
+  smtp_auth_username: 'alertmanager'
+  smtp_auth_password_file: '/etc/alertmanager/smtp-password'
+  
+  # Slack defaults
+  slack_api_url_file: '/etc/alertmanager/slack-webhook-url'
+
+# Inhibition rules - suppress lower severity when higher severity fires
+inhibit_rules:
+  # Suppress warning when critical is firing for same alertname
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: ['alertname', 'instance', 'model']
+  
+  # Suppress hallucination warnings when model is down
+  - source_matchers:
+      - alertname="LLMModelNotLoaded"
+    target_matchers:
+      - category="hallucination"
+    equal: ['instance', 'model']
+  
+  # Suppress inference alerts when exporter is down
+  - source_matchers:
+      - alertname="AppleSiliconExporterDown"
+    target_matchers:
+      - category=~"gpu|thermal|power"
+    equal: ['instance']
+
+# Routing tree
+route:
+  # Default receiver
+  receiver: 'default-slack'
+  
+  # Group alerts
+  group_by: ['alertname', 'cluster', 'model']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  
+  # Child routes
+  routes:
+    # Critical alerts -> PagerDuty + Slack
+    - matchers:
+        - severity="critical"
+      receiver: 'pagerduty-critical'
+      continue: true  # Also send to Slack
+    
+    - matchers:
+        - severity="critical"
+      receiver: 'critical-slack'
+      group_wait: 10s
+      repeat_interval: 1h
+    
+    # Hallucination alerts -> ML team
+    - matchers:
+        - category="hallucination"
+      receiver: 'ml-team-slack'
+      group_by: ['alertname', 'model']
+      group_wait: 1m
+      repeat_interval: 2h
+    
+    # Infrastructure alerts -> Infra team
+    - matchers:
+        - category=~"gpu|thermal|power|exporter"
+      receiver: 'infra-team-slack'
+      group_by: ['alertname', 'instance']
+      repeat_interval: 2h
+    
+    # Capacity alerts -> Both teams
+    - matchers:
+        - category="capacity"
+      receiver: 'capacity-alerts'
+      repeat_interval: 1h
+
+# Receivers define notification endpoints
+receivers:
+  # Default Slack channel
+  - name: 'default-slack'
+    slack_configs:
+      - channel: '#llm-alerts'
+        send_resolved: true
+        title: '{{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Severity:* {{ .Labels.severity }}
+          *Instance:* {{ .Labels.instance }}
+          {{ if .Labels.model }}*Model:* {{ .Labels.model }}{{ end }}
+          *Description:* {{ .Annotations.description }}
+          {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+          {{ end }}
+        actions:
+          - type: button
+            text: 'View Dashboard'
+            url: '{{ (index .Alerts 0).Annotations.dashboard }}'
+          - type: button
+            text: 'Silence'
+            url: '{{ template "__alertmanagerURL" . }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22%7D'
+
+  # Critical alerts - PagerDuty
+  - name: 'pagerduty-critical'
+    pagerduty_configs:
+      - service_key_file: '/etc/alertmanager/pagerduty-key'
+        severity: '{{ .CommonLabels.severity }}'
+        description: '{{ .CommonAnnotations.summary }}'
+        details:
+          instance: '{{ .CommonLabels.instance }}'
+          model: '{{ .CommonLabels.model }}'
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+
+  # Critical Slack channel
+  - name: 'critical-slack'
+    slack_configs:
+      - channel: '#llm-critical'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        title: ':rotating_light: CRITICAL: {{ .CommonLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Summary:* {{ .Annotations.summary }}
+          *Instance:* {{ .Labels.instance }}
+          {{ if .Labels.model }}*Model:* {{ .Labels.model }}{{ end }}
+          
+          {{ .Annotations.description }}
+          
+          {{ if .Annotations.runbook_url }}:book: <{{ .Annotations.runbook_url }}|Runbook>{{ end }}
+          {{ end }}
+
+  # ML team for quality/hallucination alerts
+  - name: 'ml-team-slack'
+    slack_configs:
+      - channel: '#ml-ops'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}warning{{ else }}good{{ end }}'
+        title: ':brain: ML Alert: {{ .CommonLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Model:* {{ .Labels.model }}
+          *Summary:* {{ .Annotations.summary }}
+          
+          {{ .Annotations.description }}
+          {{ end }}
+        actions:
+          - type: button
+            text: 'Quality Dashboard'
+            url: 'https://grafana.internal/d/llm-quality'
+
+  # Infrastructure team
+  - name: 'infra-team-slack'
+    slack_configs:
+      - channel: '#infra-alerts'
+        send_resolved: true
+        title: ':computer: Infra Alert: {{ .CommonLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Instance:* {{ .Labels.instance }}
+          *Summary:* {{ .Annotations.summary }}
+          *Category:* {{ .Labels.category }}
+          
+          {{ .Annotations.description }}
+          {{ end }}
+
+  # Capacity alerts to both teams
+  - name: 'capacity-alerts'
+    slack_configs:
+      - channel: '#llm-capacity'
+        send_resolved: true
+        title: ':chart_with_upwards_trend: Capacity Alert: {{ .CommonLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Instance:* {{ .Labels.instance }}
+          *Model:* {{ .Labels.model }}
+          *Summary:* {{ .Annotations.summary }}
+          
+          {{ .Annotations.description }}
+          {{ end }}
+
+# Templates for custom formatting
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

@@ -1,0 +1,246 @@
+# Prometheus/Mimir Alert Rules for Apple Silicon Hardware Metrics
+# Deploy to your Prometheus/Mimir ruler or AlertManager
+#
+# These rules monitor GPU, thermal, and power metrics from the
+# apple-silicon-exporter running on Mac Mini nodes
+
+groups:
+  - name: apple-silicon-hardware
+    interval: 30s
+    rules:
+      #
+      # GPU Alerts
+      #
+      
+      - alert: GPUHighUtilization
+        expr: apple_gpu_utilization_percent > 95
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          category: gpu
+        annotations:
+          summary: "GPU utilization sustained above 95% on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            GPU utilization has been at {{ $value | printf "%.1f" }}% for over 5 minutes.
+            This may indicate the node is under heavy load or a process is stuck.
+          runbook_url: "https://wiki.company.internal/runbooks/gpu-high-utilization"
+          dashboard: "https://grafana.internal/d/apple-silicon/node?var-node={{ $labels.instance }}"
+
+      - alert: GPUMemoryExhaustion
+        expr: (apple_gpu_memory_used_bytes / apple_gpu_memory_total_bytes) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+          category: gpu
+        annotations:
+          summary: "GPU memory nearly exhausted on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            GPU memory is at {{ $value | humanizePercentage }} capacity.
+            Used: {{ with printf "apple_gpu_memory_used_bytes{instance='%s'}" $labels.instance | query }}{{ . | first | value | humanize1024 }}{{ end }}
+            This will cause OOM errors for model inference.
+          runbook_url: "https://wiki.company.internal/runbooks/gpu-memory-exhaustion"
+
+      - alert: GPUMemoryLeak
+        expr: |
+          predict_linear(apple_gpu_memory_used_bytes[1h], 3600)
+          > apple_gpu_memory_total_bytes * 1.1
+        for: 30m
+        labels:
+          severity: warning
+          team: infrastructure
+          category: gpu
+        annotations:
+          summary: "Potential GPU memory leak on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            GPU memory usage is increasing steadily and will exceed capacity within an hour.
+            Current trend suggests OOM in approximately 1 hour.
+          runbook_url: "https://wiki.company.internal/runbooks/gpu-memory-leak"
+
+      #
+      # Thermal Alerts
+      #
+      
+      - alert: ThermalThrottlingActive
+        expr: apple_thermal_throttle_active == 1
+        for: 1m
+        labels:
+          severity: warning
+          team: infrastructure
+          category: thermal
+        annotations:
+          summary: "Thermal throttling detected on {{ $labels.instance }} ({{ $labels.type }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            {{ $labels.type | title }} thermal throttling is active.
+            Performance will be degraded until temperature decreases.
+            Check ambient temperature and cooling system.
+          runbook_url: "https://wiki.company.internal/runbooks/thermal-throttling"
+
+      - alert: CriticalThermalPressure
+        expr: apple_thermal_pressure{level="critical"} == 1
+        for: 30s
+        labels:
+          severity: critical
+          team: infrastructure
+          category: thermal
+          pagerduty: trigger
+        annotations:
+          summary: "CRITICAL thermal pressure on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            System has reached critical thermal state.
+            IMMEDIATE ACTION REQUIRED:
+            1. Check if ambient temperature is elevated
+            2. Verify cooling system is operational
+            3. Consider reducing workload or shutting down node
+          runbook_url: "https://wiki.company.internal/runbooks/critical-thermal"
+
+      - alert: SustainedThermalPressure
+        expr: |
+          apple_thermal_pressure{level=~"moderate|heavy"} == 1
+        for: 15m
+        labels:
+          severity: warning
+          team: infrastructure
+          category: thermal
+        annotations:
+          summary: "Sustained {{ $labels.level }} thermal pressure on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            System has been in {{ $labels.level }} thermal state for 15 minutes.
+            Performance may be impacted. Monitor cooling system.
+
+      - alert: GPUTemperatureHigh
+        expr: apple_gpu_temperature_celsius > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          category: thermal
+        annotations:
+          summary: "GPU temperature elevated on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            GPU temperature is {{ $value | printf "%.1f" }}°C.
+            Normal operating range is 40-80°C.
+
+      #
+      # Power Alerts
+      #
+      
+      - alert: HighPowerConsumption
+        expr: apple_system_power_watts > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+          category: power
+        annotations:
+          summary: "High power consumption on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            System power is {{ $value | printf "%.1f" }}W, which is approaching maximum TDP.
+            M4 Max TDP is approximately 90W.
+
+      - alert: PowerSpike
+        expr: |
+          apple_system_power_watts
+          > (avg_over_time(apple_system_power_watts[1h]) + 2 * stddev_over_time(apple_system_power_watts[1h]))
+        for: 5m
+        labels:
+          severity: info
+          team: infrastructure
+          category: power
+        annotations:
+          summary: "Unusual power spike on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Current power ({{ $value | printf "%.1f" }}W) is significantly above the hourly average.
+            This may indicate new workload or potential issue.
+
+      #
+      # System Health Alerts
+      #
+      
+      - alert: AppleSiliconExporterDown
+        expr: up{job="apple-silicon-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+          category: exporter
+        annotations:
+          summary: "Apple Silicon Exporter down on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            The apple-silicon-exporter is not responding.
+            Hardware metrics are not being collected.
+            Check the exporter service on the node.
+          runbook_url: "https://wiki.company.internal/runbooks/exporter-down"
+
+      - alert: AppleSiliconScrapeSlow
+        expr: apple_scrape_duration_seconds{collector="iokit"} > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          category: exporter
+        annotations:
+          summary: "Slow metric scrape on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            IOKit metric collection is taking {{ $value | printf "%.1f" }}s.
+            This may indicate system issues.
+
+      - alert: CollectorFailure
+        expr: apple_scrape_success{collector=~"iokit|powermetrics|metal"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          category: exporter
+        annotations:
+          summary: "{{ $labels.collector }} collector failing on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            The {{ $labels.collector }} collector has been failing for 5 minutes.
+            Some metrics may be missing.
+
+      #
+      # Neural Engine Alerts
+      #
+      
+      - alert: ANEHighUtilization
+        expr: apple_ane_utilization_percent > 90
+        for: 10m
+        labels:
+          severity: info
+          team: ml-platform
+          category: ane
+        annotations:
+          summary: "Neural Engine highly utilized on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Apple Neural Engine is at {{ $value | printf "%.1f" }}% utilization.
+            This is informational - high ANE usage during inference is expected.
+
+      - alert: HardwareExporterDown
+        expr: up{cluster=~".+", job=~"hw-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+          category: exporter
+        annotations:
+          summary: "Hardware exporter down on {{ $labels.node_id }} ({{ $labels.gpu_provider }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            The hardware metrics exporter is not responding on {{ $labels.node_id }}.
+            Hardware metrics (GPU, power, thermal) are not being collected.
+            GPU provider: {{ $labels.gpu_provider }}
+          runbook_url: "https://wiki.company.internal/runbooks/exporter-down"

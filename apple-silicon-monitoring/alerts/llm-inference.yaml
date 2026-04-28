@@ -1,0 +1,301 @@
+# Prometheus/Mimir Alert Rules for LLM Inference Metrics
+# These rules monitor the health and performance of LLM inference workloads
+
+groups:
+  - name: llm-inference
+    interval: 15s
+    rules:
+      #
+      # Model Availability Alerts
+      #
+      
+      - alert: LLMModelNotLoaded
+        expr: llm_model_loaded == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: availability
+        annotations:
+          summary: "LLM model not loaded on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Model {{ $labels.model }} is not loaded on {{ $labels.instance }}.
+            Inference requests will fail until the model is loaded.
+          runbook_url: "https://wiki.company.internal/runbooks/model-not-loaded"
+
+      - alert: LLMInferenceStalled
+        expr: |
+          rate(llm_tokens_processed_total[2m]) == 0
+          AND llm_model_loaded == 1
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: inference
+          pagerduty: trigger
+        annotations:
+          summary: "LLM inference appears stalled on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Model {{ $labels.model }} is loaded but no tokens have been processed in 2 minutes.
+            The inference engine may be stuck or deadlocked.
+
+            Actions:
+            1. Check process logs for errors
+            2. Verify GPU is responsive
+            3. Consider restarting the inference process
+          runbook_url: "https://wiki.company.internal/runbooks/inference-stalled"
+
+      #
+      # Latency Alerts
+      #
+      
+      - alert: LLMHighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            rate(llm_inference_duration_seconds_bucket{phase="total"}[5m])
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: latency
+        annotations:
+          summary: "P99 inference latency exceeds 30s for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            P99 total inference latency is {{ $value | printf "%.1f" }}s.
+            Users may experience timeouts.
+
+            Check:
+            - GPU utilization and memory
+            - Batch queue depth
+            - Context lengths being processed
+          dashboard: "https://grafana.internal/d/llm-latency?var-model={{ $labels.model }}"
+
+      - alert: LLMHighLatencyP50
+        expr: |
+          histogram_quantile(0.50,
+            rate(llm_inference_duration_seconds_bucket{phase="total"}[5m])
+          ) > 10
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: latency
+        annotations:
+          summary: "Median inference latency exceeds 10s for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            P50 inference latency is {{ $value | printf "%.1f" }}s, indicating overall slow performance.
+
+      - alert: LLMPromptLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            rate(llm_inference_duration_seconds_bucket{phase="prompt"}[5m])
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: latency
+        annotations:
+          summary: "P95 prompt processing latency high for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Prompt processing (prefill) P95 latency is {{ $value | printf "%.1f" }}s.
+            This may indicate long contexts or memory pressure.
+
+      #
+      # Throughput Alerts
+      #
+      
+      - alert: LLMThroughputDegraded
+        expr: |
+          llm_tokens_per_second < 10
+          AND llm_model_loaded == 1
+          AND rate(llm_inference_requests_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: throughput
+        annotations:
+          summary: "Token throughput below 10 tokens/sec for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Current throughput is {{ $value | printf "%.1f" }} tokens/sec.
+            Expected minimum for this model is 10+ tokens/sec.
+
+            Possible causes:
+            - GPU thermal throttling
+            - Memory pressure
+            - Large batch queue
+            - Long context lengths
+
+      - alert: LLMThroughputDrop
+        expr: |
+          llm_tokens_per_second
+          < (avg_over_time(llm_tokens_per_second[1h]) * 0.5)
+          AND llm_tokens_per_second > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: throughput
+        annotations:
+          summary: "Throughput dropped 50% for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Current throughput ({{ $value | printf "%.1f" }} tok/s) is less than half the hourly average.
+            Investigate for performance regression.
+
+      #
+      # Queue and Capacity Alerts
+      #
+      
+      - alert: LLMQueueBacklog
+        expr: llm_queue_depth > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: capacity
+        annotations:
+          summary: "Request queue building up for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            {{ $value | printf "%.0f" }} requests are queued.
+            Users will experience increased latency.
+            Consider:
+            - Scaling up inference capacity
+            - Rate limiting requests
+            - Load balancing to other nodes
+
+      - alert: LLMQueueCritical
+        expr: llm_queue_depth > 500
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: capacity
+        annotations:
+          summary: "Critical request queue depth for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Queue depth is {{ $value | printf "%.0f" }}.
+            System is severely overloaded.
+
+      - alert: LLMKVCacheFull
+        expr: llm_kv_cache_utilization > 0.95
+        for: 2m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: memory
+        annotations:
+          summary: "KV cache nearly full for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            KV cache is at {{ $value | humanizePercentage }} utilization.
+            New requests with long contexts may fail or be delayed.
+
+      #
+      # Error Alerts
+      #
+      
+      - alert: LLMErrorRateHigh
+        expr: |
+          rate(llm_error_total[5m])
+          / rate(llm_inference_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: errors
+        annotations:
+          summary: "Error rate above 5% for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Error rate is {{ $value | humanizePercentage }}.
+            Check error breakdown by type.
+
+      - alert: LLMErrorSpike
+        expr: |
+          rate(llm_error_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: errors
+        annotations:
+          summary: "Error spike detected for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Errors are occurring at {{ $value | printf "%.2f" }}/sec.
+
+      - alert: LLMOOMErrors
+        expr: |
+          increase(llm_error_total{error_type=~"out_of_memory|gpu_memory_exhausted"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: errors
+        annotations:
+          summary: "OOM errors occurring for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Out-of-memory errors detected.
+            Model may need to be reloaded or batch size reduced.
+
+      - alert: LLMMetalCrashes
+        expr: |
+          increase(llm_error_total{error_type="metal_crash"}[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          team: infrastructure
+          category: errors
+          pagerduty: trigger
+        annotations:
+          summary: "Metal framework crash on {{ $labels.instance }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Metal GPU framework has crashed.
+            The system may need to be restarted.
+            Check system logs for details.
+
+      #
+      # Health Score Alerts
+      #
+      
+      - alert: LLMHealthScoreLow
+        expr: llm_model_health_score < 70
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: health
+        annotations:
+          summary: "Model health score low for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Health score is {{ $value | printf "%.0f" }}/100.
+            Multiple factors may be degrading model performance.
+            Review individual metrics for root cause.
+
+      - alert: LLMHealthScoreCritical
+        expr: llm_model_health_score < 50
+        for: 5m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: health
+        annotations:
+          summary: "Model health critically low for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Health score is {{ $value | printf "%.0f" }}/100.
+            Model may not be functioning correctly.
