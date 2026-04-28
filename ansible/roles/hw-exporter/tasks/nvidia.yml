@@ -6,6 +6,17 @@
     state: present
   become: true
 
+- name: Ensure nvidia-container-toolkit is installed (required for --gpus flag)
+  package:
+    name: nvidia-container-toolkit
+    state: present
+  become: true
+
+- name: Configure Docker daemon for NVIDIA runtime
+  command: nvidia-ctk runtime configure --runtime=docker
+  become: true
+  changed_when: false
+
 - name: Ensure Docker service is running
   service:
     name: docker
@@ -39,5 +50,7 @@
     url: "http://127.0.0.1:9400/metrics"
     return_content: false
     status_code: 200
+  register: _dcgm_check
+  until: _dcgm_check.status == 200
   retries: 6
   delay: 5

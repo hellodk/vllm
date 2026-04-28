@@ -19,7 +19,7 @@
 
 - name: Re-render LaunchDaemon plist with env vars (macOS)
   template:
-    src: "{{ playbook_dir }}/../roles/base/templates/otel-agent.plist.j2"
+    src: "{{ playbook_dir }}/roles/base/templates/otel-agent.plist.j2"
     dest: /Library/LaunchDaemons/com.hydra.otel-agent.plist
     mode: "0644"
     owner: root
@@ -54,7 +54,7 @@ handlers:
   - name: validate and restart otel agent
     block:
       - name: Validate OTEL config (dry-run)
-        command: /usr/local/bin/otelcol-contrib --config /etc/hydra/otel-agent-config.yaml validate
+        command: /usr/local/bin/otelcol-contrib validate --config /etc/hydra/otel-agent-config.yaml
         become: true
 
       - name: Restart OTEL agent (Linux)
@@ -64,7 +64,9 @@ handlers:
         become: true
         when: hydra_os == "linux"
 
-      - name: Restart OTEL agent (macOS)
-        command: launchctl kickstart -k system/com.hydra.otel-agent
+      - name: Unload and reload OTEL LaunchDaemon (macOS)
+        shell: |
+          launchctl bootout system/com.hydra.otel-agent 2>/dev/null || true
+          launchctl bootstrap system /Library/LaunchDaemons/com.hydra.otel-agent.plist
         become: true
         when: hydra_os == "macos"

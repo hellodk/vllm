@@ -77,6 +77,20 @@
   become: true
   when: hydra_os == "macos"
 
+- name: Bootstrap OTEL agent service domain (macOS — required before kickstart)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.otel-agent.plist
+  become: true
+  when: hydra_os == "macos"
+  ignore_errors: true   # safe on re-run: domain already exists
+
+- name: Enable OTEL agent on boot (Linux)
+  systemd:
+    name: otel-agent
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: hydra_os == "linux"
+
 handlers:
   - name: reload systemd
     systemd:
