@@ -1,0 +1,50 @@
+# ansible/roles/hw-exporter/tasks/apple.yml
+---
+- name: Install Go (required to build apple-silicon-exporter)
+  homebrew:
+    name: go
+    state: present
+  become: false
+
+- name: Copy apple-silicon-exporter source to remote
+  synchronize:
+    src: "{{ playbook_dir }}/../apple-silicon-monitoring/apple-silicon-exporter/"
+    dest: "/tmp/apple-silicon-exporter/"
+    delete: true
+    rsync_opts: ["--exclude=*.log", "--exclude=.git"]
+
+- name: Build apple-silicon-exporter
+  shell: |
+    cd /tmp/apple-silicon-exporter
+    go build -o /usr/local/bin/apple-silicon-exporter ./cmd/exporter/
+  become: true
+  args:
+    creates: /usr/local/bin/apple-silicon-exporter
+
+- name: Ensure apple-silicon-exporter is executable
+  file:
+    path: /usr/local/bin/apple-silicon-exporter
+    mode: "0755"
+  become: true
+
+- name: Install apple-silicon-exporter LaunchDaemon
+  template:
+    src: apple-exporter.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.apple-exporter.plist
+    mode: "0644"
+    owner: root
+    group: wheel
+  become: true
+
+- name: Load apple-silicon-exporter LaunchDaemon
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.apple-exporter.plist
+  become: true
+  ignore_errors: true
+
+- name: Verify apple-silicon-exporter is responding
+  uri:
+    url: "http://127.0.0.1:9101/metrics"
+    return_content: false
+    status_code: 200
+  retries: 6
+  delay: 5

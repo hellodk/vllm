@@ -1,0 +1,5 @@
+# ansible/roles/hw-exporter/tasks/amd.yml
+---
+- name: AMD ROCm exporter (not yet implemented)
+  debug:
+    msg: "AMD ROCm exporter installation is deferred to v2. Node {{ hydra_node_id }} will have no GPU hardware metrics."

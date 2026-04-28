@@ -1,0 +1,17 @@
+# ansible/roles/hw-exporter/tasks/main.yml
+---
+- name: Install apple-silicon-exporter
+  include_tasks: apple.yml
+  when: hydra_gpu_provider == "apple"
+
+- name: Install dcgm-exporter (NVIDIA)
+  include_tasks: nvidia.yml
+  when: hydra_gpu_provider == "nvidia"
+
+- name: Install amdgpu_exporter (AMD) — placeholder
+  include_tasks: amd.yml
+  when: hydra_gpu_provider == "amd"
+
+- name: Install node_exporter (CPU-only or cpu_inference nodes)
+  include_tasks: cpu.yml
+  when: hydra_gpu_provider == "none" or hydra_cpu_inference | default(false)

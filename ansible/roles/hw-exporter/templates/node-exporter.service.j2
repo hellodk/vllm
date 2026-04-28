@@ -1,0 +1,19 @@
+[Unit]
+Description=Prometheus Node Exporter
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/node_exporter \
+  --web.listen-address=127.0.0.1:9100 \
+  --collector.cpu \
+  --collector.meminfo \
+  --collector.diskstats \
+  --collector.filesystem \
+  --collector.netdev
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

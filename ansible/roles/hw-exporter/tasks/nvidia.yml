@@ -1,0 +1,43 @@
+# ansible/roles/hw-exporter/tasks/nvidia.yml
+---
+- name: Ensure Docker is installed
+  package:
+    name: docker.io
+    state: present
+  become: true
+
+- name: Ensure Docker service is running
+  service:
+    name: docker
+    state: started
+    enabled: true
+  become: true
+
+- name: Pull dcgm-exporter image
+  community.docker.docker_image:
+    name: "nvcr.io/nvidia/k8s/dcgm-exporter:{{ hydra_versions.dcgm_exporter }}-ubuntu22.04"
+    source: pull
+  become: true
+
+- name: Create dcgm-exporter systemd unit
+  template:
+    src: dcgm-exporter.service.j2
+    dest: /etc/systemd/system/dcgm-exporter.service
+    mode: "0644"
+  become: true
+
+- name: Enable and start dcgm-exporter
+  systemd:
+    name: dcgm-exporter
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Verify dcgm-exporter is responding
+  uri:
+    url: "http://127.0.0.1:9400/metrics"
+    return_content: false
+    status_code: 200
+  retries: 6
+  delay: 5
