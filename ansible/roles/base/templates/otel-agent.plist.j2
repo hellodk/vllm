@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.otel-agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/otelcol-contrib</string>
+    <string>--config</string>
+    <string>/etc/hydra/otel-agent-config.yaml</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/otel-agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/otel-agent-error.log</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>

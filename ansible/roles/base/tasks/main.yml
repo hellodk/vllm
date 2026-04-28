@@ -1,0 +1,85 @@
+# ansible/roles/base/tasks/main.yml
+---
+- name: Create Hydra config directory
+  file:
+    path: /etc/hydra
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Create Hydra data directory (Linux)
+  file:
+    path: /var/lib/hydra
+    state: directory
+    mode: "0755"
+  become: true
+  when: hydra_os == "linux"
+
+- name: Create Hydra log directory
+  file:
+    path: /var/log/hydra
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Set OTEL agent download URL (Linux aarch64)
+  set_fact:
+    otel_download_url: >-
+      {{ otel_agent_download_base }}/v{{ hydra_versions.otel_agent }}/otelcol-contrib_{{ hydra_versions.otel_agent }}_linux_arm64.tar.gz
+    otel_binary_path: /usr/local/bin/otelcol-contrib
+  when: hydra_os == "linux" and ansible_architecture in ["aarch64", "arm64"]
+
+- name: Set OTEL agent download URL (Linux x86_64)
+  set_fact:
+    otel_download_url: >-
+      {{ otel_agent_download_base }}/v{{ hydra_versions.otel_agent }}/otelcol-contrib_{{ hydra_versions.otel_agent }}_linux_amd64.tar.gz
+    otel_binary_path: /usr/local/bin/otelcol-contrib
+  when: hydra_os == "linux" and ansible_architecture == "x86_64"
+
+- name: Set OTEL agent download URL (macOS arm64)
+  set_fact:
+    otel_download_url: >-
+      {{ otel_agent_download_base }}/v{{ hydra_versions.otel_agent }}/otelcol-contrib_{{ hydra_versions.otel_agent }}_darwin_arm64.tar.gz
+    otel_binary_path: /usr/local/bin/otelcol-contrib
+  when: hydra_os == "macos"
+
+- name: Download and extract OTEL agent
+  unarchive:
+    src: "{{ otel_download_url }}"
+    dest: /usr/local/bin
+    remote_src: true
+    creates: "{{ otel_binary_path }}"
+    extra_opts: [--strip-components=0]
+  become: true
+
+- name: Ensure OTEL binary is executable
+  file:
+    path: "{{ otel_binary_path }}"
+    mode: "0755"
+  become: true
+
+- name: Install systemd service unit (Linux)
+  template:
+    src: otel-agent.service.j2
+    dest: /etc/systemd/system/otel-agent.service
+    mode: "0644"
+  become: true
+  when: hydra_os == "linux"
+  notify: reload systemd
+
+- name: Install LaunchDaemon plist (macOS)
+  template:
+    src: otel-agent.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.otel-agent.plist
+    mode: "0644"
+    owner: root
+    group: wheel
+  become: true
+  when: hydra_os == "macos"
+
+handlers:
+  - name: reload systemd
+    systemd:
+      daemon_reload: true
+    become: true
+    when: hydra_os == "linux"

@@ -1,0 +1,11 @@
+# ansible/site.yml
+---
+- name: Deploy Hydra monitoring stack
+  hosts: all
+  gather_facts: true
+  serial: 1
+  roles:
+    - { role: base,           tags: [base, all] }
+    - { role: hw-exporter,    tags: [hw-exporter, all] }
+    - { role: llm-discovery,  tags: [llm-discovery, all] }
+    - { role: monitoring-cfg, tags: [monitoring-cfg, all] }
