@@ -1,0 +1,60 @@
+# ansible/roles/monitoring-cfg/tasks/main.yml
+---
+- name: Load discovered.yml from remote node
+  slurp:
+    src: /etc/hydra/discovered.yml
+  register: _discovered_raw
+  become: true
+
+- name: Parse discovered.yml
+  set_fact:
+    _discovered: "{{ _discovered_raw.content | b64decode | from_yaml }}"
+
+- name: Render otel-agent.env
+  template:
+    src: otel-agent.env.j2
+    dest: /etc/hydra/otel-agent.env
+    mode: "0640"
+  become: true
+
+- name: Render otel-agent-config.yaml
+  template:
+    src: otel-agent-config.yaml.j2
+    dest: /etc/hydra/otel-agent-config.yaml
+    mode: "0640"
+  vars:
+    discovered: "{{ _discovered }}"
+  become: true
+  notify: validate and restart otel agent
+
+- name: Flush handlers immediately
+  meta: flush_handlers
+
+- name: Wait for OTEL agent health check
+  uri:
+    url: "http://localhost:13133"
+    status_code: 200
+    timeout: 5
+  retries: 6
+  delay: 5
+  register: _health
+  until: _health.status == 200
+
+handlers:
+  - name: validate and restart otel agent
+    block:
+      - name: Validate OTEL config (dry-run)
+        command: /usr/local/bin/otelcol-contrib --config /etc/hydra/otel-agent-config.yaml validate
+        become: true
+
+      - name: Restart OTEL agent (Linux)
+        systemd:
+          name: otel-agent
+          state: restarted
+        become: true
+        when: hydra_os == "linux"
+
+      - name: Restart OTEL agent (macOS)
+        command: launchctl kickstart -k system/com.hydra.otel-agent
+        become: true
+        when: hydra_os == "macos"
