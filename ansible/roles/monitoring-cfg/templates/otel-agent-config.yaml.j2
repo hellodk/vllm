@@ -64,7 +64,7 @@ processors:
         statements:
           - set(attributes["quantization"],
               ExtractPatterns(attributes["model"],
-                "[-_](q[0-9]+[_k_msx]*|f16|f32|f64|mxfp4)")[0])
+                "[-_](q[0-9]+[_k_msx0-9]*|f16|f32|f64|mxfp4)")[0])
               where attributes["model"] != nil
 
   filter/noise:
