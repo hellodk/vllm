@@ -6,8 +6,8 @@ gpu_provider: {{ hydra_gpu_provider }}
 os: {{ hydra_os }}
 pools: {{ hydra_pools | to_yaml | trim }}
 
-providers:
 {% if _endpoints_to_probe | default([]) | length > 0 %}
+providers:
 {% for ep in _endpoints_to_probe %}
   - name: {{ ep.provider }}
     url: {{ ep.url }}
@@ -15,5 +15,5 @@ providers:
     status: up
 {% endfor %}
 {% else %}
-  []
+providers: []
 {% endif %}

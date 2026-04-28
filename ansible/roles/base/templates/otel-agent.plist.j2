@@ -15,6 +15,30 @@
   <dict>
     <key>PATH</key>
     <string>/usr/local/bin:/usr/bin:/bin</string>
+    <key>NODE_ID</key>
+    <string>{{ hydra_node_id }}</string>
+    <key>HOSTNAME</key>
+    <string>{{ hydra_hostname }}</string>
+    <key>CLUSTER</key>
+    <string>{{ hydra_cluster_name }}</string>
+    <key>ENVIRONMENT</key>
+    <string>{{ hydra_environment }}</string>
+    <key>OS</key>
+    <string>{{ hydra_os }}</string>
+    <key>GPU_PROVIDER</key>
+    <string>{{ hydra_gpu_provider }}</string>
+    <key>CHIP</key>
+    <string>{{ hydra_chip | default('unknown') }}</string>
+    <key>POOL</key>
+    <string>{{ hydra_pools | join(',') }}</string>
+    <key>OTEL_GATEWAY_PRIMARY</key>
+    <string>{{ hydra_otel_gateway_primary }}</string>
+    <key>OTEL_GATEWAY_SECONDARY</key>
+    <string>{{ hydra_otel_gateway_secondary | default('') }}</string>
+    <key>GOMAXPROCS</key>
+    <string>2</string>
+    <key>GOMEMLIMIT</key>
+    <string>100MiB</string>
   </dict>
   <key>KeepAlive</key>
   <true/>

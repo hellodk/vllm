@@ -17,6 +17,16 @@
     mode: "0640"
   become: true
 
+- name: Re-render LaunchDaemon plist with env vars (macOS)
+  template:
+    src: "{{ playbook_dir }}/../roles/base/templates/otel-agent.plist.j2"
+    dest: /Library/LaunchDaemons/com.hydra.otel-agent.plist
+    mode: "0644"
+    owner: root
+    group: wheel
+  become: true
+  when: hydra_os == "macos"
+
 - name: Render otel-agent-config.yaml
   template:
     src: otel-agent-config.yaml.j2
