@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Service identifier -->
+    <key>Label</key>
+    <string>com.company.apple-silicon-exporter</string>
+    
+    <!-- Program and arguments -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/apple-silicon-exporter</string>
+        <string>--listen=127.0.0.1:9101</string>
+        <string>--log-level=info</string>
+        <string>--enable-iokit=true</string>
+        <string>--enable-powermetrics=true</string>
+        <string>--enable-metal=true</string>
+    </array>
+    
+    <!-- Run as root (required for powermetrics and IOKit) -->
+    <key>UserName</key>
+    <string>root</string>
+    <key>GroupName</key>
+    <string>wheel</string>
+    
+    <!-- Start at boot -->
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <!-- Keep alive - restart on failure -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    
+    <!-- Throttle restarts -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    
+    <!-- Resource limits -->
+    <key>HardResourceLimits</key>
+    <dict>
+        <key>MemoryLimit</key>
+        <integer>104857600</integer> <!-- 100MB -->
+    </dict>
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>MemoryLimit</key>
+        <integer>52428800</integer> <!-- 50MB -->
+    </dict>
+    
+    <!-- Process priority (lower = nicer to other processes) -->
+    <key>Nice</key>
+    <integer>10</integer>
+    
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/var/lib/apple-silicon-exporter</string>
+    
+    <!-- Standard output and error logging -->
+    <key>StandardOutPath</key>
+    <string>/var/log/apple-silicon-exporter/exporter.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/apple-silicon-exporter/exporter.err</string>
+    
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/var/lib/apple-silicon-exporter</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    
+    <!-- Session type for proper system access -->
+    <key>LimitLoadToSessionType</key>
+    <string>System</string>
+    
+    <!-- Wait for network before starting -->
+    <key>NetworkState</key>
+    <true/>
+</dict>
+</plist>

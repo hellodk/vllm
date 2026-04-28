@@ -174,12 +174,27 @@ def patch_fleet_overview(dash):
 def patch_node_deep_dive(dash):
     vl = dash["templating"]["list"]
 
-    # Add cluster variable (before node)
-    _upsert_var(vl, _query_var(
+    # Ensure cluster variable exists at index 1 (before node at index 2)
+    cluster_var = _query_var(
         "cluster", "Cluster",
         "label_values(up, cluster)",
         include_all=True, multi=False,
-    ))
+    )
+    cluster_names = [v["name"] for v in vl]
+    if "cluster" not in cluster_names:
+        # Insert at index 1 (after datasource)
+        insert_pos = next((i for i, v in enumerate(vl) if v["name"] == "datasource"), -1) + 1
+        vl.insert(insert_pos, cluster_var)
+    else:
+        # Already present — update content, then ensure correct position
+        _upsert_var(vl, cluster_var)
+        cluster_idx = next(i for i, v in enumerate(vl) if v["name"] == "cluster")
+        node_idx = next((i for i, v in enumerate(vl) if v["name"] == "node"), None)
+        if node_idx is not None and cluster_idx > node_idx:
+            # cluster is after node — remove and re-insert before node
+            entry = vl.pop(cluster_idx)
+            node_idx = next(i for i, v in enumerate(vl) if v["name"] == "node")
+            vl.insert(node_idx, entry)
 
     # Fix node variable
     for v in vl:

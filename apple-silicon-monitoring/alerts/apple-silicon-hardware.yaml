@@ -230,7 +230,7 @@ groups:
             This is informational - high ANE usage during inference is expected.
 
       - alert: HardwareExporterDown
-        expr: up{cluster=~".+", job=~"hw-exporter"} == 0
+        expr: up{cluster=~".+", job="hw-exporter"} == 0
         for: 2m
         labels:
           severity: critical

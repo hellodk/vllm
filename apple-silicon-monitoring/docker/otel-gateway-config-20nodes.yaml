@@ -1,0 +1,120 @@
+# OTEL Collector Gateway Configuration for 20 Mac Mini Nodes
+# Receives metrics from mock exporters and LLM servers
+
+receivers:
+  # Scrape all 20 mock apple-silicon-exporters
+  prometheus/apple-silicon:
+    config:
+      scrape_configs:
+        - job_name: 'apple-silicon-exporter'
+          scrape_interval: 15s
+          scrape_timeout: 10s
+          static_configs:
+            - targets:
+                - 'mock-exporter-01:5900'
+                - 'mock-exporter-02:5900'
+                - 'mock-exporter-03:5900'
+                - 'mock-exporter-04:5900'
+                - 'mock-exporter-05:5900'
+                - 'mock-exporter-06:5900'
+                - 'mock-exporter-07:5900'
+                - 'mock-exporter-08:5900'
+                - 'mock-exporter-09:5900'
+                - 'mock-exporter-10:5900'
+                - 'mock-exporter-11:5900'
+                - 'mock-exporter-12:5900'
+                - 'mock-exporter-13:5900'
+                - 'mock-exporter-14:5900'
+                - 'mock-exporter-15:5900'
+                - 'mock-exporter-16:5900'
+                - 'mock-exporter-17:5900'
+                - 'mock-exporter-18:5900'
+                - 'mock-exporter-19:5900'
+                - 'mock-exporter-20:5900'
+          honor_labels: true
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: 'apple_.*'
+              action: keep
+
+  # Receive OTLP from LLM servers
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:5920
+        max_recv_msg_size_mib: 16
+      http:
+        endpoint: 0.0.0.0:5921
+
+processors:
+  # Memory limiter
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  # Batch for efficient writes
+  batch:
+    send_batch_size: 1000
+    timeout: 10s
+
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: cluster.name
+        value: "mock-llm-cluster"
+        action: upsert
+      - key: deployment.environment
+        value: "docker-test"
+        action: upsert
+
+  # Filter debug metrics
+  filter/drop_internal:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - "otelcol_.*"
+          - "go_.*"
+          - "process_.*"
+
+exporters:
+  # Write to Prometheus
+  prometheusremotewrite:
+    endpoint: http://prometheus:5930/api/v1/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+    external_labels:
+      gateway: "docker-gateway"
+
+  # Also expose prometheus endpoint for federation
+  prometheus:
+    endpoint: "0.0.0.0:5922"
+    namespace: ""
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:5923
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [prometheus/apple-silicon, otlp]
+      processors: [memory_limiter, filter/drop_internal, resource, batch]
+      exporters: [prometheusremotewrite, prometheus]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:5924

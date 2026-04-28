@@ -160,6 +160,14 @@ class TestNodeDeepDive:
         assert any("$power_metric" in e for e in exprs)
         assert any("$gpu_temp_metric" in e for e in exprs)
 
+    def test_cluster_var_before_node_var(self):
+        names = var_names(self.dash)
+        assert "cluster" in names and "node" in names
+        assert names.index("cluster") < names.index("node"), (
+            f"cluster (pos {names.index('cluster')}) must come before "
+            f"node (pos {names.index('node')}) for Grafana to resolve $cluster in $node query"
+        )
+
 
 # --- quality-monitor ---
 

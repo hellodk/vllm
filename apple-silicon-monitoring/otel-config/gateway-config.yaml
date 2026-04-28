@@ -1,0 +1,220 @@
+# OpenTelemetry Collector Gateway Configuration
+# Central gateway tier that receives metrics from all Mac Mini agents
+# and forwards to Prometheus/Mimir via remote_write
+
+receivers:
+  # Receive OTLP from all agents
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mib: 16
+        max_concurrent_streams: 500
+        read_buffer_size: 512000
+        write_buffer_size: 512000
+        keepalive:
+          server_parameters:
+            max_connection_idle: 60s
+            max_connection_age: 300s
+            max_connection_age_grace: 60s
+            time: 30s
+            timeout: 10s
+        auth:
+          # Uncomment to enable authentication
+          # authenticator: oidc
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "https://*.company.internal"
+          allowed_headers:
+            - "*"
+          max_age: 7200
+
+  # Optional: Accept Prometheus remote_write from legacy systems
+  prometheusremotewrite:
+    endpoint: 0.0.0.0:9090
+
+processors:
+  # Memory limiter - CRITICAL for gateway stability
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 2048
+    spike_limit_mib: 512
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  # Batch processor for efficient writes
+  batch:
+    send_batch_size: 1000
+    send_batch_max_size: 2000
+    timeout: 10s
+
+  # Resource detection (adds gateway info)
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 5s
+    override: false
+
+  # Filter out debug/internal metrics
+  filter/drop_internal:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - ".*_debug_.*"
+          - "otelcol_.*"  # Internal collector metrics
+          - "scrape_.*"   # Scrape metadata
+
+  # Transform metrics for storage optimization
+  transform/normalize:
+    metric_statements:
+      - context: datapoint
+        statements:
+          # Round timestamps to reduce cardinality
+          - set(time_unix_nano, time_unix_nano - (time_unix_nano % 1000000000))
+
+  # Metrics grouping for efficient remote_write
+  groupbyattrs:
+    keys:
+      - host.name
+      - cluster.name
+      - deployment.environment
+
+  # Probabilistic sampling for high-volume metrics (optional)
+  # probabilistic_sampler:
+  #   hash_seed: 22
+  #   sampling_percentage: 100  # Keep all by default
+
+  # Tail-based sampling for traces (if used)
+  # tail_sampling:
+  #   decision_wait: 10s
+  #   num_traces: 100000
+
+exporters:
+  # Primary: Prometheus remote_write to Mimir/Cortex/Thanos
+  prometheusremotewrite/mimir:
+    endpoint: ${env:PROMETHEUS_REMOTE_WRITE_ENDPOINT}
+    tls:
+      insecure: ${env:PROMETHEUS_TLS_INSECURE}
+      cert_file: ${env:PROMETHEUS_TLS_CERT}
+      key_file: ${env:PROMETHEUS_TLS_KEY}
+      ca_file: ${env:PROMETHEUS_TLS_CA}
+    headers:
+      X-Scope-OrgID: ${env:PROMETHEUS_TENANT_ID}
+    external_labels:
+      gateway: ${env:GATEWAY_ID}
+      environment: ${env:ENVIRONMENT}
+      platform: "apple-silicon-llm"
+    resource_to_telemetry_conversion:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 600s
+    remote_write_queue:
+      enabled: true
+      queue_size: 10000
+      num_consumers: 10
+    timeout: 30s
+
+  # Secondary: Direct Prometheus federation endpoint
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: ""
+    enable_open_metrics: true
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Backup: Write to local file for disaster recovery
+  file/backup:
+    path: /var/lib/otel-gateway/metrics-backup.json
+    rotation:
+      max_megabytes: 500
+      max_days: 3
+      max_backups: 5
+
+  # Dead letter queue for failed metrics
+  file/dlq:
+    path: /var/lib/otel-gateway/dlq/failed-metrics.json
+    rotation:
+      max_megabytes: 1000
+      max_days: 7
+      max_backups: 10
+
+  # Debug (disable in production)
+  # debug:
+  #   verbosity: detailed
+
+extensions:
+  # Health check
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: /health
+    check_collector_pipeline:
+      enabled: true
+      interval: 30s
+      exporter_failure_threshold: 5
+
+  # Performance profiling
+  pprof:
+    endpoint: 127.0.0.1:1777
+
+  # Debug pages
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+  # Memory ballast (reduce GC pressure)
+  memory_ballast:
+    size_mib: 512
+
+  # Bearer token auth (if needed)
+  # bearertokenauth:
+  #   token: ${env:GATEWAY_AUTH_TOKEN}
+
+  # OIDC authentication (if needed)
+  # oidc:
+  #   issuer_url: https://auth.company.internal
+  #   audience: otel-gateway
+  #   attribute: authorization
+
+connectors:
+  # Forward metrics between pipelines for fan-out
+  forward:
+
+service:
+  extensions: [health_check, pprof, zpages, memory_ballast]
+  
+  pipelines:
+    # Main metrics pipeline
+    metrics:
+      receivers: [otlp, prometheusremotewrite]
+      processors: 
+        - memory_limiter
+        - filter/drop_internal
+        - transform/normalize
+        - groupbyattrs
+        - batch
+      exporters: [prometheusremotewrite/mimir, prometheus]
+
+    # Backup pipeline (receives from connector)
+    # metrics/backup:
+    #   receivers: [forward]
+    #   processors: [batch]
+    #   exporters: [file/backup]
+
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+      output_paths: ["stdout", "/var/log/otel-gateway/gateway.log"]
+      error_output_paths: ["stderr", "/var/log/otel-gateway/gateway.err"]
+      initial_fields:
+        service: otel-gateway
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+    # Enable traces for debugging (disable in production)
+    # traces:
+    #   level: detailed

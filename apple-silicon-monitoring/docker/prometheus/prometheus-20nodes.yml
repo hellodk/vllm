@@ -1,0 +1,65 @@
+# Prometheus Configuration for 20 Mac Mini Nodes
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'mock-llm-cluster'
+    environment: 'docker-test'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:5950
+
+# Rule files
+rule_files:
+  - /etc/prometheus/rules/*.yaml
+
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:5930']
+
+  # Scrape OTEL Gateway prometheus endpoint (aggregated metrics)
+  - job_name: 'otel-gateway'
+    static_configs:
+      - targets: ['otel-gateway:5922']
+    honor_labels: true
+
+  # OTEL internal metrics
+  - job_name: 'otel-gateway-internal'
+    static_configs:
+      - targets: ['otel-gateway:5924']
+
+  # Direct scrape of all 20 mock exporters (backup/verification)
+  - job_name: 'apple-silicon-direct'
+    static_configs:
+      - targets:
+          - 'mock-exporter-01:5900'
+          - 'mock-exporter-02:5900'
+          - 'mock-exporter-03:5900'
+          - 'mock-exporter-04:5900'
+          - 'mock-exporter-05:5900'
+          - 'mock-exporter-06:5900'
+          - 'mock-exporter-07:5900'
+          - 'mock-exporter-08:5900'
+          - 'mock-exporter-09:5900'
+          - 'mock-exporter-10:5900'
+          - 'mock-exporter-11:5900'
+          - 'mock-exporter-12:5900'
+          - 'mock-exporter-13:5900'
+          - 'mock-exporter-14:5900'
+          - 'mock-exporter-15:5900'
+          - 'mock-exporter-16:5900'
+          - 'mock-exporter-17:5900'
+          - 'mock-exporter-18:5900'
+          - 'mock-exporter-19:5900'
+          - 'mock-exporter-20:5900'
+    honor_labels: true
+
+# Enable remote write receiver
+remote_write: []

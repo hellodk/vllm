@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.company.otel-collector-agent</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/otelcol-contrib</string>
+        <string>--config=/etc/otel-collector/agent-config.yaml</string>
+    </array>
+    
+    <key>UserName</key>
+    <string>otel</string>
+    <key>GroupName</key>
+    <string>otel</string>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    
+    <key>HardResourceLimits</key>
+    <dict>
+        <key>MemoryLimit</key>
+        <integer>157286400</integer> <!-- 150MB -->
+    </dict>
+    
+    <key>Nice</key>
+    <integer>5</integer>
+    
+    <key>WorkingDirectory</key>
+    <string>/var/lib/otel-collector</string>
+    
+    <key>StandardOutPath</key>
+    <string>/var/log/otel-collector/agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/otel-collector/agent.err</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/var/lib/otel-collector</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOSTNAME</key>
+        <string>mac-mini-001</string>
+        <key>CLUSTER_NAME</key>
+        <string>llm-mac-cluster-prod</string>
+        <key>ENVIRONMENT</key>
+        <string>production</string>
+        <key>OTEL_GATEWAY_ENDPOINT</key>
+        <string>otel-gateway.internal:4317</string>
+        <key>OTEL_TLS_INSECURE</key>
+        <string>false</string>
+        <key>OTEL_TLS_CERT</key>
+        <string>/etc/otel/certs/client.crt</string>
+        <key>OTEL_TLS_KEY</key>
+        <string>/etc/otel/certs/client.key</string>
+        <key>OTEL_TLS_CA</key>
+        <string>/etc/otel/certs/ca.crt</string>
+        <key>GOMAXPROCS</key>
+        <string>2</string>
+        <key>GOMEMLIMIT</key>
+        <string>100MiB</string>
+    </dict>
+    
+    <key>LimitLoadToSessionType</key>
+    <string>System</string>
+    
+    <key>NetworkState</key>
+    <true/>
+</dict>
+</plist>

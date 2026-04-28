@@ -1,0 +1,75 @@
+# Simplified Alert Rules for Docker Testing
+groups:
+  - name: apple-silicon-test
+    interval: 15s
+    rules:
+      - alert: GPUHighUtilization
+        expr: apple_gpu_utilization_percent > 90
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU utilization high on {{ $labels.instance }}"
+          description: "GPU at {{ $value | printf \"%.1f\" }}%"
+
+      - alert: GPUMemoryHigh
+        expr: (apple_gpu_memory_used_bytes / apple_gpu_memory_total_bytes) > 0.9
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU memory high on {{ $labels.instance }}"
+
+      - alert: ThermalThrottling
+        expr: apple_thermal_throttle_active == 1
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Thermal throttling on {{ $labels.instance }}"
+
+  - name: llm-inference-test
+    interval: 15s
+    rules:
+      - alert: LLMHighLatency
+        expr: histogram_quantile(0.95, rate(llm_inference_duration_seconds_bucket{phase="total"}[5m])) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High inference latency for {{ $labels.model }}"
+
+      - alert: LLMErrorRate
+        expr: rate(llm_error_total[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error rate elevated for {{ $labels.model }}"
+
+      - alert: LLMHealthLow
+        expr: llm_model_health_score < 70
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model health low for {{ $labels.model }}"
+
+  - name: hallucination-test
+    interval: 30s
+    rules:
+      - alert: HighEntropy
+        expr: histogram_quantile(0.95, rate(llm_output_entropy_bucket[5m])) > 4
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High entropy for {{ $labels.model }}"
+
+      - alert: HighRepetition
+        expr: llm_repetition_score > 0.3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High repetition for {{ $labels.model }}"

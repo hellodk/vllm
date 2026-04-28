@@ -1,0 +1,592 @@
+# Docker Compose for Apple Silicon LLM Monitoring Test Environment
+# Simulates 20 Mac Mini devices
+# All ports are in the 5900-5999 range to avoid collisions
+#
+# Port Map:
+#   5900-5919 - Mock Apple Silicon Exporters (20 nodes)
+#   5920 - OTEL Gateway OTLP gRPC
+#   5921 - OTEL Gateway OTLP HTTP
+#   5922 - OTEL Gateway Prometheus exporter
+#   5923 - OTEL Gateway health
+#   5930 - Prometheus
+#   5940 - Grafana
+#   5950 - Alertmanager
+#
+# Usage:
+#   docker-compose up -d
+#   
+#   Access:
+#     - Grafana: http://localhost:5940 (admin/admin)
+#     - Prometheus: http://localhost:5930
+#     - Alertmanager: http://localhost:5950
+
+services:
+  # ============================================
+  # Mock Apple Silicon Exporters (20 Mac Minis)
+  # ============================================
+  mock-exporter-01:
+    build: &exporter-build
+      context: ./mock-server/mock-exporter
+      dockerfile: Dockerfile
+    container_name: mock-exporter-01
+    environment:
+      - PORT=5900
+      - NODE_ID=1
+    ports:
+      - "5900:5900"
+    healthcheck: &exporter-healthcheck
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5900/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  mock-exporter-02:
+    build: *exporter-build
+    container_name: mock-exporter-02
+    environment:
+      - PORT=5900
+      - NODE_ID=2
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-03:
+    build: *exporter-build
+    container_name: mock-exporter-03
+    environment:
+      - PORT=5900
+      - NODE_ID=3
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-04:
+    build: *exporter-build
+    container_name: mock-exporter-04
+    environment:
+      - PORT=5900
+      - NODE_ID=4
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-05:
+    build: *exporter-build
+    container_name: mock-exporter-05
+    environment:
+      - PORT=5900
+      - NODE_ID=5
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-06:
+    build: *exporter-build
+    container_name: mock-exporter-06
+    environment:
+      - PORT=5900
+      - NODE_ID=6
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-07:
+    build: *exporter-build
+    container_name: mock-exporter-07
+    environment:
+      - PORT=5900
+      - NODE_ID=7
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-08:
+    build: *exporter-build
+    container_name: mock-exporter-08
+    environment:
+      - PORT=5900
+      - NODE_ID=8
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-09:
+    build: *exporter-build
+    container_name: mock-exporter-09
+    environment:
+      - PORT=5900
+      - NODE_ID=9
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-10:
+    build: *exporter-build
+    container_name: mock-exporter-10
+    environment:
+      - PORT=5900
+      - NODE_ID=10
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-11:
+    build: *exporter-build
+    container_name: mock-exporter-11
+    environment:
+      - PORT=5900
+      - NODE_ID=11
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-12:
+    build: *exporter-build
+    container_name: mock-exporter-12
+    environment:
+      - PORT=5900
+      - NODE_ID=12
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-13:
+    build: *exporter-build
+    container_name: mock-exporter-13
+    environment:
+      - PORT=5900
+      - NODE_ID=13
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-14:
+    build: *exporter-build
+    container_name: mock-exporter-14
+    environment:
+      - PORT=5900
+      - NODE_ID=14
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-15:
+    build: *exporter-build
+    container_name: mock-exporter-15
+    environment:
+      - PORT=5900
+      - NODE_ID=15
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-16:
+    build: *exporter-build
+    container_name: mock-exporter-16
+    environment:
+      - PORT=5900
+      - NODE_ID=16
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-17:
+    build: *exporter-build
+    container_name: mock-exporter-17
+    environment:
+      - PORT=5900
+      - NODE_ID=17
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-18:
+    build: *exporter-build
+    container_name: mock-exporter-18
+    environment:
+      - PORT=5900
+      - NODE_ID=18
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-19:
+    build: *exporter-build
+    container_name: mock-exporter-19
+    environment:
+      - PORT=5900
+      - NODE_ID=19
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  mock-exporter-20:
+    build: *exporter-build
+    container_name: mock-exporter-20
+    environment:
+      - PORT=5900
+      - NODE_ID=20
+    healthcheck: *exporter-healthcheck
+    restart: unless-stopped
+
+  # ============================================
+  # Mock LLM Servers (various models on nodes)
+  # ============================================
+  mock-llm-01:
+    build: &llm-build
+      context: ./mock-server/mock-llm-server
+      dockerfile: Dockerfile
+    container_name: mock-llm-01
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=1
+      - MODEL_NAME=llama-3-70b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: &llm-healthcheck
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5901/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-02:
+    build: *llm-build
+    container_name: mock-llm-02
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=2
+      - MODEL_NAME=llama-3-70b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-03:
+    build: *llm-build
+    container_name: mock-llm-03
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=3
+      - MODEL_NAME=mixtral-8x7b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-04:
+    build: *llm-build
+    container_name: mock-llm-04
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=4
+      - MODEL_NAME=mixtral-8x7b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-05:
+    build: *llm-build
+    container_name: mock-llm-05
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=5
+      - MODEL_NAME=codellama-34b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-06:
+    build: *llm-build
+    container_name: mock-llm-06
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=6
+      - MODEL_NAME=codellama-34b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-07:
+    build: *llm-build
+    container_name: mock-llm-07
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=7
+      - MODEL_NAME=llama-3-70b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-08:
+    build: *llm-build
+    container_name: mock-llm-08
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=8
+      - MODEL_NAME=llama-3-70b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-09:
+    build: *llm-build
+    container_name: mock-llm-09
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=9
+      - MODEL_NAME=qwen-72b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-10:
+    build: *llm-build
+    container_name: mock-llm-10
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=10
+      - MODEL_NAME=qwen-72b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-11:
+    build: *llm-build
+    container_name: mock-llm-11
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=11
+      - MODEL_NAME=llama-3-70b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-12:
+    build: *llm-build
+    container_name: mock-llm-12
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=12
+      - MODEL_NAME=llama-3-70b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-13:
+    build: *llm-build
+    container_name: mock-llm-13
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=13
+      - MODEL_NAME=mixtral-8x7b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-14:
+    build: *llm-build
+    container_name: mock-llm-14
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=14
+      - MODEL_NAME=mixtral-8x7b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-15:
+    build: *llm-build
+    container_name: mock-llm-15
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=15
+      - MODEL_NAME=codellama-34b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-16:
+    build: *llm-build
+    container_name: mock-llm-16
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=16
+      - MODEL_NAME=codellama-34b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-17:
+    build: *llm-build
+    container_name: mock-llm-17
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=17
+      - MODEL_NAME=llama-3-70b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-18:
+    build: *llm-build
+    container_name: mock-llm-18
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=18
+      - MODEL_NAME=llama-3-70b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-19:
+    build: *llm-build
+    container_name: mock-llm-19
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=19
+      - MODEL_NAME=qwen-72b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  mock-llm-20:
+    build: *llm-build
+    container_name: mock-llm-20
+    environment:
+      - HTTP_PORT=5901
+      - NODE_ID=20
+      - MODEL_NAME=qwen-72b
+      - OTEL_ENDPOINT=otel-gateway:5920
+    healthcheck: *llm-healthcheck
+    depends_on:
+      - otel-gateway
+    restart: unless-stopped
+
+  # ============================================
+  # OpenTelemetry Collector - Gateway Mode
+  # ============================================
+  otel-gateway:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    container_name: otel-gateway
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./docker/otel-gateway-config-20nodes.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "5920:5920"   # OTLP gRPC
+      - "5921:5921"   # OTLP HTTP
+      - "5922:5922"   # Prometheus exporter
+      - "5923:5923"   # Health check
+      - "5924:5924"   # Internal metrics
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5923"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================
+  # Prometheus
+  # ============================================
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.listen-address=0.0.0.0:5930'
+      - '--web.enable-remote-write-receiver'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./docker/prometheus/prometheus-20nodes.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "5930:5930"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5930/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================
+  # Grafana
+  # ============================================
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: grafana
+    environment:
+      - GF_SERVER_HTTP_PORT=5940
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "5940:5940"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5940/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================
+  # Alertmanager
+  # ============================================
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.listen-address=0.0.0.0:5950'
+    volumes:
+      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "5950:5950"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5950/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+
+networks:
+  default:
+    name: llm-monitoring-network

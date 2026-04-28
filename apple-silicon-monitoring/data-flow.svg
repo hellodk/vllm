@@ -1,0 +1,544 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1090" height="670" viewBox="0 0 1090 670">
+
+  <title>Apple Silicon LLM Monitoring — Data Flow</title>
+  <desc>
+    End-to-end data flow diagram. Hardware and LLM telemetry metrics travel from
+    Mac Mini nodes through OTEL Collector agents and a central gateway into Prometheus
+    storage, then to Grafana dashboards. Alerts route from Prometheus to Alertmanager.
+    Data flows left to right: Collection → OTEL Agent → Gateway → Storage → Visualization.
+  </desc>
+
+  <defs>
+
+    <!-- ── Arrow markers ── -->
+    <marker id="aOrange" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,1 L0,7 L8,4 Z" fill="#EA580C"/>
+    </marker>
+    <marker id="aTeal" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,1 L0,7 L8,4 Z" fill="#0D9488"/>
+    </marker>
+    <marker id="aViolet" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,1 L0,7 L8,4 Z" fill="#7C3AED"/>
+    </marker>
+    <marker id="aBlue" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,1 L0,7 L8,4 Z" fill="#2563EB"/>
+    </marker>
+    <!-- Bidirectional start: auto-start-reverse flips 180° so it points back toward Prometheus -->
+    <marker id="aBlueBi" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto-start-reverse">
+      <path d="M0,1 L0,7 L8,4 Z" fill="#2563EB" opacity="0.6"/>
+    </marker>
+    <marker id="aAmber" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,1 L0,7 L8,4 Z" fill="#B45309"/>
+    </marker>
+
+    <!-- ── Particle glow filters ── -->
+    <filter id="gOrange" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="gTeal" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="gViolet" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="gBlue" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="gAmber" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- ── Drop shadow filters ── -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#C7D2FE" flood-opacity="0.4"/>
+    </filter>
+    <filter id="shadowWarm" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#FED7AA" flood-opacity="0.4"/>
+    </filter>
+    <filter id="shadowGreen" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#DDD6FE" flood-opacity="0.4"/>
+    </filter>
+    <filter id="shadowSlate" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#CBD5E1" flood-opacity="0.4"/>
+    </filter>
+
+    <!-- ── Pastel gradients ── -->
+    <linearGradient id="gBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F4F6FF"/>
+      <stop offset="100%" stop-color="#EEF2FF"/>
+    </linearGradient>
+    <linearGradient id="gMac" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EEF2FF"/>
+      <stop offset="100%" stop-color="#E0E7FF"/>
+    </linearGradient>
+    <linearGradient id="gAgent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EFF6FF"/>
+      <stop offset="100%" stop-color="#DBEAFE"/>
+    </linearGradient>
+    <linearGradient id="gGateway" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5F3FF"/>
+      <stop offset="100%" stop-color="#EDE9FE"/>
+    </linearGradient>
+    <!-- Prometheus: neutral slate (not rose — avoids error/alert connotation) -->
+    <linearGradient id="gProm" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#F1F5F9"/>
+    </linearGradient>
+    <linearGradient id="gGrafana" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF7ED"/>
+      <stop offset="100%" stop-color="#FFEDD5"/>
+    </linearGradient>
+    <linearGradient id="gAlert" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFBEB"/>
+      <stop offset="100%" stop-color="#FEF3C7"/>
+    </linearGradient>
+
+    <!-- ── Animation paths — EXACTLY match visible connection lines ── -->
+    <path id="pa1" d="M 190,119 C 215,119 215,113 237,113" fill="none"/>
+    <path id="pb1" d="M 190,172 C 215,172 215,148 237,148" fill="none"/>
+    <path id="pa2" d="M 190,299 C 215,299 215,293 237,293" fill="none"/>
+    <path id="pb2" d="M 190,352 C 215,352 215,328 237,328" fill="none"/>
+    <path id="pc1" d="M 355,129 C 392,129 392,218 415,218" fill="none"/>
+    <path id="pc2" d="M 355,309 C 392,309 392,282 415,282" fill="none"/>
+    <path id="pd"  d="M 560,250 C 595,250 595,199 625,199" fill="none"/>
+    <path id="pe"  d="M 768,202 L 863,202" fill="none"/>
+    <path id="pg"  d="M 863,202 L 768,202" fill="none"/>
+    <path id="pf"  d="M 695,240 L 695,310" fill="none"/>
+
+  </defs>
+
+  <!-- ════ BACKGROUND ════ -->
+  <rect width="1090" height="670" fill="url(#gBg)"/>
+  <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+    <circle cx="14" cy="14" r="0.9" fill="#C7D2FE" opacity="0.65"/>
+  </pattern>
+  <rect width="1090" height="670" fill="url(#dots)"/>
+
+  <!-- ════ TITLE ════ -->
+  <text x="545" y="32" text-anchor="middle"
+        font-family="'SF Pro Display','Helvetica Neue',Arial,sans-serif"
+        font-size="17" font-weight="700" fill="#312E81" letter-spacing="0.5">
+    Apple Silicon LLM Monitoring — Data Flow
+  </text>
+  <!-- Subtitle: flow direction (replaces graphical indicator) -->
+  <text x="545" y="48" text-anchor="middle"
+        font-family="Arial,sans-serif" font-size="9" fill="#818CF8" letter-spacing="1.5">
+    COLLECTION  →  OTEL AGENT  →  GATEWAY  →  STORAGE  →  VISUALIZATION
+  </text>
+
+  <!-- ════ COLUMN HEADERS ════ -->
+  <text x="103"  y="64" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#4F46E5" letter-spacing="1">COLLECTION</text>
+  <text x="296"  y="64" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#4F46E5" letter-spacing="1">OTEL AGENT</text>
+  <text x="488"  y="64" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#4F46E5" letter-spacing="1">GATEWAY</text>
+  <text x="695"  y="64" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#4F46E5" letter-spacing="1">STORAGE</text>
+  <text x="945"  y="64" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#4F46E5" letter-spacing="1">VISUALIZATION</text>
+
+  <!-- Column dividers -->
+  <line x1="210" y1="68" x2="210" y2="520" stroke="#C7D2FE" stroke-width="1" stroke-dasharray="4,5"/>
+  <line x1="382" y1="68" x2="382" y2="520" stroke="#C7D2FE" stroke-width="1" stroke-dasharray="4,5"/>
+  <line x1="578" y1="68" x2="578" y2="520" stroke="#C7D2FE" stroke-width="1" stroke-dasharray="4,5"/>
+  <line x1="800" y1="68" x2="800" y2="520" stroke="#C7D2FE" stroke-width="1" stroke-dasharray="4,5"/>
+
+  <!-- ════ MAC MINI 1  (y=68, h=132, dead-space fixed to 6px) ════ -->
+  <g id="mac1" filter="url(#shadow)">
+    <rect x="15" y="68" width="175" height="132" rx="8"
+          fill="url(#gMac)" stroke="#818CF8" stroke-width="1.8"/>
+    <rect x="15" y="68" width="175" height="24" rx="8" fill="#C7D2FE" opacity="0.7"/>
+    <rect x="15" y="84" width="175" height="8"  fill="#C7D2FE" opacity="0.7"/>
+    <text x="30"  y="85" font-family="'SF Pro Display',Arial,sans-serif" font-size="11" font-weight="700" fill="#312E81">Mac Mini</text>
+    <text x="152" y="85" font-family="monospace" font-size="10" fill="#4F46E5">node-01</text>
+
+    <!-- Exporter sub-box (C1 fix: port removed from subtitle; C3 fix: no :9101 here) -->
+    <rect x="24" y="97" width="157" height="44" rx="4" fill="#FFF7ED" stroke="#F97316" stroke-width="1.5"/>
+    <text x="32" y="114" font-family="monospace"      font-size="10" fill="#9A3412">apple-silicon-exporter</text>
+    <text x="32" y="129" font-family="Arial,sans-serif" font-size="9"   fill="#57534E">IOKit · Metal · powermetrics</text>
+    <circle cx="170" cy="113" r="4" fill="#F97316">
+      <animate attributeName="opacity" values="1;0.2;1" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="r"       values="3;5;3"   dur="2s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- LLM Server sub-box (C1 fix: OTLP removed from subtitle) -->
+    <rect x="24" y="150" width="157" height="44" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+    <text x="32" y="167" font-family="monospace"      font-size="10" fill="#134E4A">LLM Server + SDK</text>
+    <text x="32" y="182" font-family="Arial,sans-serif" font-size="9"   fill="#57534E">vLLM · MLX · Ollama · llama.cpp</text>
+    <circle cx="170" cy="166" r="4" fill="#0D9488">
+      <animate attributeName="opacity" values="1;0.2;1" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+      <animate attributeName="r"       values="3;5;3"   dur="2s" begin="0.5s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ════ MAC MINI 2  (y=248, h=132) ════ -->
+  <g id="mac2" filter="url(#shadow)">
+    <rect x="15" y="248" width="175" height="132" rx="8"
+          fill="url(#gMac)" stroke="#818CF8" stroke-width="1.8"/>
+    <rect x="15" y="248" width="175" height="24" rx="8" fill="#C7D2FE" opacity="0.7"/>
+    <rect x="15" y="264" width="175" height="8"  fill="#C7D2FE" opacity="0.7"/>
+    <text x="30"  y="265" font-family="'SF Pro Display',Arial,sans-serif" font-size="11" font-weight="700" fill="#312E81">Mac Mini</text>
+    <text x="152" y="265" font-family="monospace" font-size="10" fill="#4F46E5">node-02</text>
+
+    <rect x="24" y="277" width="157" height="44" rx="4" fill="#FFF7ED" stroke="#F97316" stroke-width="1.5"/>
+    <text x="32" y="294" font-family="monospace"      font-size="10" fill="#9A3412">apple-silicon-exporter</text>
+    <text x="32" y="309" font-family="Arial,sans-serif" font-size="9"   fill="#57534E">IOKit · Metal · powermetrics</text>
+    <circle cx="170" cy="293" r="4" fill="#F97316">
+      <animate attributeName="opacity" values="1;0.2;1" dur="2s" begin="0.3s" repeatCount="indefinite"/>
+      <animate attributeName="r"       values="3;5;3"   dur="2s" begin="0.3s" repeatCount="indefinite"/>
+    </circle>
+
+    <rect x="24" y="330" width="157" height="44" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+    <text x="32" y="347" font-family="monospace"      font-size="10" fill="#134E4A">LLM Server + SDK</text>
+    <text x="32" y="362" font-family="Arial,sans-serif" font-size="9"   fill="#57534E">vLLM · MLX · Ollama · llama.cpp</text>
+    <circle cx="170" cy="346" r="4" fill="#0D9488">
+      <animate attributeName="opacity" values="1;0.2;1" dur="2s" begin="0.8s" repeatCount="indefinite"/>
+      <animate attributeName="r"       values="3;5;3"   dur="2s" begin="0.8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- More nodes ghost (y=430, dashed box) -->
+  <rect x="15" y="430" width="175" height="48" rx="8"
+        fill="none" stroke="#C7D2FE" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="103" y="451" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" fill="#A5B4FC">⋮</text>
+  <text x="103" y="469" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#6366F1">× up to 20 nodes in production</text>
+
+  <!-- ════ OTEL AGENT 1  (y=93, h=72, C3 fix: no :4317 in label) ════ -->
+  <g id="agent1" filter="url(#shadow)">
+    <rect x="237" y="93" width="118" height="72" rx="8"
+          fill="url(#gAgent)" stroke="#60A5FA" stroke-width="1.8"/>
+    <text x="296" y="117" text-anchor="middle" font-family="'SF Pro Display',Arial,sans-serif" font-size="12" font-weight="700" fill="#1E40AF">OTEL</text>
+    <text x="296" y="132" text-anchor="middle" font-family="'SF Pro Display',Arial,sans-serif" font-size="12" font-weight="700" fill="#1E40AF">Collector</text>
+    <text x="296" y="147" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#374151">agent mode</text>
+    <text x="296" y="159" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#475569">batch · enrich · filter</text>
+  </g>
+
+  <!-- ════ OTEL AGENT 2  (y=273) ════ -->
+  <g id="agent2" filter="url(#shadow)">
+    <rect x="237" y="273" width="118" height="72" rx="8"
+          fill="url(#gAgent)" stroke="#60A5FA" stroke-width="1.8"/>
+    <text x="296" y="297" text-anchor="middle" font-family="'SF Pro Display',Arial,sans-serif" font-size="12" font-weight="700" fill="#1E40AF">OTEL</text>
+    <text x="296" y="312" text-anchor="middle" font-family="'SF Pro Display',Arial,sans-serif" font-size="12" font-weight="700" fill="#1E40AF">Collector</text>
+    <text x="296" y="327" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#374151">agent mode</text>
+    <text x="296" y="339" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#475569">batch · enrich · filter</text>
+  </g>
+
+  <!-- More agents ghost (M4 fix: add bounding box, aligned y=430 with more nodes) -->
+  <rect x="237" y="430" width="118" height="48" rx="8"
+        fill="none" stroke="#C7D2FE" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="296" y="451" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" fill="#A5B4FC">⋮</text>
+  <text x="296" y="469" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#6366F1">× 1 agent per node</text>
+
+  <!-- ════ OTEL GATEWAY  (C3 fix: gRPC port removed from box body) ════ -->
+  <g id="gateway" filter="url(#shadowGreen)">
+    <rect x="415" y="150" width="145" height="213" rx="8"
+          fill="url(#gGateway)" stroke="#7C3AED" stroke-width="1.8"/>
+    <rect x="415" y="150" width="145" height="24" rx="8" fill="#DDD6FE" opacity="0.8"/>
+    <rect x="415" y="166" width="145" height="8"  fill="#DDD6FE" opacity="0.8"/>
+    <text x="487" y="167" text-anchor="middle" font-family="'SF Pro Display',Arial,sans-serif" font-size="11" font-weight="700" fill="#4C1D95">OTEL Gateway</text>
+
+    <text x="428" y="192" font-family="Arial,sans-serif" font-size="9" fill="#3B0764">▸ fan-in (all agents)</text>
+    <text x="428" y="210" font-family="Arial,sans-serif" font-size="9" fill="#3B0764">▸ memory limit 2 GiB</text>
+    <text x="428" y="228" font-family="Arial,sans-serif" font-size="9" fill="#3B0764">▸ batch ≤ 1 000 metrics</text>
+    <text x="428" y="246" font-family="Arial,sans-serif" font-size="9" fill="#3B0764">▸ enrich host / cluster</text>
+    <text x="428" y="264" font-family="Arial,sans-serif" font-size="9" fill="#3B0764">▸ filter noise</text>
+    <text x="428" y="282" font-family="Arial,sans-serif" font-size="9" fill="#3B0764">▸ normalise timestamps</text>
+    <text x="428" y="300" font-family="Arial,sans-serif" font-size="9" fill="#3B0764">▸ dead-letter queue</text>
+    <text x="487" y="346" text-anchor="middle" font-family="monospace" font-size="9" fill="#5B21B6">gRPC :4317  ·  HTTP :4318</text>
+  </g>
+
+  <!-- ════ PROMETHEUS  (m2 fix: slate colour — storage, not alert) ════ -->
+  <g id="prometheus" filter="url(#shadowSlate)">
+    <rect x="625" y="150" width="140" height="90" rx="8"
+          fill="url(#gProm)" stroke="#475569" stroke-width="1.8"/>
+    <rect x="625" y="150" width="140" height="24" rx="8" fill="#E2E8F0" opacity="0.9"/>
+    <rect x="625" y="166" width="140" height="8"  fill="#E2E8F0" opacity="0.9"/>
+    <text x="695" y="167" text-anchor="middle" font-family="'SF Pro Display',Arial,sans-serif" font-size="11" font-weight="700" fill="#1E293B">Prometheus</text>
+    <text x="695" y="188" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#334155">TSDB · 7 d retention</text>
+    <text x="695" y="204" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#334155">Alert rule eval 15 – 30 s</text>
+    <text x="695" y="220" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#334155">3 PrometheusRule CRDs</text>
+    <text x="695" y="234" text-anchor="middle" font-family="monospace"         font-size="9" fill="#64748B">:9090</text>
+    <circle cx="752" cy="159" r="3.5" fill="#475569" opacity="0.5">
+      <animate attributeName="opacity" values="0.5;0.1;0.5" dur="2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ════ ALERTMANAGER ════ -->
+  <g id="alertmanager" filter="url(#shadowWarm)">
+    <rect x="625" y="310" width="140" height="82" rx="8"
+          fill="url(#gAlert)" stroke="#F59E0B" stroke-width="1.8"/>
+    <rect x="625" y="310" width="140" height="24" rx="8" fill="#FDE68A" opacity="0.8"/>
+    <rect x="625" y="326" width="140" height="8"  fill="#FDE68A" opacity="0.8"/>
+    <text x="695" y="327" text-anchor="middle" font-family="'SF Pro Display',Arial,sans-serif" font-size="11" font-weight="700" fill="#92400E">Alertmanager</text>
+    <text x="695" y="348" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#334155">Route · dedup · silence</text>
+    <text x="695" y="364" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#334155">Slack · PagerDuty · Email</text>
+    <text x="695" y="384" text-anchor="middle" font-family="monospace"         font-size="9" fill="#6B7280">:9093</text>
+  </g>
+
+  <!-- ════ GRAFANA  (M7 fix: x=866, right margin 66px) ════ -->
+  <g id="grafana" filter="url(#shadowWarm)">
+    <rect x="866" y="148" width="158" height="116" rx="8"
+          fill="url(#gGrafana)" stroke="#FB923C" stroke-width="1.8"/>
+    <rect x="866" y="148" width="158" height="24" rx="8" fill="#FED7AA" opacity="0.8"/>
+    <rect x="866" y="164" width="158" height="8"  fill="#FED7AA" opacity="0.8"/>
+    <text x="945" y="165" text-anchor="middle" font-family="'SF Pro Display',Arial,sans-serif" font-size="11" font-weight="700" fill="#7C2D12">Grafana</text>
+    <text x="945" y="186" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#334155">Fleet Overview</text>
+    <text x="945" y="202" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#334155">Node Deep Dive</text>
+    <text x="945" y="218" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#334155">Quality Monitor</text>
+    <text x="945" y="236" text-anchor="middle" font-family="monospace"         font-size="9" fill="#6B7280">ConfigMap auto-import</text>
+    <text x="945" y="252" text-anchor="middle" font-family="monospace"         font-size="9" fill="#6B7280">grafana_dashboard=1</text>
+  </g>
+
+  <!-- ════ CONNECTION LINES (M5 fix: single violet #7C3AED throughout) ════ -->
+
+  <!-- exp1 → agent1 (orange dashed = pull/scrape) -->
+  <path d="M 190,119 C 215,119 215,113 237,113"
+        fill="none" stroke="#F97316" stroke-width="1.8" stroke-dasharray="5,3.5"
+        marker-end="url(#aOrange)"/>
+
+  <!-- llm1 → agent1 (teal solid = OTLP push) -->
+  <path d="M 190,172 C 215,172 215,148 237,148"
+        fill="none" stroke="#0D9488" stroke-width="1.8"
+        marker-end="url(#aTeal)"/>
+
+  <!-- exp2 → agent2 -->
+  <path d="M 190,299 C 215,299 215,293 237,293"
+        fill="none" stroke="#F97316" stroke-width="1.8" stroke-dasharray="5,3.5"
+        marker-end="url(#aOrange)"/>
+
+  <!-- llm2 → agent2 -->
+  <path d="M 190,352 C 215,352 215,328 237,328"
+        fill="none" stroke="#0D9488" stroke-width="1.8"
+        marker-end="url(#aTeal)"/>
+
+  <!-- agent1 → gateway (violet = merged OTLP) -->
+  <path d="M 355,129 C 392,129 392,218 415,218"
+        fill="none" stroke="#7C3AED" stroke-width="2"
+        marker-end="url(#aViolet)"/>
+
+  <!-- agent2 → gateway -->
+  <path d="M 355,309 C 392,309 392,282 415,282"
+        fill="none" stroke="#7C3AED" stroke-width="2"
+        marker-end="url(#aViolet)"/>
+
+  <!-- gateway → prometheus (M5 fix: same violet #7C3AED, not #6D28D9) -->
+  <path d="M 560,250 C 595,250 595,199 625,199"
+        fill="none" stroke="#7C3AED" stroke-width="2.2"
+        marker-end="url(#aViolet)"/>
+
+  <!-- prometheus ↔ grafana (single bidirectional line) -->
+  <path d="M 768,202 L 863,202"
+        fill="none" stroke="#2563EB" stroke-width="2"
+        marker-start="url(#aBlueBi)" marker-end="url(#aBlue)"/>
+
+  <!-- prometheus → alertmanager -->
+  <path d="M 695,240 L 695,310"
+        fill="none" stroke="#B45309" stroke-width="2"
+        marker-end="url(#aAmber)"/>
+
+  <!-- ════ PROTOCOL LABELS + PORT BADGES ════ -->
+  <!--
+    Rules:
+      · Protocol type  → small text above or below the line MIDPOINT, centred in gap
+      · Port badge     → coloured pill (rect + text) at the INGRESS end, offset ≥10px
+                         from the line centre so it never overlaps the arrow
+      · Mac Mini→Agent zone is only 47px wide; protocol labels are omitted there
+        (line style dashed=pull / solid=push in the legend conveys the protocol)
+  -->
+
+  <!-- ── exp1 → agent1 ─────────────────────────────────────────────────────
+       Line arrives at Agent 1 left edge (x=237) at y=113.
+       Badge sits 10px ABOVE the ingress; ends 2px before the agent box.        -->
+  <rect x="205" y="97"  width="30" height="13" rx="3"
+        fill="#FFF7ED" stroke="#F97316" stroke-width="0.9" opacity="0.96"/>
+  <text x="220" y="108" text-anchor="middle" font-family="monospace" font-size="9" fill="#9A3412">:9101</text>
+
+  <!-- ── llm1 → agent1 ──────────────────────────────────────────────────────
+       Line arrives at y=148. Badge sits 12px BELOW the ingress.                -->
+  <rect x="205" y="160" width="30" height="13" rx="3"
+        fill="#F0FDFA" stroke="#0D9488" stroke-width="0.9" opacity="0.96"/>
+  <text x="220" y="171" text-anchor="middle" font-family="monospace" font-size="9" fill="#0F766E">:4317</text>
+
+  <!-- ── exp2 → agent2 ─────────────────────────────────────────────────────
+       Line arrives at y=293. Badge 10px ABOVE.                                  -->
+  <rect x="205" y="277" width="30" height="13" rx="3"
+        fill="#FFF7ED" stroke="#F97316" stroke-width="0.9" opacity="0.96"/>
+  <text x="220" y="288" text-anchor="middle" font-family="monospace" font-size="9" fill="#9A3412">:9101</text>
+
+  <!-- ── llm2 → agent2 ─────────────────────────────────────────────────────
+       Line arrives at y=328. Badge 12px BELOW.                                  -->
+  <rect x="205" y="340" width="30" height="13" rx="3"
+        fill="#F0FDFA" stroke="#0D9488" stroke-width="0.9" opacity="0.96"/>
+  <text x="220" y="351" text-anchor="middle" font-family="monospace" font-size="9" fill="#0F766E">:4317</text>
+
+  <!-- ── agent1 → gateway ───────────────────────────────────────────────────
+       Protocol label at curve midpoint (x≈390, y≈174); badge at gateway ingress
+       (x=415, y=218) placed 10px ABOVE inside the gateway box.                  -->
+  <text x="388" y="158" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#6D28D9">OTLP/gRPC</text>
+  <rect x="417" y="202" width="30" height="13" rx="3"
+        fill="#EDE9FE" stroke="#7C3AED" stroke-width="0.9" opacity="0.96"/>
+  <text x="432" y="213" text-anchor="middle" font-family="monospace" font-size="9" fill="#4C1D95">:4317</text>
+
+  <!-- ── agent2 → gateway ───────────────────────────────────────────────────
+       Line arrives at y=282. Badge 10px BELOW inside gateway.                   -->
+  <rect x="417" y="287" width="30" height="13" rx="3"
+        fill="#EDE9FE" stroke="#7C3AED" stroke-width="0.9" opacity="0.96"/>
+  <text x="432" y="298" text-anchor="middle" font-family="monospace" font-size="9" fill="#4C1D95">:4317</text>
+
+  <!-- ── gateway → prometheus ───────────────────────────────────────────────
+       Protocol at curve midpoint (x≈592, y≈225). Badge at prometheus left
+       edge (x=625, y=199), placed 13px ABOVE in the column-gap — never inside
+       the Prometheus box.                                                        -->
+  <text x="592" y="211" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#6D28D9">remote_write</text>
+  <rect x="594" y="182" width="30" height="13" rx="3"
+        fill="white" stroke="#7C3AED" stroke-width="0.9" opacity="0.96"/>
+  <text x="609" y="193" text-anchor="middle" font-family="monospace" font-size="9" fill="#4C1D95">:9090</text>
+
+  <!-- ── prometheus ↔ grafana ───────────────────────────────────────────────
+       Single label above the horizontal line (y=202); single badge below —
+       covers both query and response directions.                                 -->
+  <text x="815" y="192" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#1D4ED8">PromQL (pull)</text>
+  <rect x="800" y="213" width="30" height="13" rx="3"
+        fill="white" stroke="#2563EB" stroke-width="0.9" opacity="0.96"/>
+  <text x="815" y="224" text-anchor="middle" font-family="monospace" font-size="9" fill="#1D4ED8">:9090</text>
+
+  <!-- ── prometheus → alertmanager ──────────────────────────────────────────
+       Protocol label at path midpoint (y≈275), right of the vertical line.
+       Badge at alertmanager top edge (y=310), 13px ABOVE — right of the line.   -->
+  <text x="705" y="278" text-anchor="start" font-family="Arial,sans-serif" font-size="9" fill="#92400E">alerts</text>
+  <rect x="699" y="293" width="30" height="13" rx="3"
+        fill="#FFFBEB" stroke="#B45309" stroke-width="0.9" opacity="0.96"/>
+  <text x="714" y="304" text-anchor="middle" font-family="monospace" font-size="9" fill="#92400E">:9093</text>
+
+  <!-- ════ ANIMATED PARTICLES — 2 per path, all synced to same paths as visible lines ════ -->
+
+  <!-- exp1 → agent1 (orange, 3.5) -->
+  <circle r="3.5" fill="#EA580C" filter="url(#gOrange)">
+    <animateMotion dur="2s" repeatCount="indefinite" begin="0s"><mpath xlink:href="#pa1" href="#pa1"/></animateMotion>
+  </circle>
+  <circle r="3.5" fill="#EA580C" filter="url(#gOrange)">
+    <animateMotion dur="2s" repeatCount="indefinite" begin="1s"><mpath xlink:href="#pa1" href="#pa1"/></animateMotion>
+  </circle>
+
+  <!-- llm1 → agent1 (teal, 3.5) -->
+  <circle r="3.5" fill="#0D9488" filter="url(#gTeal)">
+    <animateMotion dur="2.2s" repeatCount="indefinite" begin="0.2s"><mpath xlink:href="#pb1" href="#pb1"/></animateMotion>
+  </circle>
+  <circle r="3.5" fill="#0D9488" filter="url(#gTeal)">
+    <animateMotion dur="2.2s" repeatCount="indefinite" begin="1.1s"><mpath xlink:href="#pb1" href="#pb1"/></animateMotion>
+  </circle>
+
+  <!-- exp2 → agent2 (orange, 3.5) -->
+  <circle r="3.5" fill="#EA580C" filter="url(#gOrange)">
+    <animateMotion dur="2s" repeatCount="indefinite" begin="0.4s"><mpath xlink:href="#pa2" href="#pa2"/></animateMotion>
+  </circle>
+  <circle r="3.5" fill="#EA580C" filter="url(#gOrange)">
+    <animateMotion dur="2s" repeatCount="indefinite" begin="1.4s"><mpath xlink:href="#pa2" href="#pa2"/></animateMotion>
+  </circle>
+
+  <!-- llm2 → agent2 (teal, 3.5) -->
+  <circle r="3.5" fill="#0D9488" filter="url(#gTeal)">
+    <animateMotion dur="2.2s" repeatCount="indefinite" begin="0.6s"><mpath xlink:href="#pb2" href="#pb2"/></animateMotion>
+  </circle>
+  <circle r="3.5" fill="#0D9488" filter="url(#gTeal)">
+    <animateMotion dur="2.2s" repeatCount="indefinite" begin="1.7s"><mpath xlink:href="#pb2" href="#pb2"/></animateMotion>
+  </circle>
+
+  <!-- agent1 → gateway (violet, 4.5 = merged stream) -->
+  <circle r="4.5" fill="#7C3AED" filter="url(#gViolet)">
+    <animateMotion dur="1.8s" repeatCount="indefinite" begin="0.1s"><mpath xlink:href="#pc1" href="#pc1"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#7C3AED" filter="url(#gViolet)">
+    <animateMotion dur="1.8s" repeatCount="indefinite" begin="1s"><mpath xlink:href="#pc1" href="#pc1"/></animateMotion>
+  </circle>
+
+  <!-- agent2 → gateway (violet, 4.5) -->
+  <circle r="4.5" fill="#7C3AED" filter="url(#gViolet)">
+    <animateMotion dur="1.8s" repeatCount="indefinite" begin="0.5s"><mpath xlink:href="#pc2" href="#pc2"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#7C3AED" filter="url(#gViolet)">
+    <animateMotion dur="1.8s" repeatCount="indefinite" begin="1.4s"><mpath xlink:href="#pc2" href="#pc2"/></animateMotion>
+  </circle>
+
+  <!-- gateway → prometheus (violet, 5.5 = high-volume remote_write) -->
+  <circle r="5.5" fill="#7C3AED" filter="url(#gViolet)">
+    <animateMotion dur="1.4s" repeatCount="indefinite" begin="0s"><mpath xlink:href="#pd" href="#pd"/></animateMotion>
+  </circle>
+  <circle r="5.5" fill="#7C3AED" filter="url(#gViolet)">
+    <animateMotion dur="1.4s" repeatCount="indefinite" begin="0.7s"><mpath xlink:href="#pd" href="#pd"/></animateMotion>
+  </circle>
+
+  <!-- prometheus → grafana (blue response, 3.5) -->
+  <circle r="3.5" fill="#2563EB" filter="url(#gBlue)">
+    <animateMotion dur="1.6s" repeatCount="indefinite" begin="0s"><mpath xlink:href="#pe" href="#pe"/></animateMotion>
+  </circle>
+  <circle r="3.5" fill="#2563EB" filter="url(#gBlue)">
+    <animateMotion dur="1.6s" repeatCount="indefinite" begin="0.8s"><mpath xlink:href="#pe" href="#pe"/></animateMotion>
+  </circle>
+
+  <!-- grafana → prometheus (blue query, 2.8 = smaller = request) -->
+  <circle r="2.8" fill="#60A5FA">
+    <animateMotion dur="2.4s" repeatCount="indefinite" begin="0.6s"><mpath xlink:href="#pg" href="#pg"/></animateMotion>
+  </circle>
+  <circle r="2.8" fill="#60A5FA">
+    <animateMotion dur="2.4s" repeatCount="indefinite" begin="1.8s"><mpath xlink:href="#pg" href="#pg"/></animateMotion>
+  </circle>
+
+  <!-- prometheus → alertmanager (amber, sparse = infrequent alerts) -->
+  <circle r="4" fill="#B45309" filter="url(#gAmber)">
+    <animateMotion dur="3s" repeatCount="indefinite" begin="0.8s"><mpath xlink:href="#pf" href="#pf"/></animateMotion>
+  </circle>
+  <circle r="4" fill="#B45309" filter="url(#gAmber)">
+    <animateMotion dur="3s" repeatCount="indefinite" begin="2.3s"><mpath xlink:href="#pf" href="#pf"/></animateMotion>
+  </circle>
+
+  <!-- ════ LEGEND  (M8, m3, m4 fixes; version stamp inside) ════ -->
+  <rect x="15" y="538" width="1060" height="118" rx="8"
+        fill="#F1F5F9" stroke="#C7D2FE" stroke-width="1.3"/>
+  <text x="30" y="557" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#374151" letter-spacing="0.8">LEGEND</text>
+
+  <!-- Orange: hardware -->
+  <circle cx="30"  cy="575" r="5.5" fill="#EA580C" filter="url(#gOrange)"/>
+  <text x="43"  y="578" font-family="Arial,sans-serif" font-size="10" fill="#1E293B" font-weight="600">Hardware metrics</text>
+  <text x="43"  y="592" font-family="monospace"         font-size="9"  fill="#475569">GPU · thermal · power · ANE</text>
+
+  <!-- Teal: LLM -->
+  <circle cx="215" cy="575" r="5.5" fill="#0D9488" filter="url(#gTeal)"/>
+  <text x="228" y="578" font-family="Arial,sans-serif" font-size="10" fill="#1E293B" font-weight="600">LLM telemetry + quality</text>
+  <text x="228" y="592" font-family="monospace"         font-size="9"  fill="#475569">latency · entropy · perplexity</text>
+
+  <!-- Violet: merged OTLP stream -->
+  <circle cx="435" cy="575" r="5.5" fill="#7C3AED" filter="url(#gViolet)"/>
+  <text x="448" y="578" font-family="Arial,sans-serif" font-size="10" fill="#1E293B" font-weight="600">Merged OTLP stream</text>
+  <text x="448" y="592" font-family="monospace"         font-size="9"  fill="#475569">agent push → gateway → remote_write</text>
+
+  <!-- Blue: PromQL -->
+  <circle cx="660" cy="575" r="5.5" fill="#2563EB" filter="url(#gBlue)"/>
+  <!-- m4 fix: "query + response" to cover both directions -->
+  <text x="673" y="578" font-family="Arial,sans-serif" font-size="10" fill="#1E293B" font-weight="600">PromQL (query + response)</text>
+  <text x="673" y="592" font-family="monospace"         font-size="9"  fill="#475569">Grafana ↔ Prometheus :9090</text>
+
+  <!-- Amber: alerts -->
+  <circle cx="898" cy="575" r="5.5" fill="#B45309" filter="url(#gAmber)"/>
+  <text x="911" y="578" font-family="Arial,sans-serif" font-size="10" fill="#1E293B" font-weight="600">Alert events</text>
+  <text x="911" y="592" font-family="monospace"         font-size="9"  fill="#475569">Prom → Alertmanager :9093</text>
+
+  <!-- Line style key  (M8 fix: actual diagram colours, not neutral grey) -->
+  <!-- Dashed = orange (scrape) -->
+  <line x1="30"  y1="616" x2="78"  y2="616" stroke="#F97316" stroke-width="1.6" stroke-dasharray="5,3.5"/>
+  <text x="85"  y="620" font-family="Arial,sans-serif" font-size="9" fill="#374151">dashed = pull / scrape</text>
+  <!-- Solid = violet (OTLP push) -->
+  <line x1="250" y1="616" x2="298" y2="616" stroke="#7C3AED" stroke-width="1.6"/>
+  <text x="305" y="620" font-family="Arial,sans-serif" font-size="9" fill="#374151">solid = push (OTLP / remote_write)</text>
+  <!-- Bidirectional = blue (PromQL) -->
+  <line x1="540" y1="616" x2="588" y2="616" stroke="#2563EB" stroke-width="1.6"
+        marker-start="url(#aBlueBi)" marker-end="url(#aBlue)"/>
+  <text x="595" y="620" font-family="Arial,sans-serif" font-size="9" fill="#374151">double arrow = bidirectional (PromQL request / response)</text>
+
+  <!-- m3 fix: version stamp inside legend bottom-right -->
+  <text x="1060" y="645" text-anchor="end"
+        font-family="monospace" font-size="9" fill="#94A3B8">v1.2 · Apr 2026</text>
+
+</svg>

@@ -1,0 +1,101 @@
+# OTEL Collector Agent Configuration for Docker Testing
+# Uses ports in 5900-5999 range
+
+receivers:
+  # Scrape mock apple-silicon-exporter
+  prometheus/apple-silicon:
+    config:
+      scrape_configs:
+        - job_name: 'apple-silicon-exporter'
+          scrape_interval: 10s
+          scrape_timeout: 5s
+          static_configs:
+            - targets: ['mock-exporter:5900']
+          honor_labels: true
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: 'apple_.*'
+              action: keep
+
+  # Receive OTLP from mock LLM server
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:5911
+        max_recv_msg_size_mib: 4
+      http:
+        endpoint: 0.0.0.0:5912
+
+processors:
+  # Memory limiter
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+
+  # Batch for efficiency
+  batch:
+    send_batch_size: 100
+    timeout: 5s
+
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: cluster.name
+        value: "mock-llm-cluster"
+        action: upsert
+      - key: deployment.environment
+        value: "docker-test"
+        action: upsert
+
+  # Filter out Go runtime metrics
+  filter/noise:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - "go_.*"
+          - "process_.*"
+
+exporters:
+  # Push to gateway
+  otlp/gateway:
+    endpoint: otel-gateway:5920
+    tls:
+      insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 10s
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 500
+
+  # Also expose prometheus endpoint for debugging
+  prometheus:
+    endpoint: "0.0.0.0:5913"
+    namespace: ""
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:5914
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [prometheus/apple-silicon, otlp]
+      processors: [memory_limiter, filter/noise, resource, batch]
+      exporters: [otlp/gateway, prometheus]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:5915

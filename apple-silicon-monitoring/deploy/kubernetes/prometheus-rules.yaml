@@ -1,0 +1,855 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: apple-silicon-hardware-rules
+  namespace: opik
+  labels:
+    release: monitoring
+    app.kubernetes.io/name: prometheus-rule
+    app.kubernetes.io/part-of: apple-silicon-llm-monitoring
+spec:
+  groups:
+  - interval: 30s
+    name: apple-silicon-hardware
+    rules:
+    - alert: GPUHighUtilization
+      annotations:
+        dashboard: https://grafana.internal/d/apple-silicon/node?var-node={{ $labels.instance
+          }}
+        description: 'GPU utilization has been at {{ $value | printf "%.1f" }}% for
+          over 5 minutes.
+
+          This may indicate the node is under heavy load or a process is stuck.
+
+          '
+        runbook_url: https://wiki.company.internal/runbooks/gpu-high-utilization
+        summary: GPU utilization sustained above 95% on {{ $labels.instance }}
+      expr: apple_gpu_utilization_percent > 95
+      for: 5m
+      labels:
+        category: gpu
+        severity: warning
+        team: infrastructure
+    - alert: GPUMemoryExhaustion
+      annotations:
+        description: 'GPU memory is at {{ $value | humanizePercentage }} capacity.
+
+          Used: {{ with printf "apple_gpu_memory_used_bytes{instance=''%s''}" $labels.instance
+          | query }}{{ . | first | value | humanize1024 }}{{ end }}
+
+          This will cause OOM errors for model inference.
+
+          '
+        runbook_url: https://wiki.company.internal/runbooks/gpu-memory-exhaustion
+        summary: GPU memory nearly exhausted on {{ $labels.instance }}
+      expr: (apple_gpu_memory_used_bytes / apple_gpu_memory_total_bytes) > 0.95
+      for: 2m
+      labels:
+        category: gpu
+        severity: critical
+        team: infrastructure
+    - alert: GPUMemoryLeak
+      annotations:
+        description: 'GPU memory usage is increasing steadily and will exceed capacity
+          within an hour.
+
+          Current trend suggests OOM in approximately 1 hour.
+
+          '
+        runbook_url: https://wiki.company.internal/runbooks/gpu-memory-leak
+        summary: Potential GPU memory leak on {{ $labels.instance }}
+      expr: "predict_linear(apple_gpu_memory_used_bytes[1h], 3600) \n> apple_gpu_memory_total_bytes\
+        \ * 1.1\n"
+      for: 30m
+      labels:
+        category: gpu
+        severity: warning
+        team: infrastructure
+    - alert: ThermalThrottlingActive
+      annotations:
+        description: '{{ $labels.type | title }} thermal throttling is active.
+
+          Performance will be degraded until temperature decreases.
+
+          Check ambient temperature and cooling system.
+
+          '
+        runbook_url: https://wiki.company.internal/runbooks/thermal-throttling
+        summary: Thermal throttling detected on {{ $labels.instance }} ({{ $labels.type
+          }})
+      expr: apple_thermal_throttle_active == 1
+      for: 1m
+      labels:
+        category: thermal
+        severity: warning
+        team: infrastructure
+    - alert: CriticalThermalPressure
+      annotations:
+        description: 'System has reached critical thermal state.
+
+          IMMEDIATE ACTION REQUIRED:
+
+          1. Check if ambient temperature is elevated
+
+          2. Verify cooling system is operational
+
+          3. Consider reducing workload or shutting down node
+
+          '
+        runbook_url: https://wiki.company.internal/runbooks/critical-thermal
+        summary: CRITICAL thermal pressure on {{ $labels.instance }}
+      expr: apple_thermal_pressure{level="critical"} == 1
+      for: 30s
+      labels:
+        category: thermal
+        pagerduty: trigger
+        severity: critical
+        team: infrastructure
+    - alert: SustainedThermalPressure
+      annotations:
+        description: 'System has been in {{ $labels.level }} thermal state for 15 minutes.
+
+          Performance may be impacted. Monitor cooling system.
+
+          '
+        summary: Sustained {{ $labels.level }} thermal pressure on {{ $labels.instance
+          }}
+      expr: 'apple_thermal_pressure{level=~"moderate|heavy"} == 1
+
+        '
+      for: 15m
+      labels:
+        category: thermal
+        severity: warning
+        team: infrastructure
+    - alert: GPUTemperatureHigh
+      annotations:
+        description: 'GPU temperature is {{ $value | printf "%.1f" }}°C.
+
+          Normal operating range is 40-80°C.
+
+          '
+        summary: GPU temperature elevated on {{ $labels.instance }}
+      expr: apple_gpu_temperature_celsius > 85
+      for: 5m
+      labels:
+        category: thermal
+        severity: warning
+        team: infrastructure
+    - alert: HighPowerConsumption
+      annotations:
+        description: 'System power is {{ $value | printf "%.1f" }}W, which is approaching
+          maximum TDP.
+
+          M4 Max TDP is approximately 90W.
+
+          '
+        summary: High power consumption on {{ $labels.instance }}
+      expr: apple_system_power_watts > 80
+      for: 10m
+      labels:
+        category: power
+        severity: warning
+        team: infrastructure
+    - alert: PowerSpike
+      annotations:
+        description: 'Current power ({{ $value | printf "%.1f" }}W) is significantly
+          above the hourly average.
+
+          This may indicate new workload or potential issue.
+
+          '
+        summary: Unusual power spike on {{ $labels.instance }}
+      expr: "apple_system_power_watts \n> (avg_over_time(apple_system_power_watts[1h])\
+        \ + 2 * stddev_over_time(apple_system_power_watts[1h]))\n"
+      for: 5m
+      labels:
+        category: power
+        severity: info
+        team: infrastructure
+    - alert: AppleSiliconExporterDown
+      annotations:
+        description: 'The apple-silicon-exporter is not responding.
+
+          Hardware metrics are not being collected.
+
+          Check the exporter service on the node.
+
+          '
+        runbook_url: https://wiki.company.internal/runbooks/exporter-down
+        summary: Apple Silicon Exporter down on {{ $labels.instance }}
+      expr: up{job="apple-silicon-exporter"} == 0
+      for: 2m
+      labels:
+        category: exporter
+        severity: critical
+        team: infrastructure
+    - alert: AppleSiliconScrapeSlow
+      annotations:
+        description: 'IOKit metric collection is taking {{ $value | printf "%.1f" }}s.
+
+          This may indicate system issues.
+
+          '
+        summary: Slow metric scrape on {{ $labels.instance }}
+      expr: apple_scrape_duration_seconds{collector="iokit"} > 5
+      for: 5m
+      labels:
+        category: exporter
+        severity: warning
+        team: infrastructure
+    - alert: CollectorFailure
+      annotations:
+        description: 'The {{ $labels.collector }} collector has been failing for 5 minutes.
+
+          Some metrics may be missing.
+
+          '
+        summary: '{{ $labels.collector }} collector failing on {{ $labels.instance }}'
+      expr: apple_scrape_success{collector=~"iokit|powermetrics|metal"} == 0
+      for: 5m
+      labels:
+        category: exporter
+        severity: warning
+        team: infrastructure
+    - alert: ANEHighUtilization
+      annotations:
+        description: 'Apple Neural Engine is at {{ $value | printf "%.1f" }}% utilization.
+
+          This is informational - high ANE usage during inference is expected.
+
+          '
+        summary: Neural Engine highly utilized on {{ $labels.instance }}
+      expr: apple_ane_utilization_percent > 90
+      for: 10m
+      labels:
+        category: ane
+        severity: info
+        team: ml-platform
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: llm-inference-rules
+  namespace: opik
+  labels:
+    release: monitoring
+    app.kubernetes.io/name: prometheus-rule
+    app.kubernetes.io/part-of: apple-silicon-llm-monitoring
+spec:
+  groups:
+  - interval: 15s
+    name: llm-inference
+    rules:
+    - alert: LLMModelNotLoaded
+      annotations:
+        description: 'Model {{ $labels.model }} is not loaded on {{ $labels.instance
+          }}.
+
+          Inference requests will fail until the model is loaded.
+
+          '
+        runbook_url: https://wiki.company.internal/runbooks/model-not-loaded
+        summary: LLM model not loaded on {{ $labels.instance }}
+      expr: llm_model_loaded == 0
+      for: 5m
+      labels:
+        category: availability
+        severity: critical
+        team: ml-platform
+    - alert: LLMInferenceStalled
+      annotations:
+        description: 'Model {{ $labels.model }} is loaded but no tokens have been processed
+          in 2 minutes.
+
+          The inference engine may be stuck or deadlocked.
+
+
+          Actions:
+
+          1. Check process logs for errors
+
+          2. Verify GPU is responsive
+
+          3. Consider restarting the inference process
+
+          '
+        runbook_url: https://wiki.company.internal/runbooks/inference-stalled
+        summary: LLM inference appears stalled on {{ $labels.instance }}
+      expr: "rate(llm_tokens_processed_total[2m]) == 0 \nAND llm_model_loaded == 1\n"
+      for: 2m
+      labels:
+        category: inference
+        pagerduty: trigger
+        severity: critical
+        team: ml-platform
+    - alert: LLMHighLatencyP99
+      annotations:
+        dashboard: https://grafana.internal/d/llm-latency?var-model={{ $labels.model
+          }}
+        description: 'P99 total inference latency is {{ $value | printf "%.1f" }}s.
+
+          Users may experience timeouts.
+
+
+          Check:
+
+          - GPU utilization and memory
+
+          - Batch queue depth
+
+          - Context lengths being processed
+
+          '
+        summary: P99 inference latency exceeds 30s for {{ $labels.model }}
+      expr: "histogram_quantile(0.99, \n  rate(llm_inference_duration_seconds_bucket{phase=\"\
+        total\"}[5m])\n) > 30\n"
+      for: 5m
+      labels:
+        category: latency
+        severity: warning
+        team: ml-platform
+    - alert: LLMHighLatencyP50
+      annotations:
+        description: 'P50 inference latency is {{ $value | printf "%.1f" }}s, indicating
+          overall slow performance.
+
+          '
+        summary: Median inference latency exceeds 10s for {{ $labels.model }}
+      expr: "histogram_quantile(0.50, \n  rate(llm_inference_duration_seconds_bucket{phase=\"\
+        total\"}[5m])\n) > 10\n"
+      for: 10m
+      labels:
+        category: latency
+        severity: warning
+        team: ml-platform
+    - alert: LLMPromptLatencyHigh
+      annotations:
+        description: 'Prompt processing (prefill) P95 latency is {{ $value | printf
+          "%.1f" }}s.
+
+          This may indicate long contexts or memory pressure.
+
+          '
+        summary: P95 prompt processing latency high for {{ $labels.model }}
+      expr: "histogram_quantile(0.95, \n  rate(llm_inference_duration_seconds_bucket{phase=\"\
+        prompt\"}[5m])\n) > 5\n"
+      for: 5m
+      labels:
+        category: latency
+        severity: warning
+        team: ml-platform
+    - alert: LLMThroughputDegraded
+      annotations:
+        description: 'Current throughput is {{ $value | printf "%.1f" }} tokens/sec.
+
+          Expected minimum for this model is 10+ tokens/sec.
+
+
+          Possible causes:
+
+          - GPU thermal throttling
+
+          - Memory pressure
+
+          - Large batch queue
+
+          - Long context lengths
+
+          '
+        summary: Token throughput below 10 tokens/sec for {{ $labels.model }}
+      expr: "llm_tokens_per_second < 10 \nAND llm_model_loaded == 1\nAND rate(llm_inference_requests_total[5m])\
+        \ > 0\n"
+      for: 5m
+      labels:
+        category: throughput
+        severity: warning
+        team: ml-platform
+    - alert: LLMThroughputDrop
+      annotations:
+        description: 'Current throughput ({{ $value | printf "%.1f" }} tok/s) is less
+          than half the hourly average.
+
+          Investigate for performance regression.
+
+          '
+        summary: Throughput dropped 50% for {{ $labels.model }}
+      expr: "llm_tokens_per_second \n< (avg_over_time(llm_tokens_per_second[1h]) * 0.5)\n\
+        AND llm_tokens_per_second > 0\n"
+      for: 10m
+      labels:
+        category: throughput
+        severity: warning
+        team: ml-platform
+    - alert: LLMQueueBacklog
+      annotations:
+        description: '{{ $value | printf "%.0f" }} requests are queued.
+
+          Users will experience increased latency.
+
+          Consider:
+
+          - Scaling up inference capacity
+
+          - Rate limiting requests
+
+          - Load balancing to other nodes
+
+          '
+        summary: Request queue building up for {{ $labels.model }}
+      expr: llm_queue_depth > 100
+      for: 5m
+      labels:
+        category: capacity
+        severity: warning
+        team: ml-platform
+    - alert: LLMQueueCritical
+      annotations:
+        description: 'Queue depth is {{ $value | printf "%.0f" }}.
+
+          System is severely overloaded.
+
+          '
+        summary: Critical request queue depth for {{ $labels.model }}
+      expr: llm_queue_depth > 500
+      for: 2m
+      labels:
+        category: capacity
+        severity: critical
+        team: ml-platform
+    - alert: LLMKVCacheFull
+      annotations:
+        description: 'KV cache is at {{ $value | humanizePercentage }} utilization.
+
+          New requests with long contexts may fail or be delayed.
+
+          '
+        summary: KV cache nearly full for {{ $labels.model }}
+      expr: llm_kv_cache_utilization > 0.95
+      for: 2m
+      labels:
+        category: memory
+        severity: warning
+        team: ml-platform
+    - alert: LLMErrorRateHigh
+      annotations:
+        description: 'Error rate is {{ $value | humanizePercentage }}.
+
+          Check error breakdown by type.
+
+          '
+        summary: Error rate above 5% for {{ $labels.model }}
+      expr: "rate(llm_error_total[5m]) \n/ rate(llm_inference_requests_total[5m]) >\
+        \ 0.05\n"
+      for: 5m
+      labels:
+        category: errors
+        severity: warning
+        team: ml-platform
+    - alert: LLMErrorSpike
+      annotations:
+        description: 'Errors are occurring at {{ $value | printf "%.2f" }}/sec.
+
+          '
+        summary: Error spike detected for {{ $labels.model }}
+      expr: 'rate(llm_error_total[5m]) > 0.1
+
+        '
+      for: 2m
+      labels:
+        category: errors
+        severity: warning
+        team: ml-platform
+    - alert: LLMOOMErrors
+      annotations:
+        description: 'Out-of-memory errors detected.
+
+          Model may need to be reloaded or batch size reduced.
+
+          '
+        summary: OOM errors occurring for {{ $labels.model }}
+      expr: 'increase(llm_error_total{error_type=~"out_of_memory|gpu_memory_exhausted"}[5m])
+        > 0
+
+        '
+      for: 1m
+      labels:
+        category: errors
+        severity: critical
+        team: ml-platform
+    - alert: LLMMetalCrashes
+      annotations:
+        description: 'Metal GPU framework has crashed.
+
+          The system may need to be restarted.
+
+          Check system logs for details.
+
+          '
+        summary: Metal framework crash on {{ $labels.instance }}
+      expr: 'increase(llm_error_total{error_type="metal_crash"}[5m]) > 0
+
+        '
+      for: 0s
+      labels:
+        category: errors
+        pagerduty: trigger
+        severity: critical
+        team: infrastructure
+    - alert: LLMHealthScoreLow
+      annotations:
+        description: 'Health score is {{ $value | printf "%.0f" }}/100.
+
+          Multiple factors may be degrading model performance.
+
+          Review individual metrics for root cause.
+
+          '
+        summary: Model health score low for {{ $labels.model }}
+      expr: llm_model_health_score < 70
+      for: 10m
+      labels:
+        category: health
+        severity: warning
+        team: ml-platform
+    - alert: LLMHealthScoreCritical
+      annotations:
+        description: 'Health score is {{ $value | printf "%.0f" }}/100.
+
+          Model may not be functioning correctly.
+
+          '
+        summary: Model health critically low for {{ $labels.model }}
+      expr: llm_model_health_score < 50
+      for: 5m
+      labels:
+        category: health
+        severity: critical
+        team: ml-platform
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hallucination-detection-rules
+  namespace: opik
+  labels:
+    release: monitoring
+    app.kubernetes.io/name: prometheus-rule
+    app.kubernetes.io/part-of: apple-silicon-llm-monitoring
+spec:
+  groups:
+  - interval: 30s
+    name: hallucination-detection
+    rules:
+    - alert: HighOutputEntropy
+      annotations:
+        dashboard: https://grafana.internal/d/llm-quality?var-model={{ $labels.model
+          }}
+        description: 'P95 output entropy is {{ $value | printf "%.2f" }}, which exceeds
+          the safe threshold of 4.0.
+
+
+          High entropy indicates the model is uncertain about its outputs.
+
+          This may signal:
+
+          - Out-of-distribution queries
+
+          - Knowledge gaps
+
+          - Potential hallucinations
+
+
+          Actions:
+
+          - Review recent query patterns
+
+          - Check if model needs fine-tuning updates
+
+          - Consider adding guardrails for high-entropy outputs
+
+          '
+        summary: High output entropy for {{ $labels.model }} - potential hallucination
+          risk
+      expr: "histogram_quantile(0.95, \n  rate(llm_output_entropy_bucket[10m])\n) >\
+        \ 4.0\n"
+      for: 10m
+      labels:
+        category: hallucination
+        severity: warning
+        team: ml-platform
+    - alert: EntropySpike
+      annotations:
+        description: 'P95 entropy has increased 50% above recent baseline.
+
+          This sudden change may indicate:
+
+          - New types of queries
+
+          - Model drift
+
+          - Data quality issues
+
+          '
+        summary: Entropy spike detected for {{ $labels.model }}
+      expr: "histogram_quantile(0.95, rate(llm_output_entropy_bucket[5m])) \n> (histogram_quantile(0.95,\
+        \ rate(llm_output_entropy_bucket[1h] offset 5m)) * 1.5)\n"
+      for: 15m
+      labels:
+        category: hallucination
+        severity: warning
+        team: ml-platform
+    - alert: HighRepetitionScore
+      annotations:
+        description: 'Repetition score is {{ $value | printf "%.2f" }} (threshold: 0.3).
+
+
+          High repetition often indicates:
+
+          - Model stuck in loops
+
+          - Degenerate outputs
+
+          - Potential hallucination patterns
+
+
+          Actions:
+
+          - Check temperature and sampling settings
+
+          - Review repetition penalty configuration
+
+          - Inspect recent outputs for patterns
+
+          '
+        summary: High n-gram repetition detected for {{ $labels.model }}
+      expr: llm_repetition_score > 0.3
+      for: 5m
+      labels:
+        category: hallucination
+        severity: warning
+        team: ml-platform
+    - alert: SevereRepetition
+      annotations:
+        description: 'Repetition score is {{ $value | printf "%.2f" }}.
+
+          The model appears to be generating highly repetitive (possibly looping) output.
+
+          This is a critical quality issue.
+
+          '
+        summary: Severe repetition in {{ $labels.model }} outputs
+      expr: llm_repetition_score > 0.5
+      for: 2m
+      labels:
+        category: hallucination
+        severity: critical
+        team: ml-platform
+    - alert: LowConfidenceOutputs
+      annotations:
+        description: 'Mean token confidence is {{ $value | printf "%.2f" }}.
+
+          The model is consistently uncertain about its predictions.
+
+
+          This may indicate:
+
+          - Queries outside training distribution
+
+          - Model capacity issues
+
+          - Need for model updates
+
+          '
+        summary: Low confidence outputs from {{ $labels.model }}
+      expr: llm_confidence_mean < 0.5
+      for: 10m
+      labels:
+        category: hallucination
+        severity: warning
+        team: ml-platform
+    - alert: ConfidenceDrift
+      annotations:
+        description: 'Confidence has moved more than 3 standard deviations from the
+          hourly average.
+
+          This statistical anomaly may indicate:
+
+          - Change in query distribution
+
+          - Model behavior change
+
+          - Potential quality degradation
+
+          '
+        summary: Confidence score drifting from baseline for {{ $labels.model }}
+      expr: "abs(llm_confidence_mean - avg_over_time(llm_confidence_mean[1h])) \n/ stddev_over_time(llm_confidence_mean[1h])\
+        \ > 3\n"
+      for: 15m
+      labels:
+        category: hallucination
+        severity: warning
+        team: ml-platform
+    - alert: HighConfidenceVariance
+      annotations:
+        description: 'Confidence standard deviation is {{ $value | printf "%.2f" }}.
+
+          The model''s confidence varies significantly across tokens.
+
+          This may be normal for diverse queries but worth monitoring.
+
+          '
+        summary: High confidence variance for {{ $labels.model }}
+      expr: llm_confidence_std > 0.3
+      for: 10m
+      labels:
+        category: hallucination
+        severity: info
+        team: ml-platform
+    - alert: HighPerplexity
+      annotations:
+        description: 'P95 perplexity is {{ $value | printf "%.1f" }}.
+
+          This indicates the model is highly uncertain about its outputs.
+
+
+          Normal perplexity ranges: 1-30
+
+          Elevated perplexity: 30-50
+
+          High perplexity: 50+
+
+          '
+        summary: High perplexity for {{ $labels.model }}
+      expr: "histogram_quantile(0.95, \n  rate(llm_perplexity_bucket[10m])\n) > 50\n"
+      for: 10m
+      labels:
+        category: hallucination
+        severity: warning
+        team: ml-platform
+    - alert: HallucinationRiskElevated
+      annotations:
+        description: 'Multiple hallucination signals are elevated.
+
+          Composite risk score: {{ $value | printf "%.2f" }}
+
+
+          Contributing factors:
+
+          - Entropy signal
+
+          - Repetition patterns
+
+          - Low confidence
+
+          - High perplexity
+
+
+          Review output quality and consider implementing guardrails.
+
+          '
+        summary: Elevated hallucination risk for {{ $labels.model }}
+      expr: "(\n  (histogram_quantile(0.95, rate(llm_output_entropy_bucket[10m])) /\
+        \ 5) * 0.3 +\n  llm_repetition_score * 0.3 +\n  (1 - llm_confidence_mean) *\
+        \ 0.2 +\n  (histogram_quantile(0.95, rate(llm_perplexity_bucket[10m])) / 100)\
+        \ * 0.2\n) > 0.5\n"
+      for: 15m
+      labels:
+        category: hallucination
+        severity: warning
+        team: ml-platform
+    - alert: HallucinationRiskCritical
+      annotations:
+        description: 'Multiple hallucination signals are at critical levels.
+
+
+          IMMEDIATE ACTIONS:
+
+          1. Consider taking model offline
+
+          2. Review recent outputs for quality
+
+          3. Check for system issues affecting inference
+
+          4. Investigate query patterns
+
+          '
+        summary: CRITICAL hallucination risk for {{ $labels.model }}
+      expr: "(\n  (histogram_quantile(0.95, rate(llm_output_entropy_bucket[5m])) / 5)\
+        \ * 0.3 +\n  llm_repetition_score * 0.3 +\n  (1 - llm_confidence_mean) * 0.2\
+        \ +\n  (histogram_quantile(0.95, rate(llm_perplexity_bucket[5m])) / 100) * 0.2\n\
+        ) > 0.7\n"
+      for: 5m
+      labels:
+        category: hallucination
+        pagerduty: trigger
+        severity: critical
+        team: ml-platform
+    - alert: HighRefusalRate
+      annotations:
+        description: '{{ $value | humanizePercentage }} of responses are refusals.
+
+          The model is declining to answer many queries.
+
+
+          This may indicate:
+
+          - Queries hitting safety guardrails
+
+          - Out-of-scope requests
+
+          - Overly cautious model behavior
+
+          '
+        summary: High refusal rate for {{ $labels.model }}
+      expr: 'avg_over_time(llm_refusal_rate[15m]) > 0.2
+
+        '
+      for: 15m
+      labels:
+        category: quality
+        severity: info
+        team: ml-platform
+    - alert: RefusalRateSpike
+      annotations:
+        description: 'More than half of responses are refusals.
+
+          This is unusual and may indicate an issue.
+
+          '
+        summary: Refusal rate spike for {{ $labels.model }}
+      expr: 'llm_refusal_rate > 0.5
+
+        '
+      for: 5m
+      labels:
+        category: quality
+        severity: warning
+        team: ml-platform
+    - alert: QualityDegradationTrend
+      annotations:
+        description: 'Confidence scores are trending downward over the past hour.
+
+          Rate of change: {{ $value | printf "%.4f" }}/s
+
+
+          This gradual degradation may indicate:
+
+          - Model drift
+
+          - Changing query patterns
+
+          - System resource constraints
+
+          '
+        summary: Quality degradation trend for {{ $labels.model }}
+      expr: 'deriv(llm_confidence_mean[1h]) < -0.01
+
+        '
+      for: 1h
+      labels:
+        category: quality
+        severity: warning
+        team: ml-platform

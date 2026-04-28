@@ -1,0 +1,220 @@
+# OpenTelemetry Collector Agent Configuration
+# Deployed on each Mac Mini node to collect and forward metrics
+#
+# Supports two modes (toggle via environment or config):
+# - Mode A (OTLP Push): Push metrics to central OTEL Gateway
+# - Mode B (Prometheus Scrape): Expose metrics for Prometheus to scrape
+
+receivers:
+  # Scrape metrics from apple-silicon-exporter
+  prometheus/apple-silicon:
+    config:
+      scrape_configs:
+        - job_name: 'apple-silicon-exporter'
+          scrape_interval: 15s
+          scrape_timeout: 10s
+          static_configs:
+            - targets: ['127.0.0.1:9101']
+          honor_labels: true
+          metric_relabel_configs:
+            # Keep only apple_* metrics from the exporter
+            - source_labels: [__name__]
+              regex: 'apple_.*'
+              action: keep
+            # Add source label
+            - target_label: source
+              replacement: 'apple-silicon-exporter'
+
+  # Receive OTLP metrics from LLM inference applications
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+        max_recv_msg_size_mib: 4
+        max_concurrent_streams: 100
+      http:
+        endpoint: 127.0.0.1:4318
+        cors:
+          allowed_origins: []  # Disabled for security
+
+  # Collect host metrics (lightweight, for comparison)
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      load:
+        metrics:
+          system.cpu.load_average.1m:
+            enabled: true
+          system.cpu.load_average.5m:
+            enabled: true
+          system.cpu.load_average.15m:
+            enabled: true
+
+processors:
+  # Memory limiter - MUST be first processor
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 100
+    spike_limit_mib: 25
+
+  # Batch processor for efficient transmission
+  batch:
+    send_batch_size: 200
+    send_batch_max_size: 500
+    timeout: 5s
+
+  # Add resource attributes for node identification
+  resource:
+    attributes:
+      - key: host.name
+        value: ${env:HOSTNAME}
+        action: upsert
+      - key: host.id
+        value: ${env:HOST_ID}
+        action: upsert
+      - key: cluster.name
+        value: ${env:CLUSTER_NAME}
+        action: upsert
+      - key: service.namespace
+        value: "llm-infrastructure"
+        action: upsert
+      - key: deployment.environment
+        value: ${env:ENVIRONMENT}
+        action: upsert
+
+  # Transform metrics (normalize naming, add labels)
+  transform/metrics:
+    metric_statements:
+      - context: metric
+        statements:
+          # Ensure consistent naming
+          - set(description, "GPU utilization percentage") where name == "apple_gpu_utilization_percent"
+
+  # Filter out noisy metrics if needed
+  filter/noise:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - ".*_debug_.*"
+          - "go_.*"  # Filter out Go runtime metrics from exporter
+          - "process_.*"  # Filter out process metrics from exporter
+
+  # Attributes processor for metric labels
+  attributes/add_labels:
+    actions:
+      - key: platform
+        value: "apple-silicon"
+        action: upsert
+      - key: collector
+        value: "otel-agent"
+        action: upsert
+
+exporters:
+  # Mode A: Push to OTEL Gateway via OTLP/gRPC
+  otlp/gateway:
+    endpoint: ${env:OTEL_GATEWAY_ENDPOINT}
+    tls:
+      insecure: ${env:OTEL_TLS_INSECURE}
+      cert_file: ${env:OTEL_TLS_CERT}
+      key_file: ${env:OTEL_TLS_KEY}
+      ca_file: ${env:OTEL_TLS_CA}
+    headers:
+      # Optional: Add auth header
+      # Authorization: "Bearer ${env:OTEL_AUTH_TOKEN}"
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 1000
+    timeout: 30s
+
+  # Mode B: Expose Prometheus endpoint for scraping
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: ""  # No prefix, use metric names as-is
+    const_labels:
+      collector: "otel-agent"
+    enable_open_metrics: true
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_expiration: 5m
+
+  # Debug exporter (disable in production)
+  # debug:
+  #   verbosity: detailed
+  #   sampling_initial: 5
+  #   sampling_thereafter: 200
+
+  # File exporter for local debugging/backup
+  # file/backup:
+  #   path: /var/lib/otel/metrics-backup.json
+  #   rotation:
+  #     max_megabytes: 100
+  #     max_days: 7
+  #     max_backups: 3
+
+extensions:
+  # Health check endpoint
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: /health
+    tls:
+      insecure: true
+
+  # pprof for profiling (disable in production or restrict access)
+  pprof:
+    endpoint: 127.0.0.1:1777
+
+  # zpages for debugging
+  zpages:
+    endpoint: 127.0.0.1:55679
+
+  # Memory ballast to reduce GC pressure
+  memory_ballast:
+    size_mib: 32
+
+service:
+  extensions: [health_check, pprof, zpages, memory_ballast]
+  
+  pipelines:
+    # Metrics pipeline - Mode A (OTLP Push)
+    metrics/otlp:
+      receivers: [prometheus/apple-silicon, otlp, hostmetrics]
+      processors: [memory_limiter, filter/noise, attributes/add_labels, resource, batch]
+      exporters: [otlp/gateway]
+
+    # Metrics pipeline - Mode B (Prometheus Scrape)
+    # Uncomment this and comment out metrics/otlp to switch modes
+    # metrics/prometheus:
+    #   receivers: [prometheus/apple-silicon, otlp, hostmetrics]
+    #   processors: [memory_limiter, filter/noise, attributes/add_labels, resource, batch]
+    #   exporters: [prometheus]
+
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+      output_paths: ["stdout"]
+      error_output_paths: ["stderr"]
+    metrics:
+      level: detailed
+      address: 127.0.0.1:8888
+
+# Note: To switch between Mode A and Mode B:
+# 1. Edit the pipelines section above
+# 2. Or use separate config files and select via --config flag
+# 3. Or use environment variable substitution with conditionals (requires custom launcher)

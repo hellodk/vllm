@@ -1,0 +1,56 @@
+# Prometheus Configuration for Docker Testing
+# Uses ports in 5900-5999 range
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'mock-llm-cluster'
+    environment: 'docker-test'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:5950
+
+# Rule files
+rule_files:
+  - /etc/prometheus/rules/*.yaml
+
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:5930']
+
+  # Scrape OTEL Agent prometheus endpoint
+  - job_name: 'otel-agent'
+    static_configs:
+      - targets: ['otel-agent:5913']
+    honor_labels: true
+
+  # Scrape OTEL Gateway prometheus endpoint
+  - job_name: 'otel-gateway'
+    static_configs:
+      - targets: ['otel-gateway:5922']
+    honor_labels: true
+
+  # Direct scrape of mock exporter (backup)
+  - job_name: 'apple-silicon-exporter'
+    static_configs:
+      - targets: ['mock-exporter:5900']
+    honor_labels: true
+
+  # OTEL internal metrics
+  - job_name: 'otel-agent-internal'
+    static_configs:
+      - targets: ['otel-agent:5915']
+
+  - job_name: 'otel-gateway-internal'
+    static_configs:
+      - targets: ['otel-gateway:5924']
+
+# Enable remote write receiver
+remote_write: []

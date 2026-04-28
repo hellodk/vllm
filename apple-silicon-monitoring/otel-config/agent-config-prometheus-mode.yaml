@@ -1,0 +1,103 @@
+# OpenTelemetry Collector Agent Configuration - Prometheus Scrape Mode
+# This configuration exposes metrics for Prometheus to scrape directly
+# Use this when you have existing Prometheus infrastructure
+
+receivers:
+  # Scrape metrics from apple-silicon-exporter
+  prometheus/apple-silicon:
+    config:
+      scrape_configs:
+        - job_name: 'apple-silicon-exporter'
+          scrape_interval: 15s
+          scrape_timeout: 10s
+          static_configs:
+            - targets: ['127.0.0.1:9101']
+          honor_labels: true
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: 'apple_.*'
+              action: keep
+
+  # Receive OTLP metrics from LLM inference applications
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+        max_recv_msg_size_mib: 4
+      http:
+        endpoint: 127.0.0.1:4318
+
+  # Host metrics
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+      memory:
+      load:
+
+processors:
+  # Memory limiter - MUST be first
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 100
+    spike_limit_mib: 25
+
+  # Batch for efficiency
+  batch:
+    send_batch_size: 200
+    timeout: 5s
+
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: host.name
+        value: ${env:HOSTNAME}
+        action: upsert
+      - key: cluster.name
+        value: ${env:CLUSTER_NAME}
+        action: upsert
+      - key: deployment.environment
+        value: ${env:ENVIRONMENT}
+        action: upsert
+
+  # Filter noise
+  filter/noise:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - "go_.*"
+          - "process_.*"
+
+exporters:
+  # Expose Prometheus endpoint
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: ""
+    const_labels:
+      collector: "otel-agent"
+    enable_open_metrics: true
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_expiration: 5m
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  memory_ballast:
+    size_mib: 32
+
+service:
+  extensions: [health_check, memory_ballast]
+  
+  pipelines:
+    metrics:
+      receivers: [prometheus/apple-silicon, otlp, hostmetrics]
+      processors: [memory_limiter, filter/noise, resource, batch]
+      exporters: [prometheus]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 127.0.0.1:8888

@@ -1,0 +1,73 @@
+# OTEL Collector Gateway Configuration for Docker Testing
+# Uses ports in 5900-5999 range
+
+receivers:
+  # Receive OTLP from agents
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:5920
+        max_recv_msg_size_mib: 8
+      http:
+        endpoint: 0.0.0.0:5921
+
+processors:
+  # Memory limiter
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  # Batch for efficient writes
+  batch:
+    send_batch_size: 500
+    timeout: 10s
+
+  # Filter debug metrics
+  filter/drop_internal:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - "otelcol_.*"
+
+exporters:
+  # Write to Prometheus
+  prometheusremotewrite:
+    endpoint: http://prometheus:5930/api/v1/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+    external_labels:
+      gateway: "docker-gateway"
+
+  # Also expose prometheus endpoint for federation
+  prometheus:
+    endpoint: "0.0.0.0:5922"
+    namespace: ""
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:5923
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/drop_internal, batch]
+      exporters: [prometheusremotewrite, prometheus]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:5924
