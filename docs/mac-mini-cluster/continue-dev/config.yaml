@@ -1,0 +1,166 @@
+# ============================================================
+# Continue.dev Configuration
+# Place this at: ~/.continue/config.yaml on each developer machine
+#
+# IMPORTANT: Replace GATEWAY_IP with Mac Mini 1's actual IP
+# ============================================================
+
+name: "ML Cluster (Local)"
+
+# --- Chat Models ---
+models:
+  # Primary code model (routes to M3 via LiteLLM)
+  - title: "Qwen 2.5 Coder 7B (Local)"
+    provider: openai
+    model: code-main
+    apiBase: "http://GATEWAY_IP:4000/v1"
+    apiKey: "sk-cluster-demo-key-change-me"
+    completionOptions:
+      temperature: 0.2
+      topP: 0.9
+      maxTokens: 4096
+      stream: true
+    systemMessage: |
+      You are a precise coding assistant running on a local ML cluster.
+      Rules:
+      - Only suggest code patterns, libraries and APIs you are confident exist.
+      - If unsure about something, say so explicitly.
+      - Do not invent import paths or package names.
+      - Prefer well-tested, standard library solutions.
+      - Always reference the provided code context when answering.
+
+  # Fast model for quick questions
+  - title: "Qwen 2.5 Coder 3B (Fast)"
+    provider: openai
+    model: code-fast
+    apiBase: "http://GATEWAY_IP:4000/v1"
+    apiKey: "sk-cluster-demo-key-change-me"
+    completionOptions:
+      temperature: 0.15
+      maxTokens: 2048
+      stream: true
+
+# --- Tab Autocomplete ---
+tabAutocompleteModel:
+  title: "Phi-3 Mini (Autocomplete)"
+  provider: openai
+  model: code-autocomplete
+  apiBase: "http://GATEWAY_IP:4000/v1"
+  apiKey: "sk-cluster-demo-key-change-me"
+  completionOptions:
+    temperature: 0.05         # Near-deterministic for autocomplete
+    topP: 0.85
+    maxTokens: 128            # Short completions for speed
+    stop: ["\n\n", "\nclass ", "\ndef ", "\n#"]
+    stream: true
+
+tabAutocompleteOptions:
+  useCopyBuffer: false
+  maxPromptTokens: 1024       # Limit context sent for autocomplete
+  debounceDelay: 500          # ms - avoid flooding the cluster
+  multilineCompletions: "always"
+  useOtherFiles: true         # Include other open files as context
+  maxSuffixPercentage: 0.25   # 25% of context for code after cursor
+  disableInFiles:             # Skip autocomplete in these files
+    - "*.md"
+    - "*.json"
+    - "*.yaml"
+    - "*.yml"
+    - "*.env"
+    - "*.lock"
+
+# --- Context Providers ---
+contextProviders:
+  # Index the current project for RAG
+  - name: codebase
+    params:
+      nRetrieve: 15            # Number of code chunks to retrieve
+      nFinal: 5                # Number to actually include in prompt
+      useReranking: true
+
+  # Include currently open files
+  - name: open
+    params:
+      onlyPinned: false
+
+  # Include recent file edits
+  - name: diff
+    params: {}
+
+  # Terminal output context
+  - name: terminal
+    params: {}
+
+  # Include folder structure
+  - name: folder
+    params: {}
+
+  # Search across the project
+  - name: search
+    params: {}
+
+  # Git context (recent commits, branch info)
+  - name: git
+    params:
+      diff: "HEAD~3"          # Last 3 commits as context
+
+# --- Embeddings (for codebase indexing) ---
+embeddingsProvider:
+  provider: ollama
+  model: "nomic-embed-text"    # Pull this model: ollama pull nomic-embed-text
+  apiBase: "http://GATEWAY_IP:11434"
+
+# --- Reranker (improves codebase search quality) ---
+reranker:
+  name: free-trial             # Or use a local reranker model
+
+# --- Slash Commands ---
+slashCommands:
+  - name: edit
+    description: "Edit selected code"
+  - name: comment
+    description: "Add comments to code"
+  - name: share
+    description: "Share conversation"
+  - name: commit
+    description: "Generate commit message"
+
+# --- Custom Commands ---
+customCommands:
+  - name: review
+    description: "Code review the selected code"
+    prompt: |
+      Review the following code for:
+      1. Bugs and logical errors
+      2. Security vulnerabilities (OWASP top 10)
+      3. Performance issues
+      4. Code style and readability
+      Be specific and reference line numbers. Only flag real issues.
+
+  - name: explain
+    description: "Explain the selected code"
+    prompt: |
+      Explain what this code does, step by step.
+      Focus on the logic and intent, not syntax.
+      If there are any non-obvious patterns, explain why they're used.
+
+  - name: test
+    description: "Generate tests for selected code"
+    prompt: |
+      Generate comprehensive unit tests for this code.
+      Use the project's existing testing framework.
+      Cover: happy path, edge cases, error cases.
+      Do not mock internal functions unless necessary.
+
+  - name: optimize
+    description: "Suggest performance optimizations"
+    prompt: |
+      Analyze this code for performance issues.
+      Only suggest optimizations that are measurably impactful.
+      Do not micro-optimize — focus on algorithmic improvements and I/O.
+
+# --- UI Configuration ---
+ui:
+  codeBlockToolbar: true
+  fontSize: 14
+  displayRawMarkdown: false

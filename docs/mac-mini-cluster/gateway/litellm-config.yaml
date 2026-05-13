@@ -1,0 +1,135 @@
+# ============================================================
+# LiteLLM Proxy Configuration
+# Runs on Mac Mini 1 — routes to all Ollama nodes
+# ============================================================
+
+model_list:
+  # --- Primary Code Model (M3 node) ---
+  - model_name: "code-main"
+    litellm_params:
+      model: "ollama/qwen2.5-coder:7b"
+      api_base: "http://MAC_MINI_2_IP:11434"
+      stream: true
+      temperature: 0.2          # Low temp for code accuracy
+      top_p: 0.9
+      max_tokens: 4096
+      num_ctx: 8192             # Context window for Ollama
+    model_info:
+      id: "code-main"
+      description: "Primary code model on M3 (16GB)"
+
+  # --- Autocomplete Model (M1 node) ---
+  - model_name: "code-autocomplete"
+    litellm_params:
+      model: "ollama/phi3:mini"
+      api_base: "http://MAC_MINI_1_IP:11434"
+      stream: true
+      temperature: 0.1          # Very low temp for completions
+      top_p: 0.85
+      max_tokens: 256           # Short completions
+      num_ctx: 4096
+    model_info:
+      id: "code-autocomplete"
+      description: "Fast autocomplete on M1 (8GB)"
+
+  # --- Fallback Small Model (M3 node) ---
+  - model_name: "code-fast"
+    litellm_params:
+      model: "ollama/qwen2.5-coder:3b"
+      api_base: "http://MAC_MINI_2_IP:11434"
+      stream: true
+      temperature: 0.2
+      top_p: 0.9
+      max_tokens: 2048
+      num_ctx: 4096
+    model_info:
+      id: "code-fast"
+      description: "Fast fallback model on M3"
+
+  # --- Health Check Model (M1 node) ---
+  - model_name: "health-check"
+    litellm_params:
+      model: "ollama/qwen2.5-coder:1.5b"
+      api_base: "http://MAC_MINI_1_IP:11434"
+      stream: false
+      max_tokens: 64
+      num_ctx: 2048
+    model_info:
+      id: "health-check"
+      description: "Tiny model for health probes"
+
+# --- Router Settings ---
+router_settings:
+  routing_strategy: "least-busy"    # Route to least loaded node
+  num_retries: 2
+  retry_after: 5                    # seconds
+  timeout: 120                      # seconds
+  allowed_fails: 3                  # Mark unhealthy after 3 failures
+  cooldown_time: 60                 # seconds before retrying failed node
+  enable_pre_call_checks: true      # Check model health before routing
+
+  # Fallback chain: if main model is busy, try fast, then autocomplete
+  fallbacks:
+    - code-main: ["code-fast"]
+
+# --- General Settings ---
+general_settings:
+  master_key: "sk-cluster-demo-key-change-me"   # API key for access
+  database_url: "sqlite:///tmp/litellm.db"       # Local SQLite for logging
+  otel: true                                      # OpenTelemetry export
+
+  # --- Rate Limiting ---
+  max_parallel_requests: 10          # Per-model concurrency limit
+  global_max_parallel_requests: 20   # Total cluster limit
+
+  # --- Alerting ---
+  alerting:
+    - "webhook"
+  alerting_threshold: 300            # Alert if request takes >300s
+
+# --- Guardrails ---
+guardrails:
+  - guardrail_name: "token-limit-guard"
+    litellm_params:
+      guardrail: custom_guardrail
+      mode: "during_call"
+      guardrail_info:
+        max_input_tokens: 6144       # Prevent oversized prompts
+        max_output_tokens: 4096
+
+  - guardrail_name: "content-guard"
+    litellm_params:
+      guardrail: custom_guardrail
+      mode: "post_call"
+      guardrail_info:
+        block_patterns:
+          - "(?i)api[_-]?key\\s*[:=]\\s*['\"][a-zA-Z0-9]+"   # Block leaked API keys
+          - "(?i)password\\s*[:=]\\s*['\"][^'\"]+['\"]"         # Block leaked passwords
+
+# --- Logging & Callbacks ---
+litellm_settings:
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+  service_callback: ["prometheus"]
+
+  # Token counting
+  count_tokens: true
+
+  # Request/Response logging
+  log_responses: true
+  turn_off_message_logging: false     # Keep for debugging, disable in prod
+
+  # Cache settings (reduce duplicate calls)
+  cache: true
+  cache_params:
+    type: "local"
+    ttl: 300                          # 5 min cache for identical prompts
+
+  # --- Context Window Limits ---
+  # These override per-model if needed
+  max_budget: 100.0                   # Dummy budget tracking
+  budget_duration: "30d"
+
+  # Drop oldest messages if context exceeds limit
+  context_window_fallbacks:
+    - code-main: ["code-fast"]        # Fall to smaller ctx model if too large

@@ -1,0 +1,49 @@
+---
+# ============================================================
+# Inference Role — Promtail log shipping for inference nodes
+# ============================================================
+
+- name: Create Promtail config directory
+  file:
+    path: "{{ docker_compose_dir }}/promtail"
+    state: directory
+    mode: "0755"
+
+- name: Deploy Promtail configuration
+  template:
+    src: "{{ role_path }}/../monitoring/templates/promtail-config.yml.j2"
+    dest: "{{ docker_compose_dir }}/promtail/promtail-config.yml"
+    mode: "0644"
+
+- name: Deploy inference node Docker Compose
+  template:
+    src: docker-compose-node.yml.j2
+    dest: "{{ docker_compose_dir }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Start Promtail on inference node
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_compose_dir }}"
+    state: present
+  register: compose_result
+  retries: 3
+  delay: 10
+
+- name: Verify Ollama is accessible from gateway
+  uri:
+    url: "http://{{ ansible_host }}:{{ ollama_port }}/api/tags"
+    method: GET
+    status_code: 200
+  delegate_to: "{{ groups['gateway'][0] }}"
+  register: ollama_reachable
+  retries: 3
+  delay: 5
+  until: ollama_reachable.status == 200
+
+- name: Display inference node status
+  debug:
+    msg:
+      - "Node: {{ inventory_hostname }} ({{ node_chip | upper }}, {{ node_ram_gb }}GB)"
+      - "Ollama: http://{{ ansible_host }}:{{ ollama_port }}"
+      - "Models: {{ ollama_models | map(attribute='name') | list }}"
+      - "Log shipping: -> http://{{ gateway_ip }}:{{ loki_port }}"

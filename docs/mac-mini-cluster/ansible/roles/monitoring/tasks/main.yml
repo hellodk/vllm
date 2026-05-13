@@ -1,0 +1,123 @@
+---
+# ============================================================
+# Monitoring Role — Prometheus, Grafana, Loki, Promtail
+# Runs on the gateway node inside Docker via Colima
+# ============================================================
+
+- name: Create monitoring directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ docker_compose_dir }}"
+    - "{{ docker_compose_dir }}/prometheus"
+    - "{{ docker_compose_dir }}/grafana/provisioning/datasources"
+    - "{{ docker_compose_dir }}/grafana/provisioning/dashboards"
+    - "{{ docker_compose_dir }}/loki"
+    - "{{ docker_compose_dir }}/promtail"
+
+- name: Deploy Docker Compose file
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ docker_compose_dir }}/docker-compose.yml"
+    mode: "0644"
+  notify: restart monitoring stack
+
+- name: Deploy Prometheus configuration
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ docker_compose_dir }}/prometheus/prometheus.yml"
+    mode: "0644"
+  notify: restart monitoring stack
+
+- name: Deploy Prometheus alerting rules
+  template:
+    src: alerts.yml.j2
+    dest: "{{ docker_compose_dir }}/prometheus/alerts.yml"
+    mode: "0644"
+  notify: restart monitoring stack
+
+- name: Deploy Loki configuration
+  copy:
+    src: "{{ playbook_dir }}/../gateway/loki/loki-config.yml"
+    dest: "{{ docker_compose_dir }}/loki/loki-config.yml"
+    mode: "0644"
+  notify: restart monitoring stack
+
+- name: Deploy Promtail configuration
+  template:
+    src: promtail-config.yml.j2
+    dest: "{{ docker_compose_dir }}/promtail/promtail-config.yml"
+    mode: "0644"
+  notify: restart monitoring stack
+
+- name: Deploy Grafana datasources
+  copy:
+    src: "{{ playbook_dir }}/../gateway/grafana/provisioning/datasources/datasources.yml"
+    dest: "{{ docker_compose_dir }}/grafana/provisioning/datasources/datasources.yml"
+    mode: "0644"
+
+- name: Deploy Grafana dashboard provisioning
+  copy:
+    src: "{{ playbook_dir }}/../gateway/grafana/provisioning/dashboards/dashboards.yml"
+    dest: "{{ docker_compose_dir }}/grafana/provisioning/dashboards/dashboards.yml"
+    mode: "0644"
+
+- name: Deploy Grafana LLM dashboard
+  copy:
+    src: "{{ playbook_dir }}/../gateway/grafana/provisioning/dashboards/llm-overview.json"
+    dest: "{{ docker_compose_dir }}/grafana/provisioning/dashboards/llm-overview.json"
+    mode: "0644"
+
+- name: Deploy Nginx config
+  template:
+    src: "{{ role_path }}/../gateway/templates/nginx.conf.j2"
+    dest: "{{ docker_compose_dir }}/nginx.conf"
+    mode: "0644"
+  notify: restart monitoring stack
+
+- name: Start monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_compose_dir }}"
+    state: present
+  register: compose_result
+  retries: 3
+  delay: 10
+
+- name: Wait for Prometheus
+  uri:
+    url: "http://localhost:{{ prometheus_port }}/-/ready"
+    method: GET
+    status_code: 200
+  retries: 10
+  delay: 5
+  register: prom_health
+  until: prom_health.status == 200
+
+- name: Wait for Grafana
+  uri:
+    url: "http://localhost:{{ grafana_port }}/api/health"
+    method: GET
+    status_code: 200
+  retries: 10
+  delay: 5
+  register: grafana_health
+  until: grafana_health.status == 200
+
+- name: Wait for Loki
+  uri:
+    url: "http://localhost:{{ loki_port }}/ready"
+    method: GET
+    status_code: 200
+  retries: 10
+  delay: 5
+  register: loki_health
+  until: loki_health.status == 200
+
+- name: Display monitoring URLs
+  debug:
+    msg:
+      - "Grafana:    http://{{ gateway_ip }}:{{ grafana_port }}  ({{ grafana_admin_user }}/{{ grafana_admin_password }})"
+      - "Prometheus: http://{{ gateway_ip }}:{{ prometheus_port }}"
+      - "Loki:       http://{{ gateway_ip }}:{{ loki_port }}"

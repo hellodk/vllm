@@ -1,0 +1,19 @@
+---
+- name: restart ollama
+  block:
+    - name: Unload Ollama launchd
+      command: launchctl unload {{ ansible_env.HOME }}/Library/LaunchAgents/com.ollama.server.plist
+      failed_when: false
+
+    - name: Reload Ollama launchd
+      command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/com.ollama.server.plist
+
+    - name: Wait for Ollama restart
+      uri:
+        url: "http://localhost:{{ ollama_port }}/api/tags"
+        method: GET
+        status_code: 200
+      retries: 10
+      delay: 3
+      register: ollama_restart_check
+      until: ollama_restart_check.status == 200

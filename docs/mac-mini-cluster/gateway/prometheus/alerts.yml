@@ -1,0 +1,99 @@
+# ============================================================
+# Prometheus Alerting Rules — ML Cluster
+# ============================================================
+
+groups:
+  - name: ollama_health
+    interval: 30s
+    rules:
+      # --- Node Down ---
+      - alert: OllamaNodeDown
+        expr: up{job=~"ollama-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ollama node {{ $labels.node }} is down"
+          description: "{{ $labels.node }} ({{ $labels.chip }}) has been unreachable for 2 minutes."
+
+      # --- High Latency ---
+      - alert: HighInferenceLatency
+        expr: histogram_quantile(0.95, rate(litellm_request_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 inference latency exceeds 30s"
+          description: "Model {{ $labels.model }} P95 latency: {{ $value }}s"
+
+      # --- High Error Rate ---
+      - alert: HighErrorRate
+        expr: rate(litellm_request_total{status="error"}[5m]) / rate(litellm_request_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error rate exceeds 10%"
+          description: "Model {{ $labels.model }} error rate: {{ $value | humanizePercentage }}"
+
+  - name: resource_usage
+    interval: 30s
+    rules:
+      # --- High Memory Usage ---
+      - alert: HighMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory usage above 90% on {{ $labels.node }}"
+          description: "Available memory critically low. Ollama may OOM."
+
+      # --- High CPU Usage ---
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(node) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU usage above 90% on {{ $labels.node }}"
+
+  - name: litellm_proxy
+    interval: 30s
+    rules:
+      # --- Proxy Down ---
+      - alert: LiteLLMProxyDown
+        expr: up{job="litellm"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "LiteLLM proxy is unreachable"
+          description: "The API gateway is down — all inference requests will fail."
+
+      # --- Request Queue Building Up ---
+      - alert: RequestQueueBacklog
+        expr: litellm_pending_requests > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Request queue has {{ $value }} pending requests"
+
+      # --- Token Budget Warning ---
+      - alert: HighTokenUsage
+        expr: increase(litellm_tokens_total[1h]) > 500000
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "High token usage: {{ $value }} tokens in the last hour"
+
+      # --- Context Window Near Limit ---
+      - alert: ContextWindowNearLimit
+        expr: litellm_request_input_tokens > 6000
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Request approaching context window limit ({{ $value }} input tokens)"

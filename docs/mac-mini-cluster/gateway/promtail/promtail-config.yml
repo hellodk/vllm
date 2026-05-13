@@ -1,0 +1,70 @@
+# ============================================================
+# Promtail Configuration — Log Collection
+# Ships logs from Ollama + LiteLLM to Loki
+# ============================================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  # Point to Loki on Mac Mini 1
+  - url: http://MAC_MINI_1_IP:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576    # 1MB
+    timeout: 10s
+
+scrape_configs:
+  # --- Ollama Logs ---
+  - job_name: ollama
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: ollama
+          __path__: /tmp/host-logs/ollama.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) (?P<level>\w+) (?P<message>.*)'
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: "2006/01/02 15:04:05"
+
+  # --- Ollama Error Logs ---
+  - job_name: ollama-errors
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: ollama-errors
+          __path__: /tmp/host-logs/ollama-error.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<level>ERROR|WARN|INFO) (?P<message>.*)'
+      - labels:
+          level:
+
+  # --- LiteLLM Proxy Logs ---
+  - job_name: litellm
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: litellm
+          __path__: /tmp/host-logs/litellm.log
+    pipeline_stages:
+      - multiline:
+          firstline: '^\d{4}-\d{2}-\d{2}'
+          max_wait_time: 3s
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<level>\w+) - (?P<message>.*)'
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02 15:04:05,000"

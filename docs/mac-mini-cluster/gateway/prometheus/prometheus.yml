@@ -1,0 +1,75 @@
+# ============================================================
+# Prometheus Configuration — ML Cluster Monitoring
+# ============================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  # --- Prometheus self-monitoring ---
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # --- LiteLLM Proxy Metrics ---
+  - job_name: "litellm"
+    metrics_path: /metrics
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["host.docker.internal:4000"]
+        labels:
+          service: "litellm-proxy"
+          role: "gateway"
+
+  # --- Ollama Node 1 (M1 - Gateway) ---
+  - job_name: "ollama-m1"
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["host.docker.internal:11434"]
+        labels:
+          node: "mac-mini-1"
+          chip: "m1"
+          ram: "8gb"
+          role: "gateway"
+
+  # --- Ollama Node 2 (M3 - Inference) ---
+  # IMPORTANT: Replace MAC_MINI_2_IP with actual IP
+  - job_name: "ollama-m3"
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["MAC_MINI_2_IP:11434"]
+        labels:
+          node: "mac-mini-2"
+          chip: "m3"
+          ram: "16gb"
+          role: "inference"
+
+  # --- Node Exporter (system metrics) ---
+  # Install on each Mac Mini: brew install node_exporter
+  - job_name: "node-m1"
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+        labels:
+          node: "mac-mini-1"
+          chip: "m1"
+
+  - job_name: "node-m3"
+    static_configs:
+      - targets: ["MAC_MINI_2_IP:9100"]
+        labels:
+          node: "mac-mini-2"
+          chip: "m3"
+
+  # --- Loki health ---
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          service: "loki"

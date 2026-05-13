@@ -1,0 +1,114 @@
+---
+# ============================================================
+# setup-developers.yml — Generate IDE configs for all options
+#
+# Usage:
+#   ansible-playbook playbooks/setup-developers.yml
+#
+# Generates configs for:
+#   - Continue.dev (VS Code — best open-source Cursor alternative)
+#   - Cursor (direct, with custom API endpoint)
+#   - Cline (VS Code — agentic/Composer-like multi-file editing)
+#   - Tabby (VS Code/JetBrains — self-hosted Copilot)
+# ============================================================
+
+- name: "Generate all developer IDE configurations"
+  hosts: gateway
+  gather_facts: no
+  tasks:
+    - name: Create output directory
+      file:
+        path: "{{ playbook_dir }}/../../ide-configs/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - continue-dev
+        - cursor
+        - cline
+        - tabby
+      delegate_to: localhost
+
+    # --- Continue.dev ---
+    - name: Generate Continue.dev config
+      template:
+        src: "{{ playbook_dir }}/../roles/continue_dev/templates/config.yaml.j2"
+        dest: "{{ playbook_dir }}/../../ide-configs/continue-dev/config.yaml"
+        mode: "0644"
+      delegate_to: localhost
+
+    # --- Cursor ---
+    - name: Generate Cursor settings
+      template:
+        src: "{{ playbook_dir }}/../roles/continue_dev/templates/cursor-settings.json.j2"
+        dest: "{{ playbook_dir }}/../../ide-configs/cursor/settings.json"
+        mode: "0644"
+      delegate_to: localhost
+
+    # --- Cline ---
+    - name: Generate Cline settings
+      template:
+        src: "{{ playbook_dir }}/../roles/continue_dev/templates/cline-settings.json.j2"
+        dest: "{{ playbook_dir }}/../../ide-configs/cline/settings.json"
+        mode: "0644"
+      delegate_to: localhost
+
+    # --- Tabby ---
+    - name: Generate Tabby developer instructions
+      copy:
+        content: |
+          # Tabby Setup for Developers
+
+          ## VS Code
+          1. Install the "Tabby" extension from the VS Code marketplace
+          2. Open Settings (Cmd+,) → search "Tabby"
+          3. Set "Tabby: Endpoint" to: http://{{ hostvars[groups['inference'][0]]['ansible_host'] }}:{{ tabby_port }}
+          4. Start coding — completions appear automatically
+
+          ## JetBrains (IntelliJ, PyCharm, WebStorm, etc.)
+          1. Go to Settings → Plugins → Marketplace
+          2. Search and install "Tabby"
+          3. Go to Settings → Tools → Tabby
+          4. Set endpoint: http://{{ hostvars[groups['inference'][0]]['ansible_host'] }}:{{ tabby_port }}
+
+          ## Web UI
+          Open: http://{{ hostvars[groups['inference'][0]]['ansible_host'] }}:{{ tabby_port }}
+
+        dest: "{{ playbook_dir }}/../../ide-configs/tabby/README.md"
+        mode: "0644"
+      delegate_to: localhost
+
+    # --- Print summary ---
+    - name: Print developer setup guide
+      debug:
+        msg:
+          - "============================================"
+          - "  IDE Configs Generated!"
+          - "============================================"
+          - ""
+          - "  Configs are in: ide-configs/"
+          - ""
+          - "  OPTION 1: Continue.dev (Recommended for VS Code)"
+          - "    Copy ide-configs/continue-dev/config.yaml → ~/.continue/config.yaml"
+          - "    Features: Tab complete, chat, inline edit, @codebase"
+          - "    Best for: Daily coding, code review, test generation"
+          - ""
+          - "  OPTION 2: Cursor"
+          - "    Merge ide-configs/cursor/settings.json into Cursor settings"
+          - "    Features: Native Cursor UX with local models"
+          - "    Best for: Teams already using Cursor"
+          - "    Note: Composer/Agent mode needs capable models"
+          - ""
+          - "  OPTION 3: Cline (Agentic coding)"
+          - "    Install Cline extension, apply ide-configs/cline/settings.json"
+          - "    Features: Multi-file editing, terminal commands, autonomous agent"
+          - "    Best for: Complex refactors, new feature scaffolding"
+          - "    Note: Keep tasks focused with 7B models"
+          - ""
+          - "  OPTION 4: Tabby (Self-hosted Copilot)"
+          - "    See ide-configs/tabby/README.md"
+          - "    Features: Pure completion (no chat), works in VS Code + JetBrains"
+          - "    Best for: Teams wanting minimal setup, JetBrains users"
+          - ""
+          - "  MIX AND MATCH: You can use multiple tools simultaneously!"
+          - "    e.g., Tabby for completions + Cline for agent tasks"
+          - "============================================"

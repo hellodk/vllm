@@ -1,0 +1,26 @@
+{
+  "// CURSOR CONFIGURATION": "Point Cursor at your local ML cluster",
+  "// HOW TO USE": [
+    "1. Open Cursor → Settings → Models",
+    "2. Under 'OpenAI API Key', enter: {{ litellm_api_key }}",
+    "3. Click the gear icon next to the key, set Base URL: http://{{ gateway_ip }}:{{ litellm_port }}/v1",
+    "4. Or: paste these into Cursor's settings.json (Cmd+Shift+P → 'Open User Settings JSON')"
+  ],
+
+  "openai.apiKey": "{{ litellm_api_key }}",
+  "openai.baseUrl": "http://{{ gateway_ip }}:{{ litellm_port }}/v1",
+
+  "cursor.general.enableShadowWorkspace": false,
+
+  "cursor.cpp.enableCpp": true,
+  "cursor.chat.defaultModel": "code-main",
+
+  "cursor.autocomplete.enabled": true,
+  "cursor.autocomplete.provider": "openai",
+  "cursor.autocomplete.model": "code-autocomplete",
+  "cursor.autocomplete.baseUrl": "http://{{ gateway_ip }}:{{ litellm_port }}/v1",
+  "cursor.autocomplete.apiKey": "{{ litellm_api_key }}",
+  "cursor.autocomplete.maxTokens": 256,
+  "cursor.autocomplete.temperature": 0.05,
+  "cursor.autocomplete.debounceMs": 300
+}

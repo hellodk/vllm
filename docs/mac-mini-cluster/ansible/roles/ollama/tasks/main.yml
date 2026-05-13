@@ -1,0 +1,71 @@
+---
+# ============================================================
+# Ollama Role — Install, configure, and pull models
+# ============================================================
+
+- name: Check if Ollama is installed
+  stat:
+    path: /opt/homebrew/bin/ollama
+  register: ollama_check
+
+- name: Install Ollama via Homebrew
+  community.general.homebrew:
+    name: ollama
+    state: present
+  when: not ollama_check.stat.exists
+
+- name: Deploy Ollama launchd plist
+  template:
+    src: com.ollama.server.plist.j2
+    dest: "{{ ansible_env.HOME }}/Library/LaunchAgents/com.ollama.server.plist"
+    mode: "0644"
+  notify: restart ollama
+
+- name: Load Ollama launchd service
+  command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/com.ollama.server.plist
+  register: launchctl_load
+  changed_when: launchctl_load.rc == 0
+  failed_when: false
+
+- name: Wait for Ollama to be ready
+  uri:
+    url: "http://localhost:{{ ollama_port }}/api/tags"
+    method: GET
+    status_code: 200
+  register: ollama_health
+  retries: 10
+  delay: 3
+  until: ollama_health.status == 200
+
+- name: Get currently loaded models
+  uri:
+    url: "http://localhost:{{ ollama_port }}/api/tags"
+    method: GET
+    return_content: yes
+  register: current_models
+
+- name: Parse current model names
+  set_fact:
+    loaded_models: "{{ current_models.json.models | map(attribute='name') | list }}"
+
+- name: Pull required models
+  command: "ollama pull {{ item.name }}"
+  loop: "{{ ollama_models }}"
+  when: item.name not in loaded_models
+  register: model_pull
+  retries: 2
+  delay: 5
+  until: model_pull.rc == 0
+  async: 600            # 10 min timeout for large model downloads
+  poll: 15
+
+- name: Verify all models are available
+  uri:
+    url: "http://localhost:{{ ollama_port }}/api/tags"
+    method: GET
+    return_content: yes
+  register: final_models
+
+- name: Display loaded models
+  debug:
+    msg: "Models on {{ inventory_hostname }}: {{ final_models.json.models | map(attribute='name') | list }}"

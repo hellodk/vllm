@@ -1,0 +1,50 @@
+---
+# ============================================================
+# update-models.yml — Pull latest model versions on all nodes
+#
+# Usage:
+#   ansible-playbook playbooks/update-models.yml
+#   ansible-playbook playbooks/update-models.yml --limit inference
+#   ansible-playbook playbooks/update-models.yml -e "extra_models=['mistral:7b']"
+# ============================================================
+
+- name: "Update models on all Ollama nodes"
+  hosts: ollama_nodes
+  gather_facts: no
+  serial: 1                    # One node at a time (rolling update)
+  tasks:
+    - name: Get current models
+      uri:
+        url: "http://localhost:{{ ollama_port }}/api/tags"
+        method: GET
+        return_content: yes
+      register: before_models
+
+    - name: Display current models
+      debug:
+        msg: "{{ inventory_hostname }} before: {{ before_models.json.models | map(attribute='name') | list }}"
+
+    - name: Pull/update configured models
+      command: "ollama pull {{ item.name }}"
+      loop: "{{ ollama_models }}"
+      register: pull_result
+      async: 600
+      poll: 15
+
+    - name: Pull extra models (if specified)
+      command: "ollama pull {{ item }}"
+      loop: "{{ extra_models | default([]) }}"
+      register: extra_pull
+      async: 600
+      poll: 15
+
+    - name: Get updated models
+      uri:
+        url: "http://localhost:{{ ollama_port }}/api/tags"
+        method: GET
+        return_content: yes
+      register: after_models
+
+    - name: Display updated models
+      debug:
+        msg: "{{ inventory_hostname }} after: {{ after_models.json.models | map(attribute='name') | list }}"

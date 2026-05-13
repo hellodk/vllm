@@ -1,0 +1,75 @@
+---
+# ============================================================
+# vLLM-MLX Role — Install and serve model on inference nodes
+# Replaces Ollama (per Hydra §5.3)
+# ============================================================
+
+- name: Install Xcode command-line tools
+  command: xcode-select --install
+  register: xcode_install
+  changed_when: xcode_install.rc == 0
+  failed_when: false
+
+- name: Install Rust toolchain (required for vLLM-MLX build)
+  shell: |
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  args:
+    creates: "{{ ansible_env.HOME }}/.cargo/bin/rustc"
+
+- name: Ensure Rust is in PATH
+  lineinfile:
+    path: "{{ ansible_env.HOME }}/.zprofile"
+    line: 'source "$HOME/.cargo/env"'
+    create: yes
+
+- name: Install vLLM-MLX via pip
+  pip:
+    name: vllm-mlx
+    executable: /opt/homebrew/bin/pip3
+    state: present
+  environment:
+    PATH: "{{ ansible_env.HOME }}/.cargo/bin:{{ ansible_env.PATH }}"
+
+- name: Create Hydra directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ hydra_base_dir }}"
+    - "{{ hydra_config_dir }}"
+    - "{{ hydra_log_dir }}"
+
+- name: Deploy vLLM-MLX launchd plist
+  template:
+    src: ai.hydra.inference.plist.j2
+    dest: "{{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.inference.plist"
+    mode: "0644"
+  notify: restart vllm-mlx
+
+- name: Load vLLM-MLX service
+  command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.inference.plist
+  register: vllm_load
+  changed_when: vllm_load.rc == 0
+  failed_when: false
+
+- name: Wait for vLLM-MLX to download model and start (may take several minutes on first run)
+  uri:
+    url: "http://localhost:{{ vllm_port }}/v1/models"
+    method: GET
+    status_code: 200
+  register: vllm_health
+  retries: 60
+  delay: 15
+  until: vllm_health.status == 200
+
+- name: Verify model is loaded
+  uri:
+    url: "http://localhost:{{ vllm_port }}/v1/models"
+    method: GET
+    return_content: yes
+  register: vllm_models
+
+- name: Display loaded model
+  debug:
+    msg: "vLLM-MLX serving: {{ vllm_models.json.data | map(attribute='id') | list }} on {{ inventory_hostname }} ({{ node_chip | upper }}, {{ node_ram_gb }}GB)"

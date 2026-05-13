@@ -1,0 +1,23 @@
+---
+- name: restart vllm-mlx
+  block:
+    - name: Unload vLLM-MLX
+      command: launchctl unload {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.inference.plist
+      failed_when: false
+
+    - name: Wait for process to stop
+      pause:
+        seconds: 5
+
+    - name: Reload vLLM-MLX
+      command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.inference.plist
+
+    - name: Wait for vLLM-MLX restart
+      uri:
+        url: "http://localhost:{{ vllm_port }}/v1/models"
+        method: GET
+        status_code: 200
+      retries: 40
+      delay: 15
+      register: vllm_restart_check
+      until: vllm_restart_check.status == 200

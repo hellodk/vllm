@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.hydra.inference</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>-m</string>
+        <string>vllm_mlx</string>
+        <string>serve</string>
+        <string>{{ vllm_node_model }}</string>
+        <string>--quantization</string>
+        <string>{{ vllm_node_quantization }}</string>
+        <string>--max-model-len</string>
+        <string>{{ vllm_node_max_model_len }}</string>
+        <string>--gpu-memory-utilization</string>
+        <string>{{ vllm_gpu_memory_utilization }}</string>
+        <string>--max-num-seqs</string>
+        <string>{{ vllm_node_max_num_seqs }}</string>
+        <string>--port</string>
+        <string>{{ vllm_port }}</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:{{ ansible_env.HOME }}/.cargo/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{{ hydra_log_dir }}/vllm-mlx.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{ hydra_log_dir }}/vllm-mlx-error.log</string>
+</dict>
+</plist>

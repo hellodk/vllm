@@ -1,0 +1,96 @@
+---
+# ============================================================
+# Hydra Pilot — Rolling Restart
+#
+# Usage:
+#   make restart              # Restart everything
+#   make restart-vllm         # Restart vLLM-MLX only
+#   make restart-litellm      # Restart gateway only
+#   make restart-monitoring   # Restart monitoring only
+# ============================================================
+
+- name: "Rolling restart: vLLM-MLX"
+  hosts: inference
+  gather_facts: no
+  serial: 1
+  tags: [vllm]
+  tasks:
+    - name: Restart vLLM-MLX
+      block:
+        - name: Unload vLLM-MLX
+          command: launchctl unload {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.inference.plist
+          failed_when: false
+
+        - name: Wait for shutdown
+          pause:
+            seconds: 5
+
+        - name: Reload vLLM-MLX
+          command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.inference.plist
+
+        - name: Wait for vLLM-MLX ready
+          uri:
+            url: "http://localhost:{{ vllm_port }}/v1/models"
+            method: GET
+            status_code: 200
+          retries: 40
+          delay: 15
+          register: health
+          until: health.status == 200
+
+    - name: Report
+      debug:
+        msg: "{{ inventory_hostname }}: vLLM-MLX restarted and serving"
+
+- name: "Rolling restart: LiteLLM"
+  hosts: gateway
+  gather_facts: no
+  tags: [litellm]
+  tasks:
+    - name: Restart LiteLLM
+      block:
+        - name: Unload LiteLLM
+          command: launchctl unload {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.gateway.plist
+          failed_when: false
+
+        - name: Reload LiteLLM
+          command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.gateway.plist
+
+        - name: Wait for ready
+          uri:
+            url: "http://localhost:{{ litellm_port }}/health"
+            method: GET
+            status_code: 200
+          retries: 15
+          delay: 5
+          register: health
+          until: health.status == 200
+
+    - name: Report
+      debug:
+        msg: "LiteLLM restarted and healthy"
+
+- name: "Rolling restart: Monitoring"
+  hosts: gateway
+  gather_facts: no
+  tags: [monitoring]
+  tasks:
+    - name: Restart Docker Compose monitoring stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ hydra_docker_dir }}"
+        state: present
+        recreate: always
+
+    - name: Wait for Prometheus
+      uri:
+        url: "http://localhost:{{ prometheus_port }}/-/ready"
+        method: GET
+        status_code: 200
+      retries: 10
+      delay: 5
+      register: prom
+      until: prom.status == 200
+
+    - name: Report
+      debug:
+        msg: "Monitoring stack restarted"

@@ -1,0 +1,13 @@
+# ============================================================
+# Inference Node — M3, 16 GB
+# Role: vLLM-MLX serving
+# ============================================================
+
+node_role: inference
+
+# Per Hydra §4.7 + §5.3: Qwen 2.5 Coder 7B on vLLM-MLX
+# Qwen chosen for 4 KV heads (half of Llama's 8) = 2x concurrent
+vllm_node_model: "{{ vllm_model }}"
+vllm_node_quantization: "{{ vllm_quantization }}"
+vllm_node_max_model_len: "{{ vllm_max_model_len }}"
+vllm_node_max_num_seqs: "{{ vllm_max_num_seqs }}"

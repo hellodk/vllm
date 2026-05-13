@@ -1,0 +1,139 @@
+---
+# ============================================================
+# Hydra Pilot — Health Check
+# Usage: make health-check
+# ============================================================
+
+- name: "Health Check: All nodes"
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Check node_exporter
+      uri:
+        url: "http://localhost:{{ node_exporter_port }}/metrics"
+        method: GET
+        status_code: 200
+      register: node_exp
+      failed_when: false
+
+    - name: Report node_exporter
+      debug:
+        msg: "{{ inventory_hostname }}: node_exporter {{ 'OK' if node_exp.status == 200 else 'DOWN' }}"
+
+- name: "Health Check: Inference (vLLM-MLX)"
+  hosts: inference
+  gather_facts: no
+  tasks:
+    - name: Check vLLM-MLX health
+      uri:
+        url: "http://localhost:{{ vllm_port }}/v1/models"
+        method: GET
+        status_code: 200
+        return_content: yes
+      register: vllm_health
+
+    - name: Check vLLM-MLX metrics
+      uri:
+        url: "http://localhost:{{ vllm_port }}/metrics"
+        method: GET
+        status_code: 200
+      register: vllm_metrics
+      failed_when: false
+
+    - name: Report vLLM-MLX
+      debug:
+        msg: >
+          {{ inventory_hostname }} ({{ node_chip | upper }}, {{ node_ram_gb }}GB):
+          vLLM-MLX OK — {{ vllm_health.json.data | map(attribute='id') | list }}
+          | Metrics: {{ 'OK' if vllm_metrics.status == 200 else 'DOWN' }}
+
+- name: "Health Check: Gateway"
+  hosts: gateway
+  gather_facts: no
+  tasks:
+    - name: Check Redis
+      command: redis-cli ping
+      register: redis_ping
+      changed_when: false
+      failed_when: false
+
+    - name: Check LiteLLM
+      uri:
+        url: "http://localhost:{{ litellm_port }}/health"
+        method: GET
+        status_code: 200
+      register: litellm_health
+      failed_when: false
+
+    - name: Check Prometheus
+      uri:
+        url: "http://localhost:{{ prometheus_port }}/-/ready"
+        method: GET
+        status_code: 200
+      register: prom_health
+      failed_when: false
+
+    - name: Check Grafana
+      uri:
+        url: "http://localhost:{{ grafana_port }}/api/health"
+        method: GET
+        status_code: 200
+      register: grafana_health
+      failed_when: false
+
+    - name: Check Loki
+      uri:
+        url: "http://localhost:{{ loki_port }}/ready"
+        method: GET
+        status_code: 200
+      register: loki_health
+      failed_when: false
+
+    - name: Report all gateway services
+      debug:
+        msg:
+          - "Redis:      {{ 'OK (PONG)' if redis_ping.stdout == 'PONG' else 'DOWN' }}"
+          - "LiteLLM:    {{ 'OK' if litellm_health.status == 200 else 'DOWN' }}"
+          - "Prometheus: {{ 'OK' if prom_health.status == 200 else 'DOWN' }}"
+          - "Grafana:    {{ 'OK' if grafana_health.status == 200 else 'DOWN' }}"
+          - "Loki:       {{ 'OK' if loki_health.status == 200 else 'DOWN' }}"
+
+    - name: Test E2E inference
+      uri:
+        url: "http://localhost:{{ litellm_port }}/v1/chat/completions"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ litellm_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          model: "hydra-coder"
+          messages:
+            - role: "user"
+              content: "print 1+1"
+          max_tokens: 20
+          temperature: 0.0
+        status_code: 200
+        timeout: 30
+      register: e2e
+      failed_when: false
+
+    - name: Report E2E
+      debug:
+        msg: "E2E Inference: {{ 'OK' if e2e.status == 200 else 'FAIL — check vLLM-MLX on inference node' }}"
+
+    - name: Check inference node reachable from gateway
+      uri:
+        url: "http://{{ hostvars[item]['ansible_host'] }}:{{ vllm_port }}/v1/models"
+        method: GET
+        status_code: 200
+      loop: "{{ groups['inference'] }}"
+      register: cross_check
+      failed_when: false
+
+    - name: Report cross-node connectivity
+      debug:
+        msg: "{{ item.item }} ({{ hostvars[item.item]['ansible_host'] }}): {{ 'REACHABLE' if item.status == 200 else 'UNREACHABLE' }}"
+      loop: "{{ cross_check.results }}"
+      loop_control:
+        label: "{{ item.item }}"

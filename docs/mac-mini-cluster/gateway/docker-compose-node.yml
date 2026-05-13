@@ -1,0 +1,14 @@
+# ============================================================
+# Docker Compose — Inference Nodes (Mac Mini 2+)
+# Runs: Promtail only (ships logs to Loki on Mac Mini 1)
+# ============================================================
+
+services:
+  promtail:
+    image: grafana/promtail:latest
+    container_name: ml-promtail-node
+    volumes:
+      - /tmp/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /tmp:/tmp/host-logs:ro
+    command: -config.file=/etc/promtail/config.yml
+    restart: unless-stopped

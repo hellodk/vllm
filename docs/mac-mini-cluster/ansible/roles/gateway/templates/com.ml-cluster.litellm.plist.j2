@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ml-cluster.litellm</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/litellm</string>
+        <string>--config</string>
+        <string>{{ cluster_config_dir }}/litellm/config.yaml</string>
+        <string>--port</string>
+        <string>{{ litellm_port }}</string>
+        <string>--num_workers</string>
+        <string>4</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>{{ cluster_config_dir }}/litellm</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{{ cluster_log_dir }}/litellm.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{ cluster_log_dir }}/litellm-error.log</string>
+</dict>
+</plist>

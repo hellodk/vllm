@@ -1,1 +1,14 @@
-*.pyc
+# Nested git repositories — managed independently
+airllm/
+llama.cpp/
+opik/
+
+# Build artifacts
+**/build/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+results/
+
+# IDE / tool config
+.continue/

@@ -1,0 +1,29 @@
+---
+# ============================================================
+# Redis Role — Rate limit counters + token budgets
+# Per Hydra §9.5: sorted-set sliding window
+# ============================================================
+
+- name: Install Redis via Homebrew
+  community.general.homebrew:
+    name: redis
+    state: present
+
+- name: Start Redis via brew services
+  command: brew services start redis
+  register: redis_start
+  changed_when: "'Successfully started' in redis_start.stdout"
+  failed_when: false
+
+- name: Wait for Redis to be ready
+  command: redis-cli ping
+  register: redis_ping
+  retries: 5
+  delay: 2
+  until: redis_ping.stdout == "PONG"
+  changed_when: false
+
+- name: Verify Redis is listening on expected port
+  wait_for:
+    port: "{{ redis_port }}"
+    timeout: 10

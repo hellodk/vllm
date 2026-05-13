@@ -1,0 +1,20 @@
+---
+# ============================================================
+# deploy-tabby.yml — Deploy Tabby on inference node
+#
+# Usage:
+#   ansible-playbook playbooks/deploy-tabby.yml
+#
+# Tabby provides a Copilot-like experience:
+#   - Fast code completions with Metal acceleration
+#   - Built-in codebase indexing (no separate embeddings)
+#   - VS Code + JetBrains support
+#   - Web UI for admin
+# ============================================================
+
+- name: "Deploy Tabby on inference nodes"
+  hosts: inference
+  gather_facts: no
+  roles:
+    - role: tabby
+      tags: [tabby]

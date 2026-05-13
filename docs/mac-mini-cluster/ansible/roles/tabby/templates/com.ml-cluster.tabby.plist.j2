@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ml-cluster.tabby</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/tabby</string>
+        <string>serve</string>
+        <string>--device</string>
+        <string>metal</string>
+        <string>--port</string>
+        <string>{{ tabby_port }}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{{ cluster_log_dir }}/tabby.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{ cluster_log_dir }}/tabby-error.log</string>
+</dict>
+</plist>

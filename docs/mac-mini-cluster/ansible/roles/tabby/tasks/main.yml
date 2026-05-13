@@ -1,0 +1,74 @@
+---
+# ============================================================
+# Tabby Role — Self-hosted AI coding assistant
+# https://tabby.tabbyml.com
+#
+# Tabby is purpose-built for self-hosted code AI:
+#   - VS Code / JetBrains extensions
+#   - Code completion (Copilot-like)
+#   - Chat with codebase context
+#   - Native code indexing (no separate embeddings needed)
+#   - Runs on Apple Silicon with Metal acceleration
+#
+# Runs on the inference node (M3, 16GB) for best performance
+# ============================================================
+
+- name: Check if Tabby is installed
+  stat:
+    path: /opt/homebrew/bin/tabby
+  register: tabby_check
+
+- name: Install Tabby via Homebrew
+  community.general.homebrew:
+    name: tabbyml/tabby/tabby
+    state: present
+  when: not tabby_check.stat.exists
+
+- name: Create Tabby config directory
+  file:
+    path: "{{ ansible_env.HOME }}/.tabby"
+    state: directory
+    mode: "0755"
+
+- name: Deploy Tabby configuration
+  template:
+    src: tabby-config.toml.j2
+    dest: "{{ ansible_env.HOME }}/.tabby/config.toml"
+    mode: "0644"
+  notify: restart tabby
+
+- name: Deploy Tabby launchd plist
+  template:
+    src: com.ml-cluster.tabby.plist.j2
+    dest: "{{ ansible_env.HOME }}/Library/LaunchAgents/com.ml-cluster.tabby.plist"
+    mode: "0644"
+  notify: restart tabby
+
+- name: Load Tabby service
+  command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/com.ml-cluster.tabby.plist
+  register: tabby_load
+  changed_when: tabby_load.rc == 0
+  failed_when: false
+
+- name: Wait for Tabby to be ready
+  uri:
+    url: "http://localhost:{{ tabby_port }}/v1/health"
+    method: GET
+    status_code: 200
+  register: tabby_health
+  retries: 20
+  delay: 10
+  until: tabby_health.status == 200
+
+- name: Display Tabby access info
+  debug:
+    msg:
+      - "Tabby is running at: http://{{ ansible_host }}:{{ tabby_port }}"
+      - ""
+      - "Developer setup:"
+      - "  1. Install 'Tabby' extension in VS Code (or JetBrains)"
+      - "  2. Open extension settings"
+      - "  3. Set endpoint: http://{{ ansible_host }}:{{ tabby_port }}"
+      - "  4. Start coding — completions appear automatically"
+      - ""
+      - "Web UI: http://{{ ansible_host }}:{{ tabby_port }}"

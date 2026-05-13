@@ -1,0 +1,71 @@
+---
+# ============================================================
+# Docker Role — Install Colima (lightweight Docker for macOS)
+# ============================================================
+
+- name: Check if Docker CLI is installed
+  stat:
+    path: /opt/homebrew/bin/docker
+  register: docker_check
+
+- name: Install Docker CLI and Compose
+  community.general.homebrew:
+    name:
+      - docker
+      - docker-compose
+    state: present
+  when: not docker_check.stat.exists
+
+- name: Check if Colima is installed
+  stat:
+    path: /opt/homebrew/bin/colima
+  register: colima_check
+
+- name: Install Colima
+  community.general.homebrew:
+    name: colima
+    state: present
+  when: not colima_check.stat.exists
+
+- name: Check if Colima is running
+  command: colima status
+  register: colima_status
+  changed_when: false
+  failed_when: false
+
+- name: Stop Colima if running with wrong config
+  command: colima stop
+  when:
+    - colima_status.rc == 0
+    - "'Running' in colima_status.stdout"
+  failed_when: false
+
+- name: Start Colima with node-specific resources
+  command: >
+    colima start
+    --cpu {{ colima_cpu }}
+    --memory {{ colima_memory }}
+    --disk {{ colima_disk }}
+    --arch aarch64
+    --vm-type vz
+    --mount-type virtiofs
+  when: >
+    colima_status.rc != 0 or
+    'Running' not in colima_status.stdout
+  register: colima_start
+  retries: 2
+  delay: 5
+
+- name: Verify Docker is functional
+  command: docker info
+  register: docker_info
+  changed_when: false
+  retries: 5
+  delay: 3
+  until: docker_info.rc == 0
+
+- name: Create Docker Compose directory
+  file:
+    path: "{{ docker_compose_dir }}"
+    state: directory
+    mode: "0755"

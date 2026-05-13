@@ -1,0 +1,19 @@
+---
+- name: restart tabby
+  block:
+    - name: Unload Tabby
+      command: launchctl unload {{ ansible_env.HOME }}/Library/LaunchAgents/com.ml-cluster.tabby.plist
+      failed_when: false
+
+    - name: Reload Tabby
+      command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/com.ml-cluster.tabby.plist
+
+    - name: Wait for Tabby restart
+      uri:
+        url: "http://localhost:{{ tabby_port }}/v1/health"
+        method: GET
+        status_code: 200
+      retries: 20
+      delay: 10
+      register: tabby_restart_check
+      until: tabby_restart_check.status == 200

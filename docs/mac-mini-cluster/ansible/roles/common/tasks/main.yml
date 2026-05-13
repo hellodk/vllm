@@ -1,0 +1,77 @@
+---
+# ============================================================
+# Common Role — Base setup for all Mac Minis
+# ============================================================
+
+- name: Gather macOS version
+  command: sw_vers -productVersion
+  register: macos_version
+  changed_when: false
+
+- name: Display node info
+  debug:
+    msg: >
+      Node: {{ inventory_hostname }}
+      ({{ node_chip | upper }}, {{ node_ram_gb }}GB RAM,
+      {{ node_cpu_cores }} CPU, {{ node_gpu_cores }} GPU)
+      macOS {{ macos_version.stdout }}
+
+- name: Check if Homebrew is installed
+  stat:
+    path: /opt/homebrew/bin/brew
+  register: homebrew_check
+
+- name: Install Homebrew
+  shell: |
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  when: not homebrew_check.stat.exists
+  environment:
+    NONINTERACTIVE: "1"
+
+- name: Ensure Homebrew is in PATH
+  lineinfile:
+    path: "{{ ansible_env.HOME }}/.zprofile"
+    line: 'eval "$(/opt/homebrew/bin/brew shellenv)"'
+    create: yes
+
+- name: Install common packages via Homebrew
+  community.general.homebrew:
+    name:
+      - curl
+      - jq
+      - htop
+      - python@3.11
+    state: present
+
+- name: Install node_exporter for system metrics
+  community.general.homebrew:
+    name: node_exporter
+    state: present
+
+- name: Create cluster config directory
+  file:
+    path: "{{ cluster_config_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Create cluster log directory
+  file:
+    path: "{{ cluster_log_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Start node_exporter via brew services
+  command: brew services start node_exporter
+  register: node_exporter_start
+  changed_when: "'Successfully started' in node_exporter_start.stdout"
+  failed_when: false
+
+- name: Verify node_exporter is running
+  uri:
+    url: "http://localhost:{{ node_exporter_port }}/metrics"
+    method: GET
+    status_code: 200
+  register: node_exporter_health
+  retries: 3
+  delay: 2
+  until: node_exporter_health.status == 200

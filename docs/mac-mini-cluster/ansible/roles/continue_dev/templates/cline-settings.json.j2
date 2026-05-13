@@ -1,0 +1,21 @@
+{
+  "// CLINE CONFIGURATION": "Agentic AI coding in VS Code (Composer-like)",
+  "// HOW TO USE": [
+    "1. Install 'Cline' extension in VS Code",
+    "2. Open Cline settings (click gear icon in Cline panel)",
+    "3. Select 'OpenAI Compatible' as the provider",
+    "4. Set Base URL: http://{{ gateway_ip }}:{{ litellm_port }}/v1",
+    "5. Set API Key: {{ litellm_api_key }}",
+    "6. Set Model: code-main",
+    "7. Cline can now create/edit files, run terminal commands, and browse"
+  ],
+
+  "cline.provider": "openai-compatible",
+  "cline.openaiBaseUrl": "http://{{ gateway_ip }}:{{ litellm_port }}/v1",
+  "cline.openaiApiKey": "{{ litellm_api_key }}",
+  "cline.openaiModelId": "code-main",
+  "cline.maxTokens": 4096,
+  "cline.temperature": 0.2,
+
+  "// NOTE": "Cline works best with capable models. With 7B models, keep tasks focused and specific. Break complex tasks into small steps."
+}

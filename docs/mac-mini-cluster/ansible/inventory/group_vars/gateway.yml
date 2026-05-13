@@ -1,0 +1,24 @@
+# ============================================================
+# Gateway Node — M1, 8 GB (no inference)
+# Role: LiteLLM + Redis + Monitoring
+# ============================================================
+
+node_role: gateway
+
+# LiteLLM model routing table
+litellm_models:
+  - model_name: "hydra-coder"
+    backend_model: "Qwen2.5-Coder-7B-Instruct"
+    description: "Primary code model (Qwen 2.5 Coder 7B, MLX 4-bit)"
+    max_tokens: 4096
+    temperature: 0.2
+    top_p: 0.9
+
+  - model_name: "hydra-autocomplete"
+    backend_model: "Qwen2.5-Coder-7B-Instruct"
+    description: "Tab autocomplete (same model, fast settings)"
+    max_tokens: 128
+    temperature: 0.05
+    top_p: 0.85
+
+litellm_fallbacks: []

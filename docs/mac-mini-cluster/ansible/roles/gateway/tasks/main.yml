@@ -1,0 +1,69 @@
+---
+# ============================================================
+# Gateway Role — LiteLLM Proxy (Hydra-aligned)
+# Routes to vLLM-MLX on inference nodes (port 8000)
+# ============================================================
+
+- name: Install LiteLLM proxy via pip
+  pip:
+    name:
+      - "litellm[proxy]"
+      - tiktoken
+    executable: /opt/homebrew/bin/pip3
+    state: present
+
+- name: Create LiteLLM config directory
+  file:
+    path: "{{ hydra_config_dir }}/litellm"
+    state: directory
+    mode: "0755"
+
+- name: Deploy LiteLLM configuration
+  template:
+    src: litellm-config.yaml.j2
+    dest: "{{ hydra_config_dir }}/litellm/config.yaml"
+    mode: "0644"
+  notify: restart litellm
+
+- name: Deploy guardrails module
+  copy:
+    src: "{{ playbook_dir }}/../guardrails/guardrails.py"
+    dest: "{{ hydra_config_dir }}/litellm/guardrails.py"
+    mode: "0644"
+  notify: restart litellm
+
+- name: Deploy LiteLLM launchd plist
+  template:
+    src: ai.hydra.gateway.plist.j2
+    dest: "{{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.gateway.plist"
+    mode: "0644"
+  notify: restart litellm
+
+- name: Load LiteLLM service
+  command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.gateway.plist
+  register: litellm_load
+  changed_when: litellm_load.rc == 0
+  failed_when: false
+
+- name: Wait for LiteLLM to be ready
+  uri:
+    url: "http://localhost:{{ litellm_port }}/health"
+    method: GET
+    status_code: 200
+  register: litellm_health
+  retries: 15
+  delay: 5
+  until: litellm_health.status == 200
+
+- name: Verify LiteLLM model list
+  uri:
+    url: "http://localhost:{{ litellm_port }}/v1/models"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ litellm_api_key }}"
+    return_content: yes
+  register: model_list
+
+- name: Display available models
+  debug:
+    msg: "LiteLLM models: {{ model_list.json.data | map(attribute='id') | list }}"

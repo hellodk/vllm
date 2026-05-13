@@ -1,0 +1,19 @@
+---
+- name: restart litellm
+  block:
+    - name: Unload LiteLLM
+      command: launchctl unload {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.gateway.plist
+      failed_when: false
+
+    - name: Reload LiteLLM
+      command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.gateway.plist
+
+    - name: Wait for LiteLLM restart
+      uri:
+        url: "http://localhost:{{ litellm_port }}/health"
+        method: GET
+        status_code: 200
+      retries: 15
+      delay: 5
+      register: litellm_restart_check
+      until: litellm_restart_check.status == 200
