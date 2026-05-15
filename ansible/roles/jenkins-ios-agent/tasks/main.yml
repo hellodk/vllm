@@ -1,0 +1,69 @@
+# ansible/roles/jenkins-ios-agent/tasks/main.yml
+# Sets up a Mac Mini (Apple Silicon) as a Jenkins iOS build agent.
+# Source spec: pulse/jenkins-k8s/docs/mac-mini-setup.md
+# Tested on: macOS Tahoe 26, Mac Mini M3 16 GB RAM
+#
+# Required vars (set in cluster.yml or at play level):
+#   jenkins_user        — local user owning the agent (default: dk)
+#   jenkins_host        — Jenkins controller URL  e.g. http://192.168.1.x:30881
+#   jenkins_secret      — per-node secret from Jenkins → Nodes → <node> → Status
+#   jenkins_agent_name  — node name as registered in Jenkins UI
+#
+# Tags:
+#   xcode       — Xcode CLI tools + licence
+#   homebrew    — Homebrew + openssl + jq
+#   java        — OpenJDK 21 via Homebrew
+#   ruby        — rbenv + Ruby 3.4.5 + CocoaPods + xcpretty
+#   node        — nvm + Node.js 20 LTS
+#   zprofile    — write ~/.zprofile with all PATH entries
+#   jenkins     — download agent.jar + LaunchDaemon + start
+#   signing     — dummy codesign CA trust (optional, run once)
+---
+
+- name: Assert required vars are set
+  assert:
+    that:
+      - jenkins_user is defined and jenkins_user | length > 0
+      - jenkins_host is defined and jenkins_host | length > 0
+      - jenkins_secret is defined and jenkins_secret | length > 0
+      - jenkins_agent_name is defined and jenkins_agent_name | length > 0
+    fail_msg: |
+      Missing required vars. Set in cluster.yml under the node entry:
+        jenkins_user, jenkins_host, jenkins_secret, jenkins_agent_name
+
+- name: This role is macOS-only
+  assert:
+    that: ansible_facts['system'] == "Darwin"
+    fail_msg: "jenkins-ios-agent role requires macOS (Darwin). Got: {{ ansible_facts['system'] }}"
+
+- name: Xcode CLI tools setup
+  import_tasks: xcode.yml
+  tags: [xcode]
+
+- name: Homebrew + core packages
+  import_tasks: homebrew.yml
+  tags: [homebrew]
+
+- name: Java 21 via Homebrew
+  import_tasks: java.yml
+  tags: [java]
+
+- name: Ruby 3.4.5 via rbenv + gems
+  import_tasks: ruby.yml
+  tags: [ruby]
+
+- name: Node.js 20 via nvm
+  import_tasks: node.yml
+  tags: [node]
+
+- name: Write ~/.zprofile
+  import_tasks: zprofile.yml
+  tags: [zprofile]
+
+- name: Jenkins agent LaunchDaemon
+  import_tasks: jenkins_agent.yml
+  tags: [jenkins]
+
+- name: Dummy codesign setup (optional)
+  import_tasks: dummy_signing.yml
+  tags: [signing, never]   # 'never' tag means skipped unless explicitly requested

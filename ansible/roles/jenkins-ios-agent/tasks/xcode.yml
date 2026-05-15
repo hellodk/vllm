@@ -1,0 +1,50 @@
+# ansible/roles/jenkins-ios-agent/tasks/xcode.yml
+# Sets Xcode developer directory and accepts the licence.
+# Xcode.app must already be installed from the App Store — this cannot be automated.
+---
+
+- name: Check Xcode.app is installed
+  stat:
+    path: /Applications/Xcode.app
+  register: _xcode_app
+
+- name: Fail if Xcode.app is missing
+  fail:
+    msg: >
+      Xcode.app not found at /Applications/Xcode.app.
+      Install it from the App Store on {{ inventory_hostname }} first,
+      then re-run this role.
+  when: not _xcode_app.stat.exists
+
+- name: Set xcode-select to Xcode.app developer directory
+  command: xcode-select -s /Applications/Xcode.app/Contents/Developer
+  become: true
+  register: _xcode_select
+  changed_when: _xcode_select.rc == 0
+  # Idempotent: xcode-select -p will already return the right path on re-run
+
+- name: Verify xcode-select points to Xcode.app
+  command: xcode-select -p
+  register: _xcode_path
+  changed_when: false
+
+- name: Assert developer directory is correct
+  assert:
+    that: "'/Applications/Xcode.app' in _xcode_path.stdout"
+    fail_msg: "xcode-select still points to {{ _xcode_path.stdout }} — expected Xcode.app"
+
+- name: Accept Xcode licence (required for xcodebuild)
+  command: xcodebuild -license accept
+  become: true
+  register: _licence
+  changed_when: "'You can view' not in _licence.stdout"
+  ignore_errors: true   # already accepted on re-run returns non-zero
+
+- name: Print xcodebuild version
+  command: xcodebuild -version
+  register: _xcode_ver
+  changed_when: false
+
+- name: Show Xcode version
+  debug:
+    msg: "{{ _xcode_ver.stdout_lines[0] }}"

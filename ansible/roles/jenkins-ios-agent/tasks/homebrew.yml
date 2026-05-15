@@ -1,0 +1,63 @@
+# ansible/roles/jenkins-ios-agent/tasks/homebrew.yml
+# Installs Homebrew (if missing) then installs openssl and jq.
+# Must NOT run as root — Homebrew is a per-user install on Apple Silicon.
+---
+
+- name: Check if Homebrew is already installed
+  stat:
+    path: "{{ homebrew_bin }}"
+  register: _brew_stat
+
+- name: Install Homebrew (non-interactive)
+  shell: >
+    /bin/bash -c
+    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    NONINTERACTIVE: "1"
+  when: not _brew_stat.stat.exists
+
+- name: Verify Homebrew version
+  command: "{{ homebrew_bin }} --version"
+  register: _brew_ver
+  changed_when: false
+  become: true
+  become_user: "{{ jenkins_user }}"
+
+- name: Show Homebrew version
+  debug:
+    msg: "{{ _brew_ver.stdout_lines[0] }}"
+
+- name: Install openssl (real OpenSSL, not macOS LibreSSL)
+  homebrew:
+    name: openssl
+    state: present
+    path: "{{ homebrew_prefix }}/bin"
+  become: true
+  become_user: "{{ jenkins_user }}"
+
+- name: Install jq (required by llm-analysis.sh and other pipeline scripts)
+  homebrew:
+    name: jq
+    state: present
+    path: "{{ homebrew_prefix }}/bin"
+  become: true
+  become_user: "{{ jenkins_user }}"
+
+- name: Verify openssl is real OpenSSL (not LibreSSL)
+  command: "{{ homebrew_prefix }}/bin/openssl version"
+  register: _openssl_ver
+  changed_when: false
+  become: true
+  become_user: "{{ jenkins_user }}"
+
+- name: Assert OpenSSL (not LibreSSL) is installed
+  assert:
+    that: "'LibreSSL' not in _openssl_ver.stdout"
+    fail_msg: "Expected OpenSSL but got: {{ _openssl_ver.stdout }}"
+
+- name: Show OpenSSL and jq versions
+  debug:
+    msg:
+      - "openssl: {{ _openssl_ver.stdout_lines[0] }}"

@@ -1,0 +1,115 @@
+# ansible/roles/jenkins-ios-agent/tasks/jenkins_agent.yml
+# Downloads agent.jar from Jenkins controller, installs LaunchDaemon, and starts agent.
+---
+
+- name: Create Jenkins agent working directory
+  file:
+    path: "{{ jenkins_agent_workdir }}"
+    state: directory
+    owner: "{{ jenkins_user }}"
+    mode: "0755"
+  become: true
+
+- name: Download agent.jar from Jenkins controller
+  get_url:
+    url: "{{ jenkins_host }}/jnlpJars/agent.jar"
+    dest: "{{ jenkins_agent_jar }}"
+    owner: "{{ jenkins_user }}"
+    mode: "0644"
+    force: false   # skip download if jar already exists and unchanged
+  become: true
+
+- name: Verify agent.jar was downloaded
+  stat:
+    path: "{{ jenkins_agent_jar }}"
+  register: _agent_jar
+
+- name: Fail if agent.jar is missing
+  fail:
+    msg: "agent.jar not found at {{ jenkins_agent_jar }} — check jenkins_host URL"
+  when: not _agent_jar.stat.exists
+
+- name: Test connection to Jenkins controller (one-shot, not persistent)
+  command: >
+    {{ java_homebrew_bin }} -jar {{ jenkins_agent_jar }}
+    -url {{ jenkins_host }}/
+    -secret {{ jenkins_secret }}
+    -name {{ jenkins_agent_name }}
+    -webSocket
+    -workDir {{ jenkins_agent_workdir }}
+    -noReconnect
+  become: true
+  become_user: "{{ jenkins_user }}"
+  async: 15
+  poll: 5
+  register: _agent_test
+  ignore_errors: true   # one-shot exits non-zero; we just want to confirm "Connected"
+
+- name: Check one-shot test output for "Connected"
+  debug:
+    msg: >
+      {{ 'Connected to Jenkins controller OK'
+         if 'Connected' in (_agent_test.stdout | default('') + _agent_test.stderr | default(''))
+         else 'WARNING: Could not confirm connection — check jenkins_host and jenkins_secret' }}
+
+- name: Deploy Jenkins agent LaunchDaemon plist
+  template:
+    src: io.jenkins.agent.plist.j2
+    dest: "{{ jenkins_agent_plist }}"
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart jenkins agent
+
+- name: Validate plist syntax
+  command: "plutil -lint {{ jenkins_agent_plist }}"
+  register: _plist_lint
+  changed_when: false
+  become: true
+
+- name: Assert plist is valid
+  assert:
+    that: "'OK' in _plist_lint.stdout"
+    fail_msg: "plist lint failed: {{ _plist_lint.stdout }}"
+
+- name: Bootstrap Jenkins agent LaunchDaemon (first load)
+  command: "launchctl bootstrap system {{ jenkins_agent_plist }}"
+  become: true
+  register: _bootstrap
+  changed_when: _bootstrap.rc == 0
+  ignore_errors: true   # macOS Tahoe returns I/O error but still starts the service
+
+- name: Flush handlers (ensures plist is reloaded if changed)
+  meta: flush_handlers
+
+- name: Wait for agent process to start
+  shell: "ps -ef | grep agent.jar | grep -v grep"
+  register: _agent_ps
+  until: _agent_ps.rc == 0
+  retries: 6
+  delay: 5
+  changed_when: false
+
+- name: Verify agent PPID is 1 (owned by launchd)
+  shell: >
+    ps -ef | grep agent.jar | grep -v grep |
+    awk '{print $3}' | head -1
+  register: _agent_ppid
+  changed_when: false
+
+- name: Assert agent is managed by launchd (PPID=1)
+  assert:
+    that: "_agent_ppid.stdout | trim == '1'"
+    fail_msg: >
+      Agent PPID is {{ _agent_ppid.stdout | trim }}, expected 1.
+      macOS Tahoe note: 'Bootstrap failed: 5' is a known quirk — verify with ps -ef.
+
+- name: Show agent log (last 5 lines)
+  shell: "tail -5 {{ jenkins_agent_workdir }}/agent.log 2>/dev/null || echo 'Log not yet available'"
+  register: _agent_log
+  changed_when: false
+
+- name: Jenkins agent status
+  debug:
+    msg: "{{ _agent_log.stdout_lines }}"

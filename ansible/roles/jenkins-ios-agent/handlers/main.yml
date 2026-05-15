@@ -1,0 +1,8 @@
+# ansible/roles/jenkins-ios-agent/handlers/main.yml
+---
+- name: restart jenkins agent
+  shell: |
+    launchctl bootout system/io.jenkins.agent 2>/dev/null || true
+    launchctl bootstrap system {{ jenkins_agent_plist }}
+  become: true
+  ignore_errors: true

@@ -1,0 +1,22 @@
+# ansible/roles/jenkins-ios-agent/tasks/zprofile.yml
+# Writes the complete ~/.zprofile for the jenkins_user with all required PATH entries.
+# Order matters: Homebrew → Java → rbenv → nvm → CocoaPods env → locale.
+---
+
+- name: Deploy ~/.zprofile for {{ jenkins_user }}
+  template:
+    src: zprofile.j2
+    dest: "{{ jenkins_agent_home }}/.zprofile"
+    owner: "{{ jenkins_user }}"
+    mode: "0644"
+  become: true
+
+- name: Verify zprofile is readable by the user
+  stat:
+    path: "{{ jenkins_agent_home }}/.zprofile"
+  register: _zprofile_stat
+
+- name: Assert zprofile exists
+  assert:
+    that: _zprofile_stat.stat.exists
+    fail_msg: "~/.zprofile not written to {{ jenkins_agent_home }}/.zprofile"

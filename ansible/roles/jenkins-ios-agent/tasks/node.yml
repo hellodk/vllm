@@ -1,0 +1,94 @@
+# ansible/roles/jenkins-ios-agent/tasks/node.yml
+# Installs nvm and pins Node.js 20 LTS.
+# WARNING: Do NOT use Homebrew Node — it conflicts with nvm and pnpm.
+---
+
+- name: Check if nvm is already installed
+  stat:
+    path: "{{ jenkins_nvm_dir }}/nvm.sh"
+  register: _nvm_sh
+
+- name: Install nvm {{ nvm_version }}
+  shell: >
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v{{ nvm_version }}/install.sh | bash
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    HOME: "{{ jenkins_agent_home }}"
+    NVM_DIR: "{{ jenkins_nvm_dir }}"
+  when: not _nvm_sh.stat.exists
+
+- name: Check if Homebrew Node is installed (must be removed)
+  stat:
+    path: "{{ homebrew_prefix }}/bin/node"
+  register: _brew_node
+
+- name: Remove Homebrew Node if present (conflicts with nvm)
+  homebrew:
+    name: node
+    state: absent
+    path: "{{ homebrew_prefix }}/bin"
+  become: true
+  become_user: "{{ jenkins_user }}"
+  when: _brew_node.stat.exists
+
+- name: Install Node {{ node_version }} LTS via nvm
+  shell: |
+    source {{ jenkins_nvm_dir }}/nvm.sh
+    nvm install {{ node_version }}
+    nvm alias default {{ node_version }}
+    nvm use {{ node_version }}
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    HOME: "{{ jenkins_agent_home }}"
+    NVM_DIR: "{{ jenkins_nvm_dir }}"
+  register: _nvm_install
+  changed_when: "'is already installed' not in _nvm_install.stdout"
+
+- name: Get installed Node {{ node_version }} full version string
+  shell: |
+    source {{ jenkins_nvm_dir }}/nvm.sh
+    nvm version {{ node_version }}
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    HOME: "{{ jenkins_agent_home }}"
+    NVM_DIR: "{{ jenkins_nvm_dir }}"
+  register: _node_ver_raw
+  changed_when: false
+
+- name: Set node installed version fact
+  set_fact:
+    node_installed_version: "{{ _node_ver_raw.stdout | trim }}"
+  # e.g. "v20.19.1" — used in plist PATH and zprofile
+
+- name: Verify Node and npm versions
+  shell: |
+    source {{ jenkins_nvm_dir }}/nvm.sh
+    nvm use {{ node_version }}
+    echo "node: $(node --version)"
+    echo "npm: $(npm --version)"
+    echo "which: $(which node)"
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    HOME: "{{ jenkins_agent_home }}"
+    NVM_DIR: "{{ jenkins_nvm_dir }}"
+  register: _node_info
+  changed_when: false
+
+- name: Assert nvm node (not Homebrew) is active
+  assert:
+    that: "'.nvm' in _node_info.stdout"
+    fail_msg: "Node is NOT from nvm. which node: {{ _node_info.stdout }}"
+
+- name: Show Node toolchain summary
+  debug:
+    msg: "{{ _node_info.stdout_lines }}"

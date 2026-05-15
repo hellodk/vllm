@@ -1,0 +1,52 @@
+# ansible/roles/jenkins-ios-agent/tasks/dummy_signing.yml
+# Sets up dummy codesigning CA for pipeline testing without an Apple Developer account.
+# Run with: ansible-playbook jenkins-ios-setup.yml --tags signing
+# WARNING: macOS Tahoe may deny add-trusted-cert due to auth restrictions.
+#          The pipeline still works via OTHER_CODE_SIGN_FLAGS keychain bypass.
+---
+
+- name: Check if dummy CA cert exists in repo
+  stat:
+    path: "{{ pulse_repo_dir }}/jenkins-k8s/ios/option-4-enterprise/dummy-signing/ca.crt"
+  register: _ca_cert
+
+- name: Skip dummy signing if generate-dummy-signing.sh has not been run
+  debug:
+    msg: >
+      Dummy signing CA not found at {{ pulse_repo_dir }}/jenkins-k8s/ios/option-4-enterprise/dummy-signing/ca.crt.
+      Run generate-dummy-signing.sh first (option 1 — Generate), then re-run with --tags signing.
+  when: not _ca_cert.stat.exists
+
+- name: Trust dummy CA in System keychain
+  command: >
+    security add-trusted-cert -d -r trustRoot
+    -k /Library/Keychains/System.keychain
+    {{ pulse_repo_dir }}/jenkins-k8s/ios/option-4-enterprise/dummy-signing/ca.crt
+  become: true
+  register: _trust_cert
+  when: _ca_cert.stat.exists
+  ignore_errors: true   # Tahoe may deny with "authorization denied" — see note above
+
+- name: macOS Tahoe note about add-trusted-cert
+  debug:
+    msg: >
+      add-trusted-cert failed ({{ _trust_cert.stderr | default('') }}).
+      This is expected on macOS Tahoe — the pipeline bypasses system trust via
+      OTHER_CODE_SIGN_FLAGS="--keychain ios-banknow-dummy.keychain". No action needed.
+  when:
+    - _ca_cert.stat.exists
+    - _trust_cert.rc != 0
+
+- name: Verify dummy identity is in keychain (if keychain exists)
+  command: >
+    security find-identity -p codesigning
+    {{ pulse_repo_dir }}/jenkins-k8s/ios/option-4-enterprise/dummy-signing/ios-banknow-dummy.keychain
+  register: _keychain_id
+  changed_when: false
+  ignore_errors: true
+  when: _ca_cert.stat.exists
+
+- name: Show codesigning identity
+  debug:
+    msg: "{{ _keychain_id.stdout_lines | default(['Keychain not found — run generate-dummy-signing.sh first']) }}"
+  when: _ca_cert.stat.exists

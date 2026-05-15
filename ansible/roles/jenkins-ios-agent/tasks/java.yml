@@ -1,0 +1,35 @@
+# ansible/roles/jenkins-ios-agent/tasks/java.yml
+# Installs OpenJDK 21 via Homebrew. Jenkins agent requires Java 21.
+---
+
+- name: Install openjdk@21 via Homebrew
+  homebrew:
+    name: "{{ java_homebrew_pkg }}"
+    state: present
+    path: "{{ homebrew_prefix }}/bin"
+  become: true
+  become_user: "{{ jenkins_user }}"
+
+- name: Verify java binary exists at expected path
+  stat:
+    path: "{{ java_homebrew_bin }}"
+  register: _java_bin
+
+- name: Fail if java binary is missing after install
+  fail:
+    msg: "Java binary not found at {{ java_homebrew_bin }} — check Homebrew install"
+  when: not _java_bin.stat.exists
+
+- name: Verify Java version
+  command: "{{ java_homebrew_bin }} -version"
+  register: _java_ver
+  changed_when: false
+
+- name: Assert Java 21 is installed
+  assert:
+    that: "'21' in _java_ver.stderr or '21' in _java_ver.stdout"
+    fail_msg: "Expected Java 21, got: {{ _java_ver.stderr | default(_java_ver.stdout) }}"
+
+- name: Show Java version
+  debug:
+    msg: "{{ (_java_ver.stderr_lines + _java_ver.stdout_lines) | first }}"

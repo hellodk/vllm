@@ -14,6 +14,14 @@ cluster:
     node_exporter: "1.8.2"
     amdgpu_exporter: "1.0.0"
 
+# ── Jenkins iOS build agent configuration ────────────────────────────────────
+jenkins:
+  host: "http://192.168.1.1:30881"     # Jenkins controller URL (k8s NodePort or direct)
+  agent_name: "mobileapp-m3"           # node name as created in Jenkins UI
+  user: dk                             # local macOS user owning the agent process
+  executors: 2                         # executors configured in Jenkins UI
+  pulse_repo_dir: "/Users/dk/pulse"    # path to cloned pulse/jenkins-k8s repo on agent
+
 # ── SaltStack + Fleet Platform configuration ──────────────────────────────────
 salt:
   master:
@@ -75,6 +83,8 @@ nodes:
     maintenance: false
     metric_labels: {}
     fleet_token: ~           # set after: POST /api/v1/nodes/register → copy token here
+    ios_build_agent: false   # set true + jenkins_secret to enable jenkins-ios-setup.yml
+    jenkins_secret: ~        # paste from Jenkins → Manage → Nodes → <node> → Status
     llm_endpoints:
       - provider: llamacpp
         url: "http://127.0.0.1:21434/v1"
@@ -102,6 +112,8 @@ nodes:
     maintenance: false
     metric_labels: {}
     fleet_token: ~           # set after: POST /api/v1/nodes/register → copy token here
+    ios_build_agent: false   # Linux node — iOS builds require macOS; keep false
+    jenkins_secret: ~
     llm_endpoints:
       - provider: ollama
         url: "http://127.0.0.1:11434/v1"

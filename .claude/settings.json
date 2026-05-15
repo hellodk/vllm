@@ -23,7 +23,10 @@
       "Bash(ansible-lint*)",
       "Bash(find /home/dk/Documents/git/kri*)",
       "Bash(ls /home/dk/Documents/git/kri*)",
-      "Bash(python -m yaml*)"
+      "Bash(python -m yaml*)",
+      "Bash(find /home/dk/Documents/git/pulse*)",
+      "Bash(ls /home/dk/Documents/git/pulse*)",
+      "Bash(plutil*)"
     ]
   }
 }

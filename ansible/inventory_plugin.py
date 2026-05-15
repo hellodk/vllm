@@ -50,10 +50,11 @@ def build_inventory(cluster: dict) -> dict:
                     f"must be one of {VALID_LLM_PROVIDERS}"
                 )
 
-        # Resolve salt config from cluster.yml
+        # Resolve salt and jenkins config from cluster.yml
         salt_cfg = cluster.get("salt", {})
         salt_master = salt_cfg.get("master", {})
         salt_config = salt_cfg.get("config", {})
+        jenkins_cfg = cluster.get("jenkins", {})
 
         # Host vars — ansible connection + hydra metadata
         inv["_meta"]["hostvars"][nid] = {
@@ -89,6 +90,13 @@ def build_inventory(cluster: dict) -> dict:
             "hydra_salt_sbom_schedule": salt_config.get("sbom_schedule_time", "02:00am"),
             "hydra_salt_sbom_timeout": salt_config.get("sbom_scan_timeout", 600),
             "hydra_salt_log_level": salt_config.get("log_level", "info"),
+            # Jenkins iOS build agent vars (per-node)
+            "hydra_ios_build_agent": node.get("ios_build_agent", False),
+            "hydra_jenkins_secret": node.get("jenkins_secret") or "",
+            "hydra_jenkins_host": jenkins_cfg.get("host", ""),
+            "hydra_jenkins_agent_name": jenkins_cfg.get("agent_name", nid),
+            "hydra_jenkins_user": jenkins_cfg.get("user", "dk"),
+            "hydra_pulse_repo_dir": jenkins_cfg.get("pulse_repo_dir", "/Users/dk/pulse"),
         }
 
         inv["all"]["hosts"].append(nid)
@@ -105,6 +113,10 @@ def build_inventory(cluster: dict) -> dict:
         for pool in node.get("pools", []):
             pool_group = f"pool_{pool}"
             groups.setdefault(pool_group, []).append(nid)
+
+        # Group iOS build agents (macOS nodes with ios_build_agent: true)
+        if node.get("ios_build_agent", False) and node["os"] == "macos":
+            groups.setdefault("ios_agents", []).append(nid)
 
     for group, hosts in groups.items():
         inv[group] = {"hosts": hosts}

@@ -1,0 +1,36 @@
+# ansible/jenkins-ios-setup.yml
+# Sets up Mac Mini nodes as Jenkins iOS build agents.
+# Source spec: pulse/jenkins-k8s/docs/mac-mini-setup.md
+#
+# Usage:
+#   cd ansible
+#   ansible-playbook jenkins-ios-setup.yml                        # all ios_agent nodes
+#   ansible-playbook jenkins-ios-setup.yml --limit p1-m3-16g     # one node
+#   ansible-playbook jenkins-ios-setup.yml --tags ruby            # Ruby only
+#   ansible-playbook jenkins-ios-setup.yml --tags jenkins         # agent jar + plist only
+#   ansible-playbook jenkins-ios-setup.yml --tags signing         # dummy codesign (optional)
+#   ansible-playbook jenkins-ios-setup.yml --check --diff        # dry-run
+#
+# Prerequisites per node in cluster.yml:
+#   ios_build_agent: true           — marks node as a build agent
+#   jenkins_secret: "abc123..."     — secret from Jenkins → Manage → Nodes → <node> → Status
+#
+# Global prerequisites in cluster.yml under jenkins:
+#   host: "http://192.168.1.x:30881"
+#   agent_name: "mobileapp-m3"      — as registered in Jenkins UI
+#   user: dk                        — local macOS user
+#   pulse_repo_dir: "..."           — path to cloned pulse repo (for dummy signing)
+---
+
+- name: Setup Mac Mini nodes as Jenkins iOS build agents
+  hosts: ios_agents
+  gather_facts: true
+  serial: 2
+  vars:
+    jenkins_user: "{{ hostvars[inventory_hostname].hydra_jenkins_user | default('dk') }}"
+    jenkins_host: "{{ hostvars[inventory_hostname].hydra_jenkins_host }}"
+    jenkins_secret: "{{ hostvars[inventory_hostname].hydra_jenkins_secret }}"
+    jenkins_agent_name: "{{ hostvars[inventory_hostname].hydra_jenkins_agent_name }}"
+    pulse_repo_dir: "{{ hostvars[inventory_hostname].hydra_pulse_repo_dir | default('/Users/dk/pulse') }}"
+  roles:
+    - jenkins-ios-agent

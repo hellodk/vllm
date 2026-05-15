@@ -1,0 +1,21 @@
+# ansible/roles/jenkins-ios-agent/vars/main.yml
+# Version pins — update here when upgrading toolchain
+---
+ruby_version: "3.4.5"
+node_version: "20"
+nvm_version: "0.40.3"
+java_homebrew_pkg: "openjdk@21"
+java_homebrew_bin: "/opt/homebrew/opt/openjdk@21/bin/java"
+homebrew_prefix: /opt/homebrew
+homebrew_bin: /opt/homebrew/bin/brew
+
+# Jenkins agent LaunchDaemon label (also used as plist filename)
+jenkins_agent_label: "io.jenkins.agent"
+jenkins_agent_plist: "/Library/LaunchDaemons/io.jenkins.agent.plist"
+
+# Derived from jenkins_user var (set per-play or in cluster.yml)
+jenkins_agent_home: "/Users/{{ jenkins_user }}"
+jenkins_agent_workdir: "/Users/{{ jenkins_user }}/jenkins-agent"
+jenkins_agent_jar: "/Users/{{ jenkins_user }}/jenkins-agent/agent.jar"
+jenkins_rbenv_root: "/Users/{{ jenkins_user }}/.rbenv"
+jenkins_nvm_dir: "/Users/{{ jenkins_user }}/.nvm"

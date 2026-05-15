@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/io.jenkins.agent.plist
+  Managed by Ansible (jenkins-ios-agent role) — do not edit manually.
+  Re-render: ansible-playbook jenkins-ios-setup.yml --tags jenkins --limit {{ hydra_node_id }}
+  Source: pulse/jenkins-k8s/docs/mac-mini-setup.md §11.4
+-->
+<plist version="1.0">
+<dict>
+
+  <key>Label</key>
+  <string>{{ jenkins_agent_label }}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ java_homebrew_bin }}</string>
+    <string>-jar</string>
+    <string>{{ jenkins_agent_jar }}</string>
+    <string>-url</string>
+    <string>{{ jenkins_host }}/</string>
+    <string>-secret</string>
+    <string>{{ jenkins_secret }}</string>
+    <string>-name</string>
+    <string>{{ jenkins_agent_name }}</string>
+    <string>-webSocket</string>
+    <string>-workDir</string>
+    <string>{{ jenkins_agent_workdir }}</string>
+  </array>
+
+  <!-- Full PATH covers Homebrew, Java 21, rbenv shims, nvm Node 20, system -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{ homebrew_prefix }}/bin:{{ homebrew_prefix }}/opt/openjdk@21/bin:{{ jenkins_rbenv_root }}/shims:{{ jenkins_rbenv_root }}/bin:{{ jenkins_nvm_dir }}/versions/node/{{ node_installed_version }}/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>HOME</key>
+    <string>{{ jenkins_agent_home }}</string>
+    <key>NVM_DIR</key>
+    <string>{{ jenkins_nvm_dir }}</string>
+    <key>RBENV_ROOT</key>
+    <string>{{ jenkins_rbenv_root }}</string>
+    <key>COCOAPODS_DISABLE_STATS</key>
+    <string>1</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>{{ jenkins_agent_workdir }}</string>
+
+  <!-- Start on boot and keep alive (launchd restarts on crash) -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>{{ jenkins_agent_workdir }}/agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{ jenkins_agent_workdir }}/agent.log</string>
+
+  <!--
+    macOS Tahoe note: launchctl bootstrap may return "Bootstrap failed: 5: I/O error"
+    but still starts the service. Confirm with: ps -ef | grep agent.jar
+    PPID=1 means launchd owns it — service will survive reboots.
+  -->
+
+</dict>
+</plist>

@@ -1,0 +1,107 @@
+# ansible/roles/jenkins-ios-agent/tasks/ruby.yml
+# Installs rbenv + ruby-build, pins Ruby 3.4.5, installs CocoaPods and xcpretty.
+# NOTE: macOS system Ruby (2.6.x) must NOT be used for CI.
+---
+
+- name: Install rbenv and ruby-build via Homebrew
+  homebrew:
+    name:
+      - rbenv
+      - ruby-build
+    state: present
+    path: "{{ homebrew_prefix }}/bin"
+  become: true
+  become_user: "{{ jenkins_user }}"
+
+- name: Check if Ruby {{ ruby_version }} is already installed via rbenv
+  stat:
+    path: "{{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/ruby"
+  register: _ruby_bin
+
+- name: Install Ruby {{ ruby_version }} via rbenv
+  shell: "{{ jenkins_rbenv_root }}/bin/rbenv install {{ ruby_version }}"
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    PATH: "{{ jenkins_rbenv_root }}/bin:{{ homebrew_prefix }}/bin:/usr/local/bin:/usr/bin:/bin"
+  when: not _ruby_bin.stat.exists
+  # rbenv install can take several minutes — building from source
+
+- name: Set Ruby {{ ruby_version }} as global default
+  shell: "{{ jenkins_rbenv_root }}/bin/rbenv global {{ ruby_version }}"
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    PATH: "{{ jenkins_rbenv_root }}/bin:{{ homebrew_prefix }}/bin:/usr/local/bin:/usr/bin:/bin"
+  changed_when: true
+
+- name: Rehash rbenv shims
+  shell: "{{ jenkins_rbenv_root }}/bin/rbenv rehash"
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    PATH: "{{ jenkins_rbenv_root }}/bin:{{ homebrew_prefix }}/bin:/usr/local/bin:/usr/bin:/bin"
+  changed_when: false
+
+- name: Verify Ruby version
+  shell: "{{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/ruby --version"
+  register: _ruby_ver
+  changed_when: false
+
+- name: Assert correct Ruby version
+  assert:
+    that: "ruby_version in _ruby_ver.stdout"
+    fail_msg: "Expected Ruby {{ ruby_version }}, got: {{ _ruby_ver.stdout }}"
+
+- name: Verify gem home points to rbenv Ruby
+  shell: "{{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/gem env home"
+  register: _gem_home
+  changed_when: false
+
+- name: Install CocoaPods gem
+  shell: "{{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/gem install cocoapods"
+  become: true
+  become_user: "{{ jenkins_user }}"
+  register: _cocoapods_install
+  changed_when: "'Successfully installed' in _cocoapods_install.stdout"
+  # gem install is idempotent — exits 0 and prints nothing if already installed
+
+- name: Install xcpretty gem (formats xcodebuild output)
+  shell: "{{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/gem install xcpretty"
+  become: true
+  become_user: "{{ jenkins_user }}"
+  register: _xcpretty_install
+  changed_when: "'Successfully installed' in _xcpretty_install.stdout"
+
+- name: Rehash shims after gem installs
+  shell: "{{ jenkins_rbenv_root }}/bin/rbenv rehash"
+  become: true
+  become_user: "{{ jenkins_user }}"
+  environment:
+    PATH: "{{ jenkins_rbenv_root }}/bin:{{ homebrew_prefix }}/bin:/usr/local/bin:/usr/bin:/bin"
+  changed_when: false
+
+- name: Verify CocoaPods binary exists
+  stat:
+    path: "{{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/pod"
+  register: _pod_bin
+
+- name: Verify xcpretty binary exists
+  stat:
+    path: "{{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/xcpretty"
+  register: _xcpretty_bin
+
+- name: Assert CocoaPods and xcpretty are installed
+  assert:
+    that:
+      - _pod_bin.stat.exists
+      - _xcpretty_bin.stat.exists
+    fail_msg: "CocoaPods or xcpretty missing — check gem install output"
+
+- name: Show Ruby toolchain summary
+  debug:
+    msg:
+      - "Ruby: {{ _ruby_ver.stdout | trim }}"
+      - "gem home: {{ _gem_home.stdout | trim }}"
+      - "pod: {{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/pod"
+      - "xcpretty: {{ jenkins_rbenv_root }}/versions/{{ ruby_version }}/bin/xcpretty"
