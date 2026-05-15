@@ -1,0 +1,26 @@
+# /etc/systemd/system/fleet-celery-beat.service
+# Managed by Ansible — do not edit manually.
+# Periodic scheduler for maintenance tasks (stale-node sweep, SBOM archive).
+[Unit]
+Description=Fleet Platform Celery Beat Scheduler
+After=network.target redis.service postgresql.service
+Requires=network.target
+
+[Service]
+Type=forking
+User={{ hydra_salt_kri_user | default('dk') }}
+WorkingDirectory={{ hydra_salt_kri_app_dir }}
+ExecStart={{ hydra_salt_kri_venv_dir }}/bin/celery \
+  -A fleet_platform.workers.celery_app beat \
+  --loglevel=info \
+  --logfile={{ fleet_log_dir }}/celery-beat.log \
+  --pidfile={{ fleet_log_dir }}/celery-beat.pid \
+  --detach
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fleet-celery-beat
+
+[Install]
+WantedBy=multi-user.target

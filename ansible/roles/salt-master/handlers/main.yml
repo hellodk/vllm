@@ -1,0 +1,21 @@
+# ansible/roles/salt-master/handlers/main.yml
+---
+- name: restart salt-master (Linux)
+  systemd:
+    name: salt-master
+    state: restarted
+    daemon_reload: true
+  become: true
+  when: hydra_salt_master_os == "linux"
+
+- name: restart salt-master (macOS)
+  command: pkill -HUP salt-master
+  become: true
+  when: hydra_salt_master_os == "macos"
+  ignore_errors: true
+
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+  become: true
+  when: hydra_salt_master_os == "linux"

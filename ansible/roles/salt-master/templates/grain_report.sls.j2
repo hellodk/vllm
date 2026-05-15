@@ -1,0 +1,18 @@
+# /srv/salt/states/base/grain_report.sls
+# Managed by Ansible — do not edit manually.
+#
+# Posts system grains (hardware, OS, IP, packages) to the Fleet Platform ingest API.
+# Called automatically by reactor on every minion start.
+# Run manually: sudo salt '<node>' state.apply base.grain_report
+{% raw %}
+report_grains_to_fleet_platform:
+  module.run:
+    - name: http.query
+    - url: {{ pillar['fleet_platform']['ingest_url'] }}/grains
+    - method: POST
+    - header_dict:
+        Content-Type: application/json
+        X-Node-Token: {{ pillar['fleet_platform']['node_token'] }}
+    - data: {{ grains | tojson }}
+    - status: 200
+{% endraw %}

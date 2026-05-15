@@ -1,0 +1,129 @@
+# ansible/roles/salt-minion/tasks/main.yml
+# Installs and configures Salt Minion + Syft on each Mac Mini (or Linux) node.
+# Source spec: docs from salt-onboarding.md (kri project)
+---
+
+# ── Install Salt Minion ───────────────────────────────────────────────────────
+
+- name: Install Salt Minion (macOS — Homebrew)
+  homebrew:
+    name: saltstack
+    state: present
+  become: false
+  when: hydra_os == "macos"
+
+- name: Install Salt Minion (Linux — bootstrap script)
+  block:
+    - name: Download Salt bootstrap script
+      get_url:
+        url: https://bootstrap.saltproject.io
+        dest: /tmp/bootstrap-salt.sh
+        mode: "0755"
+
+    - name: Run Salt bootstrap (minion only)
+      command: sh /tmp/bootstrap-salt.sh stable
+      args:
+        creates: /usr/bin/salt-minion
+  become: true
+  when: hydra_os == "linux"
+
+# ── Ensure log directory exists ───────────────────────────────────────────────
+
+- name: Create Salt log directory
+  file:
+    path: "{{ salt_minion_log_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+# ── Configure Salt Minion ─────────────────────────────────────────────────────
+
+- name: Assert fleet_token is set for this node
+  assert:
+    that:
+      - hydra_fleet_token is defined
+      - hydra_fleet_token | length > 0
+    fail_msg: >
+      Node {{ hydra_node_id }} has no fleet_token.
+      Register it first: POST {{ hydra_salt_fleet_api_url }}/api/v1/nodes/register
+      Then set fleet_token in ansible/cluster.yml for this node.
+
+- name: Deploy Salt Minion config
+  template:
+    src: salt-minion.conf.j2
+    dest: "{{ salt_minion_config }}"
+    mode: "0640"
+  become: true
+  notify:
+    - restart salt-minion (Linux)
+    - restart salt-minion (macOS)
+
+# ── Enable and start Salt Minion ──────────────────────────────────────────────
+
+- name: Enable and start salt-minion (Linux)
+  systemd:
+    name: salt-minion
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when: hydra_os == "linux"
+
+- name: Load salt-minion LaunchDaemon (macOS)
+  command: >
+    launchctl bootstrap system
+    /Library/LaunchDaemons/com.saltstack.salt.minion.plist
+  become: true
+  when: hydra_os == "macos"
+  ignore_errors: true   # safe on re-run (already loaded)
+
+# ── Create Pillar file on Salt Master ────────────────────────────────────────
+# Runs on the control plane (delegate_to) not on the minion
+
+- name: Create per-node pillar file on Salt Master
+  template:
+    src: node-pillar.sls.j2
+    dest: "/srv/salt/pillar/{{ hydra_node_id }}.sls"
+    mode: "0640"
+  become: true
+  delegate_to: "{{ hydra_salt_master_ip }}"
+  delegate_facts: false
+
+# ── Install Syft for SBOM scans ───────────────────────────────────────────────
+
+- name: Install Syft (macOS — Homebrew)
+  homebrew:
+    name: syft
+    state: present
+  become: false
+  when: hydra_os == "macos"
+
+- name: Install Syft (Linux — official install script)
+  shell: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+  args:
+    creates: /usr/local/bin/syft
+  become: true
+  when: hydra_os == "linux"
+
+- name: Verify Syft is installed
+  command: syft version
+  register: _syft_version
+  changed_when: false
+
+- name: Print Syft version
+  debug:
+    msg: "{{ hydra_node_id }}: {{ _syft_version.stdout_lines[0] }}"
+
+# ── Verify minion is connecting ───────────────────────────────────────────────
+
+- name: Check Salt Minion log for successful connection
+  shell: >
+    grep -E "Authentication|Minion is started|Connected" {{ salt_minion_log_dir }}/minion 2>/dev/null | tail -3
+  register: _minion_log
+  changed_when: false
+  become: true
+  ignore_errors: true
+
+- name: Minion connection status
+  debug:
+    msg: "{{ _minion_log.stdout | default('Log not yet available — check manually: sudo tail -f ' + salt_minion_log_dir + '/minion') }}"

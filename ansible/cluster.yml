@@ -14,6 +14,29 @@ cluster:
     node_exporter: "1.8.2"
     amdgpu_exporter: "1.0.0"
 
+# ── SaltStack + Fleet Platform configuration ──────────────────────────────────
+salt:
+  master:
+    id: fleet-control                        # ansible inventory hostname for the control plane
+    hostname: fleet-control
+    ip: 192.168.1.1                          # LAN IP of the Salt Master / Fleet Platform server
+    user: dk
+    ssh_port: 22
+    become: true
+    become_method: sudo
+    os: linux                                # linux | macos
+    kri_app_dir: "/home/dk/Documents/git/kri"
+    kri_venv_dir: "/home/dk/Documents/git/kri/.venv"
+    kri_user: dk
+  config:
+    fleet_api_url: "http://192.168.1.1:8000"
+    fleet_admin_email: "admin@fleet.local"
+    fleet_admin_password: "changeme123"      # plain text v1 — move to vault in v2
+    auto_accept_keys: true
+    sbom_schedule_time: "02:00am"
+    sbom_scan_timeout: 600
+    log_level: info
+
 nodes:
   - id: p1-m2-8g
     hostname: mac-m2-8g
@@ -30,6 +53,7 @@ nodes:
     pools: [embed]
     maintenance: false
     metric_labels: {}
+    fleet_token: ~           # set after: POST /api/v1/nodes/register → copy token here
     llm_endpoints:
       - provider: llamacpp
         url: "http://127.0.0.1:21434/v1"
@@ -50,6 +74,7 @@ nodes:
     pools: [fast, reason]
     maintenance: false
     metric_labels: {}
+    fleet_token: ~           # set after: POST /api/v1/nodes/register → copy token here
     llm_endpoints:
       - provider: llamacpp
         url: "http://127.0.0.1:21434/v1"
@@ -76,6 +101,7 @@ nodes:
     pools: [fast]
     maintenance: false
     metric_labels: {}
+    fleet_token: ~           # set after: POST /api/v1/nodes/register → copy token here
     llm_endpoints:
       - provider: ollama
         url: "http://127.0.0.1:11434/v1"

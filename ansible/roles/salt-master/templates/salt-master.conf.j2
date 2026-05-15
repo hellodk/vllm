@@ -1,0 +1,29 @@
+# /etc/salt/master (Linux) or /usr/local/etc/salt/master (macOS)
+# Managed by Ansible — do not edit manually.
+# Re-render: ansible-playbook salt-onboarding.yml --tags salt-master --limit salt_master
+
+# ── Network ────────────────────────────────────────────────────────────────────
+interface: 0.0.0.0
+
+# ── State and pillar roots ─────────────────────────────────────────────────────
+file_roots:
+  base:
+    - /srv/salt/states
+
+pillar_roots:
+  base:
+    - /srv/salt/pillar
+
+# ── Key management ────────────────────────────────────────────────────────────
+# auto_accept: safe on a private LAN; set to False for stricter environments
+auto_accept: {{ hydra_salt_auto_accept | default(true) | lower }}
+
+# ── Reactor ───────────────────────────────────────────────────────────────────
+# Fires grain_report on every minion start/reconnect
+reactor:
+  - 'salt/minion/*/start':
+    - /srv/salt/reactors/grain_report.sls
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log_level: {{ hydra_salt_log_level | default('info') }}
+log_file: /var/log/salt/master

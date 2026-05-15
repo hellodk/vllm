@@ -1,0 +1,13 @@
+# /usr/local/etc/salt/minion (macOS) or /etc/salt/minion (Linux)
+# Managed by Ansible — do not edit manually.
+# Re-render: ansible-playbook salt-onboarding.yml --tags salt-minion --limit {{ hydra_node_id }}
+
+# ── Master connection ─────────────────────────────────────────────────────────
+master: {{ hydra_salt_master_ip }}
+
+# Must match the minion_id used when registering in Fleet Platform
+id: {{ hydra_node_id }}
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log_level: {{ hydra_salt_log_level | default('info') }}
+log_file: /var/log/salt/minion

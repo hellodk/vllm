@@ -1,0 +1,30 @@
+# /etc/systemd/system/fleet-celery-drift.service
+# Managed by Ansible — do not edit manually.
+# Processes compute_drift tasks queued after grain ingestion.
+[Unit]
+Description=Fleet Platform Celery — Drift Worker
+After=network.target redis.service postgresql.service
+Requires=network.target
+
+[Service]
+Type=forking
+User={{ hydra_salt_kri_user | default('dk') }}
+WorkingDirectory={{ hydra_salt_kri_app_dir }}
+ExecStart={{ hydra_salt_kri_venv_dir }}/bin/celery \
+  -A fleet_platform.workers.celery_app worker \
+  --queues=drift \
+  --concurrency=4 \
+  --loglevel=info \
+  --logfile={{ fleet_log_dir }}/celery-drift.log \
+  --pidfile={{ fleet_log_dir }}/celery-drift.pid \
+  --detach
+ExecStop={{ hydra_salt_kri_venv_dir }}/bin/celery \
+  -A fleet_platform.workers.celery_app control shutdown
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fleet-celery-drift
+
+[Install]
+WantedBy=multi-user.target

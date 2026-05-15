@@ -1,0 +1,11 @@
+# ansible/roles/salt-master/vars/main.yml
+---
+# Config file paths differ by OS
+salt_master_config: >-
+  {{ '/usr/local/etc/salt/master' if hydra_salt_master_os == 'macos' else '/etc/salt/master' }}
+
+salt_states_dir: /srv/salt/states
+salt_pillar_dir: /srv/salt/pillar
+salt_reactors_dir: /srv/salt/reactors
+salt_log_dir: /var/log/salt
+fleet_log_dir: /var/log/fleet

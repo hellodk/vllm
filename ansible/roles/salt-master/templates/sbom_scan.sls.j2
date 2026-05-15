@@ -1,0 +1,36 @@
+# /srv/salt/states/base/sbom_scan.sls
+# Managed by Ansible — do not edit manually.
+#
+# Runs Syft to produce a CycloneDX JSON SBOM, then uploads it to Fleet Platform.
+# Scheduled nightly at {{ hydra_salt_sbom_schedule | default('02:00am') }} via Salt schedule.
+# Run manually: sudo salt '<node>' state.apply base.sbom_scan
+# Note: full filesystem scan takes 1–5 minutes.
+{% raw %}
+{% set sbom_file = '/tmp/sbom-' ~ grains['id'] ~ '.json' %}
+
+sbom_scan_run:
+  cmd.run:
+    - name: syft / -o cyclonedx-json={{ sbom_file }}
+    - timeout: {{ pillar.get('fleet_platform', {}).get('sbom_scan_timeout', 600) }}
+    - require:
+      - sls: base.grain_report
+
+sbom_upload:
+  module.run:
+    - name: http.query
+    - url: {{ pillar['fleet_platform']['ingest_url'] }}/sbom/{{ grains['id'] }}
+    - method: POST
+    - header_dict:
+        Content-Type: application/json
+        X-Node-Token: {{ pillar['fleet_platform']['node_token'] }}
+    - data: {{ salt['file.read'](sbom_file) }}
+    - status: 202
+    - require:
+      - cmd: sbom_scan_run
+
+sbom_cleanup:
+  cmd.run:
+    - name: rm -f {{ sbom_file }}
+    - require:
+      - module: sbom_upload
+{% endraw %}

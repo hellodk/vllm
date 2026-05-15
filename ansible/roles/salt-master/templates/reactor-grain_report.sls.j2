@@ -1,0 +1,12 @@
+# /srv/salt/reactors/grain_report.sls
+# Managed by Ansible — do not edit manually.
+#
+# Triggered when any minion connects or starts.
+# Fires grain_report on that specific minion immediately.
+{% raw %}
+report_grains_on_start:
+  local.state.apply:
+    - tgt: {{ data['id'] }}
+    - arg:
+      - base.grain_report
+{% endraw %}

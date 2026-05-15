@@ -1,0 +1,7 @@
+# ansible/roles/salt-minion/vars/main.yml
+---
+# Config file paths differ by OS
+salt_minion_config: >-
+  {{ '/usr/local/etc/salt/minion' if hydra_os == 'macos' else '/etc/salt/minion' }}
+
+salt_minion_log_dir: /var/log/salt

@@ -50,6 +50,11 @@ def build_inventory(cluster: dict) -> dict:
                     f"must be one of {VALID_LLM_PROVIDERS}"
                 )
 
+        # Resolve salt config from cluster.yml
+        salt_cfg = cluster.get("salt", {})
+        salt_master = salt_cfg.get("master", {})
+        salt_config = salt_cfg.get("config", {})
+
         # Host vars — ansible connection + hydra metadata
         inv["_meta"]["hostvars"][nid] = {
             # Ansible connection
@@ -77,6 +82,13 @@ def build_inventory(cluster: dict) -> dict:
             "hydra_otel_gateway_primary": cfg["otel_gateway"]["primary"],
             "hydra_otel_gateway_secondary": cfg["otel_gateway"].get("secondary", ""),
             "hydra_versions": cfg.get("versions", {}),
+            # Salt / Fleet Platform vars (per-node)
+            "hydra_fleet_token": node.get("fleet_token") or "",
+            "hydra_salt_master_ip": salt_master.get("ip", ""),
+            "hydra_salt_fleet_api_url": salt_config.get("fleet_api_url", ""),
+            "hydra_salt_sbom_schedule": salt_config.get("sbom_schedule_time", "02:00am"),
+            "hydra_salt_sbom_timeout": salt_config.get("sbom_scan_timeout", 600),
+            "hydra_salt_log_level": salt_config.get("log_level", "info"),
         }
 
         inv["all"]["hosts"].append(nid)
@@ -97,6 +109,32 @@ def build_inventory(cluster: dict) -> dict:
     for group, hosts in groups.items():
         inv[group] = {"hosts": hosts}
         inv["all"]["children"].append(group)
+
+    # Add Salt Master as a separate host (control plane, not a Hydra inference node)
+    salt_cfg = cluster.get("salt", {})
+    salt_master = salt_cfg.get("master", {})
+    salt_config = salt_cfg.get("config", {})
+    if salt_master.get("ip"):
+        mid = salt_master.get("id", "fleet-control")
+        inv["_meta"]["hostvars"][mid] = {
+            "ansible_host": salt_master["ip"],
+            "ansible_user": salt_master.get("user", "dk"),
+            "ansible_port": salt_master.get("ssh_port", 22),
+            "ansible_become": salt_master.get("become", True),
+            "ansible_become_method": salt_master.get("become_method", "sudo"),
+            # Salt master identity vars
+            "hydra_node_id": mid,
+            "hydra_hostname": salt_master.get("hostname", mid),
+            "hydra_os": salt_master.get("os", "linux"),
+            "hydra_salt_master_os": salt_master.get("os", "linux"),
+            "hydra_salt_auto_accept": salt_config.get("auto_accept_keys", True),
+            "hydra_salt_log_level": salt_config.get("log_level", "info"),
+            "hydra_salt_kri_app_dir": salt_master.get("kri_app_dir", "/home/dk/Documents/git/kri"),
+            "hydra_salt_kri_venv_dir": salt_master.get("kri_venv_dir", "/home/dk/Documents/git/kri/.venv"),
+            "hydra_salt_kri_user": salt_master.get("kri_user", "dk"),
+        }
+        inv["salt_master"] = {"hosts": [mid]}
+        inv["all"]["children"].append("salt_master")
 
     return inv
 

@@ -18,7 +18,12 @@
       "Bash(ansible --version*)",
       "Bash(ansible-inventory*)",
       "Bash(ansible-playbook * --check*)",
-      "Bash(ansible-playbook * --check *)"
+      "Bash(ansible-playbook * --check *)",
+      "Bash(yamllint*)",
+      "Bash(ansible-lint*)",
+      "Bash(find /home/dk/Documents/git/kri*)",
+      "Bash(ls /home/dk/Documents/git/kri*)",
+      "Bash(python -m yaml*)"
     ]
   }
 }

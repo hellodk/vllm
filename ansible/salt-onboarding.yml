@@ -1,0 +1,48 @@
+# ansible/salt-onboarding.yml
+# Deploys SaltStack + Fleet Platform Celery workers on the control plane,
+# and installs Salt Minion + Syft on every Hydra node.
+#
+# Usage:
+#   cd ansible
+#   ansible-playbook salt-onboarding.yml                          # full deploy
+#   ansible-playbook salt-onboarding.yml --tags salt-master       # control plane only
+#   ansible-playbook salt-onboarding.yml --tags salt-minion       # all minions
+#   ansible-playbook salt-onboarding.yml --limit p1-m3-16g        # one minion
+#   ansible-playbook salt-onboarding.yml --check --diff           # dry-run
+#
+# Prerequisites:
+#   1. Set salt.master.ip in cluster.yml
+#   2. Register each node in Fleet Platform and set fleet_token per node in cluster.yml
+#   3. ansible-galaxy collection install -r requirements.yml
+---
+
+# ── Play 1: Salt Master + Celery on the control plane ────────────────────────
+- name: Deploy Salt Master and Fleet Platform workers
+  hosts: salt_master
+  gather_facts: true
+  tags: [salt-master]
+  vars:
+    hydra_salt_master_os: "{{ hostvars[inventory_hostname].hydra_salt_master_os | default('linux') }}"
+    hydra_salt_auto_accept: "{{ hostvars[inventory_hostname].hydra_salt_auto_accept | default(true) }}"
+    hydra_salt_log_level: "{{ hostvars[inventory_hostname].hydra_salt_log_level | default('info') }}"
+    hydra_salt_kri_app_dir: "{{ hostvars[inventory_hostname].hydra_salt_kri_app_dir }}"
+    hydra_salt_kri_venv_dir: "{{ hostvars[inventory_hostname].hydra_salt_kri_venv_dir }}"
+    hydra_salt_kri_user: "{{ hostvars[inventory_hostname].hydra_salt_kri_user | default('dk') }}"
+  roles:
+    - salt-master
+
+# ── Play 2: Salt Minion + Syft on every Hydra node ───────────────────────────
+- name: Deploy Salt Minion on all Hydra nodes
+  hosts: all
+  gather_facts: true
+  serial: 5
+  tags: [salt-minion]
+  vars:
+    hydra_salt_master_ip: "{{ hostvars[inventory_hostname].hydra_salt_master_ip }}"
+    hydra_salt_fleet_api_url: "{{ hostvars[inventory_hostname].hydra_salt_fleet_api_url }}"
+    hydra_salt_sbom_schedule: "{{ hostvars[inventory_hostname].hydra_salt_sbom_schedule | default('02:00am') }}"
+    hydra_salt_sbom_timeout: "{{ hostvars[inventory_hostname].hydra_salt_sbom_timeout | default(600) }}"
+    hydra_salt_log_level: "{{ hostvars[inventory_hostname].hydra_salt_log_level | default('info') }}"
+    hydra_fleet_token: "{{ hostvars[inventory_hostname].hydra_fleet_token | default('') }}"
+  roles:
+    - salt-minion

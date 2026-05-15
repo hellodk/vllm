@@ -1,0 +1,175 @@
+# ansible/roles/salt-master/tasks/main.yml
+# Installs and configures Salt Master + Celery workers on the Fleet Platform control plane.
+# Source spec: docs from salt-onboarding.md (kri project)
+---
+
+# ── Install Salt Master ────────────────────────────────────────────────────────
+
+- name: Install Salt Master (Linux — bootstrap script)
+  block:
+    - name: Download Salt bootstrap script
+      get_url:
+        url: https://bootstrap.saltproject.io
+        dest: /tmp/bootstrap-salt.sh
+        mode: "0755"
+
+    - name: Run Salt bootstrap with Master-only flag
+      command: sh /tmp/bootstrap-salt.sh -M -N stable
+      args:
+        creates: /usr/bin/salt-master
+  become: true
+  when: hydra_salt_master_os == "linux"
+
+- name: Install Salt Master (macOS — Homebrew)
+  homebrew:
+    name: saltstack
+    state: present
+  become: false
+  when: hydra_salt_master_os == "macos"
+
+# ── Create required directories ────────────────────────────────────────────────
+
+- name: Create Salt state, pillar, and reactor directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ salt_states_dir }}"
+    - "{{ salt_states_dir }}/base"
+    - "{{ salt_pillar_dir }}"
+    - "{{ salt_reactors_dir }}"
+    - "{{ salt_log_dir }}"
+    - "{{ fleet_log_dir }}"
+  become: true
+
+# ── Configure Salt Master ─────────────────────────────────────────────────────
+
+- name: Deploy Salt Master config
+  template:
+    src: salt-master.conf.j2
+    dest: "{{ salt_master_config }}"
+    mode: "0640"
+  become: true
+  notify:
+    - restart salt-master (Linux)
+    - restart salt-master (macOS)
+
+# ── Deploy Salt States ────────────────────────────────────────────────────────
+
+- name: Deploy grain_report Salt state
+  template:
+    src: grain_report.sls.j2
+    dest: "{{ salt_states_dir }}/base/grain_report.sls"
+    mode: "0644"
+  become: true
+
+- name: Deploy sbom_scan Salt state
+  template:
+    src: sbom_scan.sls.j2
+    dest: "{{ salt_states_dir }}/base/sbom_scan.sls"
+    mode: "0644"
+  become: true
+
+# ── Deploy Reactor ────────────────────────────────────────────────────────────
+
+- name: Deploy reactor — grain_report on minion start
+  template:
+    src: reactor-grain_report.sls.j2
+    dest: "{{ salt_reactors_dir }}/grain_report.sls"
+    mode: "0644"
+  become: true
+
+# ── Create Pillar skeleton ────────────────────────────────────────────────────
+
+- name: Deploy pillar top.sls (references all registered minion IDs)
+  template:
+    src: pillar-top.sls.j2
+    dest: "{{ salt_pillar_dir }}/top.sls"
+    mode: "0644"
+  become: true
+
+# ── Enable and start Salt Master ──────────────────────────────────────────────
+
+- name: Enable and start salt-master (Linux)
+  systemd:
+    name: salt-master
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when: hydra_salt_master_os == "linux"
+
+- name: Start salt-master daemon (macOS)
+  command: salt-master -d
+  become: true
+  when: hydra_salt_master_os == "macos"
+  args:
+    creates: /var/run/salt/master/master.pid
+
+# ── Celery workers (Linux systemd) ────────────────────────────────────────────
+
+- name: Install Celery drift worker systemd unit
+  template:
+    src: celery-drift.service.j2
+    dest: /etc/systemd/system/fleet-celery-drift.service
+    mode: "0644"
+  become: true
+  when: hydra_salt_master_os == "linux"
+  notify: reload systemd
+
+- name: Install Celery SBOM worker systemd unit
+  template:
+    src: celery-sbom.service.j2
+    dest: /etc/systemd/system/fleet-celery-sbom.service
+    mode: "0644"
+  become: true
+  when: hydra_salt_master_os == "linux"
+  notify: reload systemd
+
+- name: Install Celery maintenance worker systemd unit
+  template:
+    src: celery-maintenance.service.j2
+    dest: /etc/systemd/system/fleet-celery-maintenance.service
+    mode: "0644"
+  become: true
+  when: hydra_salt_master_os == "linux"
+  notify: reload systemd
+
+- name: Install Celery beat scheduler systemd unit
+  template:
+    src: celery-beat.service.j2
+    dest: /etc/systemd/system/fleet-celery-beat.service
+    mode: "0644"
+  become: true
+  when: hydra_salt_master_os == "linux"
+  notify: reload systemd
+
+- name: Flush handlers (reload systemd before enabling services)
+  meta: flush_handlers
+
+- name: Enable and start Celery services (Linux)
+  systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - fleet-celery-drift
+    - fleet-celery-sbom
+    - fleet-celery-maintenance
+    - fleet-celery-beat
+  become: true
+  when: hydra_salt_master_os == "linux"
+
+# ── Verify ────────────────────────────────────────────────────────────────────
+
+- name: Verify salt-master is running
+  command: salt-master --versions-report
+  register: _salt_master_version
+  changed_when: false
+  become: true
+
+- name: Print Salt Master version
+  debug:
+    msg: "{{ _salt_master_version.stdout_lines[0] }}"

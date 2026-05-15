@@ -1,0 +1,15 @@
+# ansible/roles/salt-minion/handlers/main.yml
+---
+- name: restart salt-minion (Linux)
+  systemd:
+    name: salt-minion
+    state: restarted
+  become: true
+  when: hydra_os == "linux"
+
+- name: restart salt-minion (macOS)
+  command: >
+    launchctl kickstart -k system/com.saltstack.salt.minion
+  become: true
+  when: hydra_os == "macos"
+  ignore_errors: true

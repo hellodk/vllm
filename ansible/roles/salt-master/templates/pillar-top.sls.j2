@@ -1,0 +1,12 @@
+# /srv/salt/pillar/top.sls
+# Managed by Ansible — do not edit manually.
+# Maps each registered minion to its per-node pillar file.
+# Re-render when nodes are added: ansible-playbook salt-onboarding.yml --tags salt-minion
+base:
+{% for node in groups['all'] %}
+{% set hv = hostvars[node] %}
+{% if hv.get('hydra_fleet_token') %}
+  '{{ hv.hydra_node_id }}':
+    - {{ hv.hydra_node_id }}
+{% endif %}
+{% endfor %}

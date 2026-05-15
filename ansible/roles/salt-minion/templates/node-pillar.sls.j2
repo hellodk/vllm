@@ -1,0 +1,15 @@
+# /srv/salt/pillar/{{ hydra_node_id }}.sls  (written on Salt Master)
+# Managed by Ansible — do not edit manually.
+# Re-render: ansible-playbook salt-onboarding.yml --tags salt-minion --limit {{ hydra_node_id }}
+fleet_platform:
+  ingest_url: {{ hydra_salt_fleet_api_url }}/api/v1/ingest
+  node_token: {{ hydra_fleet_token }}
+  sbom_scan_timeout: {{ hydra_salt_sbom_timeout | default(600) }}
+
+schedule:
+  fleet_sbom_nightly:
+    function: state.apply
+    args:
+      - base.sbom_scan
+    when: "{{ hydra_salt_sbom_schedule | default('02:00am') }}"
+    enabled: True
