@@ -1,0 +1,42 @@
+# ansible/roles/otel-mac-agent/tasks/configure.yml
+# Renders the OTEL agent config and env file, validates config, updates LaunchDaemon plist.
+---
+
+- name: Render otel-agent.env (shell-sourceable, for debugging)
+  template:
+    src: otel-agent.env.j2
+    dest: "{{ otel_env_path }}"
+    mode: "0640"
+  become: true
+
+- name: Render otel-agent-config.yaml
+  template:
+    src: otel-agent-config.yaml.j2
+    dest: "{{ otel_config_path }}"
+    mode: "0640"
+  become: true
+  notify: restart otel agent
+
+- name: Validate OTEL config syntax (dry-run before restart)
+  command: "{{ otel_binary_path }} validate --config {{ otel_config_path }}"
+  become: true
+  changed_when: false
+  register: _config_valid
+
+- name: Assert config is valid
+  assert:
+    that: _config_valid.rc == 0
+    fail_msg: "OTEL config validation failed: {{ _config_valid.stderr | default('') }}"
+
+- name: Render OTEL agent LaunchDaemon plist
+  template:
+    src: com.hydra.otel-agent.plist.j2
+    dest: /Library/LaunchDaemons/{{ otel_agent_label }}.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart otel agent
+
+- name: Flush handlers (apply new config)
+  meta: flush_handlers

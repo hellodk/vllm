@@ -1,0 +1,5 @@
+# Large binaries — download/build locally per README.md
+*.tar.gz
+*.gz
+apple-silicon-exporter
+otelcol-contrib

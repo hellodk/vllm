@@ -1,0 +1,56 @@
+# ansible/roles/otel-mac-agent/tasks/install.yml
+# Copies otelcol-contrib from local files/ to target and extracts binary.
+# No internet access required on the target.
+---
+
+- name: Assert otelcol-contrib tarball exists in files/
+  local_action:
+    module: stat
+    path: "{{ role_path }}/files/otelcol-contrib_darwin_arm64.tar.gz"
+  register: _otel_tarball
+  run_once: true
+
+- name: Fail with instructions if tarball is missing
+  fail:
+    msg: |
+      Missing: {{ role_path }}/files/otelcol-contrib_darwin_arm64.tar.gz
+      See ansible/roles/otel-mac-agent/files/README.md for download instructions.
+  when: not _otel_tarball.stat.exists
+  run_once: true
+
+- name: Copy otelcol-contrib tarball to target (no internet needed)
+  copy:
+    src: otelcol-contrib_darwin_arm64.tar.gz
+    dest: /tmp/otelcol-contrib_darwin_arm64.tar.gz
+    mode: "0644"
+  become: true
+
+- name: Extract otelcol-contrib binary from tarball
+  unarchive:
+    src: /tmp/otelcol-contrib_darwin_arm64.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    creates: "{{ otel_binary_path }}"
+    extra_opts: [--strip-components=0]
+  become: true
+
+- name: Ensure otelcol-contrib is executable
+  file:
+    path: "{{ otel_binary_path }}"
+    mode: "0755"
+  become: true
+
+- name: Clean up tarball from /tmp
+  file:
+    path: /tmp/otelcol-contrib_darwin_arm64.tar.gz
+    state: absent
+  become: true
+
+- name: Verify otelcol-contrib version
+  command: "{{ otel_binary_path }} --version"
+  register: _otel_ver
+  changed_when: false
+
+- name: Show otelcol-contrib version
+  debug:
+    msg: "{{ inventory_hostname }}: {{ _otel_ver.stdout | trim }}"

@@ -1,0 +1,58 @@
+# ansible/roles/otel-mac-agent/tasks/main.yml
+# Installs otelcol-contrib + apple-silicon-exporter on Mac Mini nodes.
+# All binaries ship from roles/otel-mac-agent/files/ — no internet access required on targets.
+#
+# Required vars (set via cluster.yml → inventory_plugin):
+#   hydra_node_id               — used as salt.minion_id join key
+#   hydra_monitoring_victoria   — Victoria Metrics remote_write URL
+#   hydra_monitoring_gateway    — OTLP/gRPC endpoint (kube-prometheus)
+#   hydra_monitoring_fleet_otlp — Fleet Platform OTLP endpoint (optional, "" to disable)
+#
+# Tags:
+#   install    — copy + extract otelcol-contrib and apple-silicon-exporter binaries
+#   exporter   — apple-silicon-exporter binary + LaunchDaemon
+#   configure  — render otel config, env file, plist
+#   service    — ensure daemons are loaded and running
+---
+
+- name: Assert this role is macOS-only
+  assert:
+    that: ansible_facts['system'] == "Darwin"
+    fail_msg: "otel-mac-agent is macOS-only. Got: {{ ansible_facts['system'] }}"
+
+- name: Assert required monitoring endpoints are configured
+  assert:
+    that:
+      - hydra_monitoring_victoria | length > 0
+      - hydra_monitoring_gateway | length > 0
+    fail_msg: |
+      Missing required vars. Set under cluster.yml → monitoring:
+        victoria_metrics_url (e.g. http://192.168.1.10:8428)
+        otel_gateway_endpoint (e.g. 192.168.1.10:4317)
+
+- name: Create Hydra directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ otel_config_dir }}"
+    - "{{ otel_log_dir }}"
+  become: true
+  tags: [install, configure]
+
+- name: Install otelcol-contrib binary (offline)
+  import_tasks: install.yml
+  tags: [install]
+
+- name: Install apple-silicon-exporter (offline)
+  import_tasks: apple_exporter.yml
+  tags: [install, exporter]
+
+- name: Render OTEL config and environment
+  import_tasks: configure.yml
+  tags: [configure]
+
+- name: Ensure LaunchDaemons are loaded and running
+  import_tasks: service.yml
+  tags: [service]

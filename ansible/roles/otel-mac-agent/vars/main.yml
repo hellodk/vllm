@@ -1,0 +1,25 @@
+# ansible/roles/otel-mac-agent/vars/main.yml
+---
+# Version pins — update README.md when changing otel_version
+otel_version: "0.96.0"
+otel_binary_path: /usr/local/bin/otelcol-contrib
+
+# apple-silicon-exporter ports (fixed — do not change without updating dashboards)
+apple_exporter_port: 9101
+apple_exporter_binary: /usr/local/bin/apple-silicon-exporter
+
+# OTEL agent listen ports
+otel_health_port: 13133
+otel_prometheus_port: 8889   # local scrape endpoint (federation)
+otel_grpc_port: 4317         # OTLP ingest from local apps
+otel_http_port: 4318
+
+# Runtime paths
+otel_config_dir: /etc/hydra
+otel_log_dir: /var/log/hydra
+otel_config_path: /etc/hydra/otel-agent-config.yaml
+otel_env_path: /etc/hydra/otel-agent.env
+
+# LaunchDaemon labels
+otel_agent_label: com.hydra.otel-agent
+apple_exporter_label: com.hydra.apple-exporter

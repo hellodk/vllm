@@ -1,0 +1,67 @@
+# ansible/roles/otel-mac-agent/tasks/apple_exporter.yml
+# Copies pre-built apple-silicon-exporter binary and installs its LaunchDaemon.
+# The exporter exposes GPU%, ANE%, thermal, and power metrics from Apple Silicon hardware
+# via /metrics at localhost:9101 — scraped by otelcol's prometheus receiver.
+---
+
+- name: Assert apple-silicon-exporter binary exists in files/
+  local_action:
+    module: stat
+    path: "{{ role_path }}/files/apple-silicon-exporter"
+  register: _exporter_bin
+  run_once: true
+
+- name: Fail with build instructions if binary is missing
+  fail:
+    msg: |
+      Missing: {{ role_path }}/files/apple-silicon-exporter
+      Build it with:
+        cd apple-silicon-monitoring/apple-silicon-exporter
+        GOOS=darwin GOARCH=arm64 go build -o ../../ansible/roles/otel-mac-agent/files/apple-silicon-exporter ./cmd/exporter/
+      See ansible/roles/otel-mac-agent/files/README.md for full instructions.
+  when: not _exporter_bin.stat.exists
+  run_once: true
+
+- name: Copy apple-silicon-exporter binary to target
+  copy:
+    src: apple-silicon-exporter
+    dest: "{{ apple_exporter_binary }}"
+    mode: "0755"
+  become: true
+  register: _exporter_copy
+  notify: restart apple exporter
+
+- name: Install apple-silicon-exporter LaunchDaemon
+  template:
+    src: com.hydra.apple-exporter.plist.j2
+    dest: /Library/LaunchDaemons/{{ apple_exporter_label }}.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart apple exporter
+
+- name: Flush handlers (ensures exporter is up before OTEL config renders)
+  meta: flush_handlers
+
+- name: Bootstrap apple-silicon-exporter if not running
+  command: "launchctl bootstrap system /Library/LaunchDaemons/{{ apple_exporter_label }}.plist"
+  become: true
+  register: _exporter_bootstrap
+  changed_when: _exporter_bootstrap.rc == 0
+  ignore_errors: true
+
+- name: Wait for apple-silicon-exporter to respond
+  uri:
+    url: "http://127.0.0.1:{{ apple_exporter_port }}/metrics"
+    status_code: 200
+    timeout: 5
+  register: _exporter_health
+  until: _exporter_health.status == 200
+  retries: 6
+  delay: 5
+
+- name: Assert GPU metric is present
+  assert:
+    that: "'apple_gpu_utilization_percent' in _exporter_health.content"
+    fail_msg: "apple_gpu_utilization_percent missing from :{{ apple_exporter_port }}/metrics"

@@ -1,0 +1,218 @@
+# /etc/hydra/otel-agent-config.yaml
+# Managed by Ansible (otel-mac-agent role) — do not edit manually.
+# Re-render: ansible-playbook mac-monitoring.yml --tags configure --limit {{ hydra_node_id }}
+#
+# Architecture:
+#   hostmetrics receiver      → CPU, RAM, disk, net, load, swap, filesystem
+#   prometheus/apple_hw       → GPU%, ANE%, thermal, power (via apple-silicon-exporter :9101)
+#   resource processor        → tags every metric with node_id = salt.minion_id (Fleet join key)
+#   Fan-out exporters:
+#     prometheusremotewrite   → Victoria Metrics / Prometheus
+#     otlp/kube_prometheus    → kube-prometheus-stack via OTEL Gateway
+{% if hydra_monitoring_fleet_otlp %}
+#     otlp/fleet_platform     → Fleet Platform node context (enabled)
+{% else %}
+#     otlp/fleet_platform     → disabled (set monitoring.fleet_platform_otlp in cluster.yml to enable)
+{% endif %}
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:{{ otel_health_port }}"
+
+receivers:
+
+  # ── Standard OS metrics — built-in hostmetrics receiver ───────────────────
+  hostmetrics:
+    collection_interval: ${COLLECTION_INTERVAL}
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+          system.cpu.logical.count:
+            enabled: true
+
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+
+      disk: {}
+
+      filesystem:
+        include_mount_points:
+          mount_points: ["/", "/System/Volumes/Data"]
+          match_type: strict
+        exclude_mount_points:
+          mount_points:
+            - "/private/var/vm"
+            - "/dev"
+          match_type: regexp
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+
+      network:
+        include:
+          interfaces: ["en0", "en1"]
+          match_type: regexp
+
+      load: {}
+
+      paging:
+        metrics:
+          system.paging.utilization:
+            enabled: true
+
+  # ── Apple Silicon hardware — GPU%, ANE%, thermal, power ───────────────────
+  # Scraped from apple-silicon-exporter running as root on :9101
+  # Metrics: apple_gpu_utilization_percent, apple_gpu_temperature_celsius,
+  #          apple_system_power_watts, apple_ane_utilization_percent,
+  #          apple_thermal_pressure, apple_thermal_throttle_active
+  prometheus/apple_hw:
+    config:
+      scrape_configs:
+        - job_name: apple-silicon-hardware
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["127.0.0.1:{{ apple_exporter_port }}"]
+          metric_relabel_configs:
+            # Keep only apple_* hardware metrics; drop scrape meta
+            - source_labels: [__name__]
+              regex: '^apple_(gpu|ane|thermal|system|cpu)_.*'
+              action: keep
+
+  # ── OTLP ingest (optional — for local apps pushing traces/metrics) ────────
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "127.0.0.1:{{ otel_grpc_port }}"
+        max_recv_msg_size_mib: 4
+      http:
+        endpoint: "127.0.0.1:{{ otel_http_port }}"
+
+processors:
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 100
+    spike_limit_mib: 25
+
+  # ── Resource attributes applied to ALL metrics ────────────────────────────
+  # node_id == salt.minion_id — the join key for Fleet Platform data in Grafana
+  resource:
+    attributes:
+      - { key: host.name,      value: "${HOST_NAME}",   action: upsert }
+      - { key: node_id,        value: "${NODE_ID}",     action: upsert }
+      - { key: salt.minion_id, value: "${NODE_ID}",     action: upsert }
+      - { key: cluster,        value: "${CLUSTER}",     action: upsert }
+      - { key: environment,    value: "${ENVIRONMENT}", action: upsert }
+      - { key: gpu_provider,   value: "apple",          action: upsert }
+      - { key: chip,           value: "${CHIP}",        action: upsert }
+      - { key: pool,           value: "${POOL}",        action: upsert }
+
+  # Drop scrape meta-metrics that pollute dashboards
+  filter/drop_scrape_meta:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - "^(otelcol_|scrape_duration|scrape_samples|up$)"
+
+  batch:
+    send_batch_size: 500
+    send_batch_max_size: 1000
+    timeout: 10s
+
+exporters:
+
+  # ── Victoria Metrics / Prometheus remote write ────────────────────────────
+  prometheusremotewrite/victoriametrics:
+    endpoint: "${VICTORIA_METRICS_URL}/api/v1/write"
+    tls:
+      insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 2000
+    resource_to_telemetry_conversion:
+      enabled: true     # promotes resource attrs (node_id, salt.minion_id etc.) to metric labels
+
+  # ── kube-prometheus-stack via OTLP/gRPC ──────────────────────────────────
+  otlp/kube_prometheus:
+    endpoint: "${OTEL_GATEWAY_ENDPOINT}"
+    tls:
+      insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      num_consumers: 4
+      queue_size: 1000
+
+{% if hydra_monitoring_fleet_otlp %}
+  # ── Fleet Platform — node context enrichment ─────────────────────────────
+  # Sends metrics with salt.minion_id label → Fleet can correlate drift scores,
+  # SBOM scan status, and group membership with Grafana metric data.
+  otlp/fleet_platform:
+    endpoint: "${FLEET_PLATFORM_OTLP}"
+    tls:
+      insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+{% endif %}
+
+  # ── Local Prometheus scrape endpoint (optional federation) ────────────────
+  prometheus:
+    endpoint: "0.0.0.0:{{ otel_prometheus_port }}"
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_expiration: 5m
+
+service:
+  extensions: [health_check]
+  pipelines:
+
+    # OS-level metrics (CPU, RAM, disk, net, load, swap, filesystem)
+    metrics/system:
+      receivers: [hostmetrics]
+      processors: [memory_limiter, resource, batch]
+      exporters:
+        - prometheusremotewrite/victoriametrics
+        - otlp/kube_prometheus
+        - prometheus
+{% if hydra_monitoring_fleet_otlp %}
+        - otlp/fleet_platform
+{% endif %}
+
+    # Apple Silicon hardware metrics (GPU, ANE, thermal, power)
+    metrics/apple_hw:
+      receivers: [prometheus/apple_hw]
+      processors: [memory_limiter, resource, filter/drop_scrape_meta, batch]
+      exporters:
+        - prometheusremotewrite/victoriametrics
+        - otlp/kube_prometheus
+        - prometheus
+{% if hydra_monitoring_fleet_otlp %}
+        - otlp/fleet_platform
+{% endif %}
+
+    # OTLP ingest (local apps → all backends)
+    metrics/otlp_ingest:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters:
+        - prometheusremotewrite/victoriametrics
+        - otlp/kube_prometheus
+{% if hydra_monitoring_fleet_otlp %}
+        - otlp/fleet_platform
+{% endif %}

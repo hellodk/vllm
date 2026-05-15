@@ -14,6 +14,16 @@ cluster:
     node_exporter: "1.8.2"
     amdgpu_exporter: "1.0.0"
 
+# ── OTEL monitoring fan-out destinations ─────────────────────────────────────
+# Used by ansible/mac-monitoring.yml (otel-mac-agent role)
+# Binaries must be pre-downloaded: see ansible/roles/otel-mac-agent/files/README.md
+monitoring:
+  collection_interval: "30s"
+  victoria_metrics_url: "http://192.168.1.10:8428"    # prometheusremotewrite → Victoria Metrics
+  otel_gateway_endpoint: "192.168.1.10:4317"           # otlp/grpc → kube-prometheus-stack
+  fleet_platform_otlp: ""                              # optional otlp/http → Fleet Platform (empty = disabled)
+  # salt.minion_id = node_id — join key for Fleet Platform data in Grafana
+
 # ── Jenkins iOS build agent configuration ────────────────────────────────────
 jenkins:
   host: "http://192.168.1.1:30881"     # Jenkins controller URL (k8s NodePort or direct)

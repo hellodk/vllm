@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.apple-exporter.plist
+  Managed by Ansible (otel-mac-agent role) — do not edit manually.
+
+  Runs apple-silicon-exporter as root (required for powermetrics).
+  Exposes GPU%, ANE%, thermal pressure, thermal throttle, and power draw
+  as Prometheus metrics at localhost:{{ apple_exporter_port }}/metrics.
+  Scraped by the otelcol prometheus/apple_hw receiver.
+-->
+<plist version="1.0">
+<dict>
+
+  <key>Label</key>
+  <string>{{ apple_exporter_label }}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ apple_exporter_binary }}</string>
+    <string>--listen</string>
+    <string>127.0.0.1:{{ apple_exporter_port }}</string>
+    <string>--enable-iokit</string>
+    <string>--enable-powermetrics</string>
+    <string>--enable-metal</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>{{ otel_log_dir }}/apple-exporter.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{ otel_log_dir }}/apple-exporter-error.log</string>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+</dict>
+</plist>

@@ -50,11 +50,12 @@ def build_inventory(cluster: dict) -> dict:
                     f"must be one of {VALID_LLM_PROVIDERS}"
                 )
 
-        # Resolve salt and jenkins config from cluster.yml
+        # Resolve salt, jenkins, and monitoring config from cluster.yml
         salt_cfg = cluster.get("salt", {})
         salt_master = salt_cfg.get("master", {})
         salt_config = salt_cfg.get("config", {})
         jenkins_cfg = cluster.get("jenkins", {})
+        monitoring_cfg = cluster.get("monitoring", {})
 
         # Host vars — ansible connection + hydra metadata
         inv["_meta"]["hostvars"][nid] = {
@@ -97,6 +98,11 @@ def build_inventory(cluster: dict) -> dict:
             "hydra_jenkins_agent_name": jenkins_cfg.get("agent_name", nid),
             "hydra_jenkins_user": jenkins_cfg.get("user", "dk"),
             "hydra_pulse_repo_dir": jenkins_cfg.get("pulse_repo_dir", "/Users/dk/pulse"),
+            # OTEL monitoring fan-out vars (cluster-wide, same for all nodes)
+            "hydra_monitoring_victoria": monitoring_cfg.get("victoria_metrics_url", ""),
+            "hydra_monitoring_gateway": monitoring_cfg.get("otel_gateway_endpoint", ""),
+            "hydra_monitoring_fleet_otlp": monitoring_cfg.get("fleet_platform_otlp", ""),
+            "hydra_monitoring_interval": monitoring_cfg.get("collection_interval", "30s"),
         }
 
         inv["all"]["hosts"].append(nid)

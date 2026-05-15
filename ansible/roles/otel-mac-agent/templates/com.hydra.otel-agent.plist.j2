@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.otel-agent.plist
+  Managed by Ansible (otel-mac-agent role) — do not edit manually.
+  Re-render: ansible-playbook mac-monitoring.yml --tags configure --limit {{ hydra_node_id }}
+
+  NOTE: macOS LaunchDaemon does not support EnvironmentFile.
+  All environment variables are baked into this plist — source of truth is cluster.yml.
+-->
+<plist version="1.0">
+<dict>
+
+  <key>Label</key>
+  <string>{{ otel_agent_label }}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ otel_binary_path }}</string>
+    <string>--config</string>
+    <string>{{ otel_config_path }}</string>
+  </array>
+
+  <!-- All env vars baked in (no EnvironmentFile support in LaunchDaemon) -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Node identity — NODE_ID == salt.minion_id (Fleet Platform join key) -->
+    <key>NODE_ID</key>
+    <string>{{ hydra_node_id }}</string>
+    <key>HOST_NAME</key>
+    <string>{{ hydra_hostname }}</string>
+    <key>CLUSTER</key>
+    <string>{{ hydra_cluster_name }}</string>
+    <key>ENVIRONMENT</key>
+    <string>{{ hydra_environment }}</string>
+    <key>CHIP</key>
+    <string>{{ hydra_chip | default('unknown') }}</string>
+    <key>POOL</key>
+    <string>{{ hydra_pools | join(',') }}</string>
+    <!-- Monitoring destinations -->
+    <key>VICTORIA_METRICS_URL</key>
+    <string>{{ hydra_monitoring_victoria }}</string>
+    <key>OTEL_GATEWAY_ENDPOINT</key>
+    <string>{{ hydra_monitoring_gateway }}</string>
+{% if hydra_monitoring_fleet_otlp %}
+    <key>FLEET_PLATFORM_OTLP</key>
+    <string>{{ hydra_monitoring_fleet_otlp }}</string>
+{% endif %}
+    <!-- Tuning -->
+    <key>COLLECTION_INTERVAL</key>
+    <string>{{ hydra_monitoring_interval | default('30s') }}</string>
+    <key>GOMAXPROCS</key>
+    <string>2</string>
+    <key>GOMEMLIMIT</key>
+    <string>100MiB</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>{{ otel_log_dir }}/otel-agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{ otel_log_dir }}/otel-agent-error.log</string>
+
+  <!-- Throttle restart storms -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+</dict>
+</plist>

@@ -1,0 +1,51 @@
+# ansible/roles/otel-mac-agent/tasks/service.yml
+# Ensures both LaunchDaemons are loaded and healthy.
+---
+
+- name: Bootstrap OTEL agent LaunchDaemon (first load)
+  command: "launchctl bootstrap system /Library/LaunchDaemons/{{ otel_agent_label }}.plist"
+  become: true
+  register: _otel_bootstrap
+  changed_when: _otel_bootstrap.rc == 0
+  ignore_errors: true   # Tahoe: "Bootstrap failed: 5" is a known quirk, service still starts
+
+- name: Wait for OTEL agent health endpoint
+  uri:
+    url: "http://localhost:{{ otel_health_port }}"
+    status_code: 200
+    timeout: 5
+  register: _health
+  until: _health.status == 200
+  retries: 12
+  delay: 5
+
+- name: Verify OTEL agent process is owned by launchd (PPID=1)
+  shell: >
+    ps -ef | grep otelcol-contrib | grep -v grep | awk '{print $3}' | head -1
+  register: _ppid
+  changed_when: false
+
+- name: Assert OTEL agent is managed by launchd
+  assert:
+    that: _ppid.stdout | trim == "1"
+    fail_msg: >
+      otelcol-contrib PPID={{ _ppid.stdout | trim }}, expected 1.
+      macOS Tahoe note: 'Bootstrap failed: 5' is cosmetic — verify with ps -ef.
+
+- name: Confirm apple-silicon-exporter is still running
+  uri:
+    url: "http://127.0.0.1:{{ apple_exporter_port }}/metrics"
+    status_code: 200
+    timeout: 5
+  register: _hw_check
+  changed_when: false
+
+- name: Print monitoring stack status
+  debug:
+    msg:
+      - "{{ hydra_node_id }}: OTEL agent healthy on :{{ otel_health_port }}"
+      - "{{ hydra_node_id }}: Apple exporter healthy on :{{ apple_exporter_port }}"
+      - "Exporting to:"
+      - "  prometheusremotewrite → {{ hydra_monitoring_victoria }}"
+      - "  otlp/grpc             → {{ hydra_monitoring_gateway }}"
+      - "{% if hydra_monitoring_fleet_otlp %}  otlp/http (fleet)     → {{ hydra_monitoring_fleet_otlp }}{% else %}  otlp/http (fleet)     → disabled{% endif %}"

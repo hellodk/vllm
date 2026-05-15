@@ -1,0 +1,33 @@
+# ansible/mac-monitoring.yml
+# Deploys otelcol-contrib + apple-silicon-exporter on all macOS Mac Mini nodes.
+# No internet access required on targets — binaries ship from files/.
+#
+# Usage:
+#   cd ansible
+#   ansible-playbook mac-monitoring.yml                        # all macOS nodes
+#   ansible-playbook mac-monitoring.yml --limit p1-m3-16g     # single node
+#   ansible-playbook mac-monitoring.yml --tags configure       # config + plist only (fast)
+#   ansible-playbook mac-monitoring.yml --tags service         # restart services only
+#   ansible-playbook mac-monitoring.yml --check --diff        # dry-run
+#
+# Prerequisites:
+#   1. Download binaries per ansible/roles/otel-mac-agent/files/README.md
+#   2. Set monitoring.victoria_metrics_url and monitoring.otel_gateway_endpoint in cluster.yml
+#
+# Node identity join key:
+#   Every metric is tagged with salt.minion_id = node_id (from cluster.yml).
+#   Use this in Grafana to join monitoring data with Fleet Platform data
+#   (drift scores, SBOM scan status, group membership) via label lookups.
+---
+
+- name: Deploy OTEL monitoring stack on Mac Mini nodes
+  hosts: os_macos
+  gather_facts: true
+  serial: 5
+  vars:
+    hydra_monitoring_victoria: "{{ hostvars[inventory_hostname].hydra_monitoring_victoria }}"
+    hydra_monitoring_gateway: "{{ hostvars[inventory_hostname].hydra_monitoring_gateway }}"
+    hydra_monitoring_fleet_otlp: "{{ hostvars[inventory_hostname].hydra_monitoring_fleet_otlp | default('') }}"
+    hydra_monitoring_interval: "{{ hostvars[inventory_hostname].hydra_monitoring_interval | default('30s') }}"
+  roles:
+    - otel-mac-agent
