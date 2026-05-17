@@ -1,0 +1,3 @@
+# Pre-staged binaries — download per README.md; never commit
+minio_darwin_arm64
+mc_darwin_arm64

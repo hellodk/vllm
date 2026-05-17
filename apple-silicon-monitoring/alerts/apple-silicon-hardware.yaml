@@ -134,18 +134,20 @@ groups:
       #
       
       - alert: HighPowerConsumption
-        expr: apple_system_power_watts > 80
+        expr: apple_system_power_watts > 65
         for: 10m
         labels:
           severity: warning
           team: infrastructure
           category: power
         annotations:
-          summary: "High power consumption on {{ $labels.instance }}"
+          summary: "High power consumption on {{ $labels.node_id }} (M4)"
           node_id: "{{ $labels.node_id }}"
           description: |
-            System power is {{ $value | printf "%.1f" }}W, which is approaching maximum TDP.
-            M4 Max TDP is approximately 90W.
+            M4 Mac Mini system power is {{ $value | printf "%.1f" }}W.
+            Idle: ~20W · Typical inference: ~40–50W · Alert threshold: 65W
+            Above 65W risks sustained thermal throttling on M4 Mac Mini.
+            Check for runaway processes or thermal blockage.
 
       - alert: PowerSpike
         expr: |

@@ -1,0 +1,15 @@
+# ansible/roles/model-registry/handlers/main.yml
+---
+- name: restart minio
+  shell: |
+    launchctl bootout system/com.hydra.minio 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.minio.plist
+  become: true
+  ignore_errors: true
+
+- name: restart model-registry
+  shell: |
+    launchctl bootout system/com.hydra.model-registry 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.model-registry.plist
+  become: true
+  ignore_errors: true

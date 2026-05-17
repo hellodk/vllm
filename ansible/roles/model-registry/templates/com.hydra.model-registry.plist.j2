@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.model-registry.plist
+  Managed by Ansible (model-registry role) — do not edit manually.
+  Catalog service: model registration, approval, sha256 verification.
+  Backed by MinIO (artifacts) and Fleet Platform PostgreSQL (metadata).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.model-registry</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ model_registry_dir }}/venv/bin/uvicorn</string>
+    <string>registry_api:app</string>
+    <string>--host</string><string>0.0.0.0</string>
+    <string>--port</string><string>{{ model_registry_port }}</string>
+    <string>--workers</string><string>2</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ model_registry_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DATABASE_URL</key>
+    <string>{{ model_registry_db_url }}</string>
+    <key>MINIO_URL</key>
+    <string>http://localhost:{{ minio_port }}</string>
+    <key>MINIO_ACCESS_KEY</key>
+    <string>{{ minio_access_key }}</string>
+    <key>MINIO_SECRET_KEY</key>
+    <string>{{ minio_secret_key }}</string>
+    <key>MINIO_BUCKET</key>
+    <string>{{ minio_bucket }}</string>
+    <key>ADMIN_TOKEN</key>
+    <string>{{ model_registry_admin_token }}</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/model-registry.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/model-registry-error.log</string>
+</dict>
+</plist>

@@ -1,0 +1,167 @@
+# ansible/roles/model-registry/tasks/main.yml
+# Deploys MinIO (artifact store) + Model Registry API on hydra-store-01.
+# Air-gapped: all binaries pre-staged in files/ — no internet on target.
+# See ansible/roles/model-registry/files/README.md for offline prep.
+---
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+
+- name: Assert MinIO binary is pre-staged in files/
+  delegate_to: localhost
+  stat:
+    path: "{{ role_path }}/files/minio_darwin_arm64"
+  register: _minio_bin
+  run_once: true
+
+- name: Fail with prep instructions if MinIO binary is missing
+  fail:
+    msg: |
+      Missing: {{ role_path }}/files/minio_darwin_arm64
+      See ansible/roles/model-registry/files/README.md — download MinIO and place here.
+  when: not _minio_bin.stat.exists
+  run_once: true
+
+# ── Directories ───────────────────────────────────────────────────────────────
+
+- name: Create MinIO data directory
+  file:
+    path: "{{ minio_data_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Create Model Registry application directory
+  file:
+    path: "{{ model_registry_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Create Hydra log directory
+  file:
+    path: /var/log/hydra
+    state: directory
+    mode: "0755"
+  become: true
+
+# ── MinIO ─────────────────────────────────────────────────────────────────────
+
+- name: Copy MinIO server binary (offline)
+  copy:
+    src: minio_darwin_arm64
+    dest: /usr/local/bin/minio
+    mode: "0755"
+  become: true
+
+- name: Copy MinIO client binary (offline)
+  copy:
+    src: mc_darwin_arm64
+    dest: /usr/local/bin/mc
+    mode: "0755"
+  become: true
+  ignore_errors: true   # mc is optional — manual uploads also work
+
+- name: Install MinIO LaunchDaemon
+  template:
+    src: com.hydra.minio.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.minio.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart minio
+
+- name: Bootstrap MinIO LaunchDaemon (first load)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.minio.plist
+  become: true
+  register: _minio_boot
+  changed_when: _minio_boot.rc == 0
+  ignore_errors: true
+
+- name: Wait for MinIO health endpoint
+  uri:
+    url: "http://localhost:{{ minio_port }}/minio/health/live"
+    status_code: 200
+    timeout: 5
+  register: _minio_health
+  until: _minio_health.status == 200
+  retries: 12
+  delay: 5
+
+- name: Create models bucket in MinIO
+  shell: >
+    /usr/local/bin/mc alias set local
+    http://localhost:{{ minio_port }}
+    {{ minio_access_key }} {{ minio_secret_key }} &&
+    /usr/local/bin/mc mb local/{{ minio_bucket }} --ignore-existing
+  become: true
+  changed_when: false
+  ignore_errors: true   # mc may not be present; bucket creation is idempotent
+
+# ── Model Registry API (Python FastAPI) ───────────────────────────────────────
+
+- name: Copy registry API source
+  copy:
+    src: registry_api.py
+    dest: "{{ model_registry_dir }}/registry_api.py"
+    mode: "0644"
+  become: true
+  notify: restart model-registry
+
+- name: Create registry virtualenv
+  command: python3 -m venv "{{ model_registry_dir }}/venv"
+  args:
+    creates: "{{ model_registry_dir }}/venv/bin/python"
+  become: true
+
+- name: Install registry API Python dependencies
+  pip:
+    name:
+      - "fastapi==0.115.0"
+      - "uvicorn[standard]==0.32.0"
+      - "minio==7.2.0"
+      - "psycopg2-binary==2.9.10"
+      - "python-multipart==0.0.12"
+    virtualenv: "{{ model_registry_dir }}/venv"
+    state: present
+  become: true
+
+- name: Install Model Registry LaunchDaemon
+  template:
+    src: com.hydra.model-registry.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.model-registry.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart model-registry
+
+- name: Flush handlers (start services)
+  meta: flush_handlers
+
+- name: Bootstrap Model Registry LaunchDaemon
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.model-registry.plist
+  become: true
+  register: _reg_boot
+  changed_when: _reg_boot.rc == 0
+  ignore_errors: true
+
+- name: Wait for Model Registry health endpoint
+  uri:
+    url: "http://localhost:{{ model_registry_port }}/health"
+    status_code: 200
+    timeout: 5
+  register: _reg_health
+  until: _reg_health.status == 200
+  retries: 12
+  delay: 5
+
+- name: Model Registry deployment summary
+  debug:
+    msg:
+      - "MinIO:            http://{{ inventory_hostname }}:{{ minio_port }}"
+      - "MinIO console:    http://{{ inventory_hostname }}:{{ minio_console_port }}"
+      - "Model Registry:   http://{{ inventory_hostname }}:{{ model_registry_port }}"
+      - "API docs:         http://{{ inventory_hostname }}:{{ model_registry_port }}/docs"
+
+# Handlers live in handlers/main.yml

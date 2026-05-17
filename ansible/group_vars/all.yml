@@ -1,31 +1,33 @@
 # ansible/group_vars/all.yml
 
-# Exporter listen ports — fixed, do not change without updating dashboard queries
+# ── Exporter listen ports ─────────────────────────────────────────────────────
+# Fixed — do not change without updating dashboard queries
 hw_exporter_ports:
   apple: 9101
   nvidia: 9400
   amd: 9102
   none: 9100
 
-# Default LLM provider probe ports (used when llm_endpoints not set in cluster.yml)
+# ── Default LLM provider probe ports ─────────────────────────────────────────
 llm_probe_ports:
   11434: ollama
   21434: llamacpp
   8000: vllm-mlx
   8080: litellm
 
-# OTEL agent download base URL
-otel_agent_download_base: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download"
+# ── Offline binary directory ──────────────────────────────────────────────────
+# NO internet access on targets — all binaries pre-staged here by operator.
+# See ansible/roles/otel-mac-agent/files/README.md and
+#     ansible/roles/model-registry/files/README.md for download instructions.
+offline_bin_dir: "{{ playbook_dir }}/roles/otel-mac-agent/files"
 
-# node_exporter download base URL
-node_exporter_download_base: "https://github.com/prometheus/node_exporter/releases/download"
-
-# Allowed enum values — inventory_plugin.py validates against these
+# ── Allowed enum values ───────────────────────────────────────────────────────
 valid_os: [macos, linux]
 valid_gpu_providers: [apple, nvidia, amd, none]
 valid_llm_providers: [llamacpp, ollama, vllm-mlx, litellm]
+valid_pools: [fast, reason, largepool, vision, embed, speech, gateway, infra]
 
-# Hydra directories created on every node
+# ── Hydra directories created on every node ──────────────────────────────────
 hydra_dirs:
   linux:
     - /etc/hydra
@@ -34,3 +36,34 @@ hydra_dirs:
   macos:
     - /Library/Application Support/Hydra
     - /etc/hydra
+
+# ── 10 GbE network tuning ────────────────────────────────────────────────────
+network_interface: en0
+network_mtu: 9000              # jumbo frames — must be enabled on switch too
+network_rdma_mode: "RoCE-v2"  # RDMA over Converged Ethernet v2
+network_pfc_enabled: true      # Priority Flow Control (lossless Ethernet for RDMA)
+network_subnet: "192.168.10.0/24"
+
+# ── Internal services (air-gapped) ───────────────────────────────────────────
+ntp_server: "192.168.10.13"    # hydra-svc-01 acts as NTP stratum 1
+dns_server: "192.168.10.10"    # hydra-gw-01 runs dnsmasq
+dns_domain: "hydra.local"
+
+# ── Model registry ───────────────────────────────────────────────────────────
+model_registry_port: 8100
+minio_port: 9000
+minio_console_port: 9001
+
+# ── LargePool distributed inference (2×2 tensor-parallel via RDMA) ───────────
+# Group A: hydra-large-01 (192.168.10.40) ↔ hydra-large-02 (192.168.10.41)
+# Group B: hydra-large-03 (192.168.10.42) ↔ hydra-large-04 (192.168.10.43)
+tensor_parallel_groups:
+  A: [hydra-large-01, hydra-large-02]
+  B: [hydra-large-03, hydra-large-04]
+tensor_parallel_model: "Qwen2.5-32B-Instruct-Q4_K_M"   # ~20 GB, fits 2×10 GB
+tensor_parallel_runtime: "vllm-multinode"                # or: exo
+
+# ── Per-node local model cache ────────────────────────────────────────────────
+# 10 GbE: 5 GB (8B) in ~4s; 20 GB (32B) in ~16s from MinIO — pull on first load
+local_model_cache_dir: "/Users/dk/models"
+model_store_url: "http://192.168.10.12:9000"             # hydra-store-01 MinIO

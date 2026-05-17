@@ -3,25 +3,43 @@ cluster:
   name: hydra-prod
   environment: production
   otel_gateway:
-    primary: "192.168.1.10:4317"
+    primary: "192.168.10.13:4317"    # hydra-svc-01
     secondary: ""
-  prometheus_url: "http://192.168.1.10:9090"
-  models_dir: "~/models"
+  prometheus_url: "http://192.168.10.13:9090"
+  models_dir: "/Users/dk/models"
   versions:
     otel_agent: "0.96.0"
-    dcgm_exporter: "3.3.6"
     apple_silicon_exporter: "1.0.0"
-    node_exporter: "1.8.2"
-    amdgpu_exporter: "1.0.0"
+
+  # ── Network (10 GbE + RDMA) ────────────────────────────────────────────────
+  network:
+    speed: "10GbE"
+    rdma: true
+    rdma_mode: "RoCE-v2"           # RDMA over Converged Ethernet v2
+    interface: "en0"
+    mtu: 9000                       # jumbo frames — set on switch and all nodes
+    subnet: "192.168.10.0/24"
+    ntp_server: "192.168.10.13"     # hydra-svc-01 acts as internal NTP stratum
+    dns_server: "192.168.10.10"     # hydra-gw-01 runs dnsmasq (hydra.local)
+    dns_domain: "hydra.local"
+
+  # ── Model registry (air-gapped — no internet) ─────────────────────────────
+  model_registry:
+    url: "http://192.168.10.12:8100"
+    minio_url: "http://192.168.10.12:9000"
+    minio_bucket: "hydra-models"
+    minio_access_key: "hydra-admin"
+    minio_secret_key: "changeme-v2"   # override before production use
 
 # ── OTEL monitoring fan-out destinations ─────────────────────────────────────
 # Used by ansible/mac-monitoring.yml (otel-mac-agent role)
-# Binaries must be pre-downloaded: see ansible/roles/otel-mac-agent/files/README.md
+# Binaries must be pre-staged locally — NO internet on targets.
+# See ansible/roles/otel-mac-agent/files/README.md
 monitoring:
   collection_interval: "30s"
-  victoria_metrics_url: "http://192.168.1.10:8428"    # prometheusremotewrite → Victoria Metrics
-  otel_gateway_endpoint: "192.168.1.10:4317"           # otlp/grpc → kube-prometheus-stack
-  fleet_platform_otlp: ""                              # optional otlp/http → Fleet Platform (empty = disabled)
+  victoria_metrics_url: "http://192.168.10.13:8428"   # hydra-svc-01
+  otel_gateway_endpoint: "192.168.10.13:4317"
+  fleet_platform_otlp: "http://192.168.10.13:8000/otlp"
   # salt.minion_id = node_id — join key for Fleet Platform data in Grafana
 
 # ── Jenkins iOS build agent configuration ────────────────────────────────────
@@ -37,7 +55,7 @@ salt:
   master:
     id: fleet-control                        # ansible inventory hostname for the control plane
     hostname: fleet-control
-    ip: 192.168.1.1                          # LAN IP of the Salt Master / Fleet Platform server
+    ip: 192.168.10.13                        # hydra-svc-01 — Salt Master co-located on services node
     user: dk
     ssh_port: 22
     become: true
@@ -47,7 +65,7 @@ salt:
     kri_venv_dir: "/home/dk/Documents/git/kri/.venv"
     kri_user: dk
   config:
-    fleet_api_url: "http://192.168.1.1:8000"
+    fleet_api_url: "http://192.168.10.13:8000"
     fleet_admin_email: "admin@fleet.local"
     fleet_admin_password: "changeme123"      # plain text v1 — move to vault in v2
     auto_accept_keys: true
@@ -55,6 +73,297 @@ salt:
     sbom_scan_timeout: 600
     log_level: info
 
+# ── Production cluster: 28 × Mac Mini M4 16 GB — 10 GbE + RDMA ───────────────
+# Pool allocation: 2 gw + 1 store + 1 svc + 10 fast + 4 reason + 4 large + 3 vision + 2 embed + 1 speech
+# Subnet: 192.168.10.0/24 · MTU 9000 (jumbo frames) · domain: hydra.local
+production_nodes:
+
+  # ── Infrastructure (non-inference) ──────────────────────────────────────────
+  - &m4_defaults
+    user: dk
+    ssh_port: 22
+    become: true
+    become_method: sudo
+    os: macos
+    gpu_provider: apple
+    chip: m4
+    ram_gb: 16
+    storage_gb: 512
+    maintenance: false
+    metric_labels: {}
+    fleet_token: ~
+    ios_build_agent: false
+    jenkins_secret: ~
+
+  - id: hydra-gw-01
+    hostname: hydra-gw-01
+    ip: 192.168.10.10
+    <<: *m4_defaults
+    pools: [gateway]
+    models_dir: ~
+    llm_endpoints: []
+    role_note: "LiteLLM GW 1 :4000 · HAProxy active · dnsmasq (hydra.local)"
+
+  - id: hydra-gw-02
+    hostname: hydra-gw-02
+    ip: 192.168.10.11
+    <<: *m4_defaults
+    pools: [gateway]
+    models_dir: ~
+    llm_endpoints: []
+    role_note: "LiteLLM GW 2 :4000 · HAProxy passive"
+
+  - id: hydra-store-01
+    hostname: hydra-store-01
+    ip: 192.168.10.12
+    <<: *m4_defaults
+    pools: [infra]
+    models_dir: ~
+    llm_endpoints: []
+    role_note: "MinIO :9000 · Model Registry API :8100 · sha256 artifact catalog"
+
+  - id: hydra-svc-01
+    hostname: hydra-svc-01
+    ip: 192.168.10.13
+    <<: *m4_defaults
+    pools: [infra]
+    models_dir: ~
+    llm_endpoints: []
+    role_note: "Fleet API :8000 · PostgreSQL :5432 · Redis :6379 · VictoriaMetrics :8428 · Grafana :3000 · Alertmanager · NTP · Salt Master"
+
+  # ── FastPool: 10 × M4 — 8B Q4_K_M · tag=fast ─────────────────────────────
+  - id: hydra-fast-01
+    hostname: hydra-fast-01
+    ip: 192.168.10.20
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  - id: hydra-fast-02
+    hostname: hydra-fast-02
+    ip: 192.168.10.21
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  - id: hydra-fast-03
+    hostname: hydra-fast-03
+    ip: 192.168.10.22
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  - id: hydra-fast-04
+    hostname: hydra-fast-04
+    ip: 192.168.10.23
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-fast-05
+    hostname: hydra-fast-05
+    ip: 192.168.10.24
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-fast-06
+    hostname: hydra-fast-06
+    ip: 192.168.10.25
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-fast-07
+    hostname: hydra-fast-07
+    ip: 192.168.10.26
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-fast-08
+    hostname: hydra-fast-08
+    ip: 192.168.10.27
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-fast-09
+    hostname: hydra-fast-09
+    ip: 192.168.10.28
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-fast-10
+    hostname: hydra-fast-10
+    ip: 192.168.10.29
+    <<: *m4_defaults
+    pools: [fast]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  # ── ReasonPool: 4 × M4 — 14B Q4_K_M · tag=reason ─────────────────────────
+  - id: hydra-reason-01
+    hostname: hydra-reason-01
+    ip: 192.168.10.30
+    <<: *m4_defaults
+    pools: [reason]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  - id: hydra-reason-02
+    hostname: hydra-reason-02
+    ip: 192.168.10.31
+    <<: *m4_defaults
+    pools: [reason]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-reason-03
+    hostname: hydra-reason-03
+    ip: 192.168.10.32
+    <<: *m4_defaults
+    pools: [reason]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-reason-04
+    hostname: hydra-reason-04
+    ip: 192.168.10.33
+    <<: *m4_defaults
+    pools: [reason]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama,   url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  # ── LargePool: 4 × M4 — 32B/70B tensor-parallel · tag=large · RDMA ───────
+  # Configured as 2 × 2-node tensor-parallel groups (Group A and Group B)
+  # AllReduce latency: ~2 μs (RDMA RoCE-v2) vs ~320 ms at 1 Gbps TCP
+  - id: hydra-large-01
+    hostname: hydra-large-01
+    ip: 192.168.10.40
+    <<: *m4_defaults
+    pools: [largepool]
+    tensor_parallel_group: A          # peer: hydra-large-02 (192.168.10.41)
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  - id: hydra-large-02
+    hostname: hydra-large-02
+    ip: 192.168.10.41
+    <<: *m4_defaults
+    pools: [largepool]
+    tensor_parallel_group: A
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  - id: hydra-large-03
+    hostname: hydra-large-03
+    ip: 192.168.10.42
+    <<: *m4_defaults
+    pools: [largepool]
+    tensor_parallel_group: B          # peer: hydra-large-04 (192.168.10.43)
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  - id: hydra-large-04
+    hostname: hydra-large-04
+    ip: 192.168.10.43
+    <<: *m4_defaults
+    pools: [largepool]
+    tensor_parallel_group: B
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  # ── VisionPool: 3 × M4 — 8B VL Q4_K_M · tag=vision ──────────────────────
+  - id: hydra-vision-01
+    hostname: hydra-vision-01
+    ip: 192.168.10.50
+    <<: *m4_defaults
+    pools: [vision]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama, url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-vision-02
+    hostname: hydra-vision-02
+    ip: 192.168.10.51
+    <<: *m4_defaults
+    pools: [vision]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama, url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  - id: hydra-vision-03
+    hostname: hydra-vision-03
+    ip: 192.168.10.52
+    <<: *m4_defaults
+    pools: [vision]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: ollama, url: "http://127.0.0.1:11434/v1", api_key: ~ }
+
+  # ── EmbedPool: 2 × M4 — BGE-M3 F16 · tag=embed ──────────────────────────
+  - id: hydra-embed-01
+    hostname: hydra-embed-01
+    ip: 192.168.10.60
+    <<: *m4_defaults
+    pools: [embed]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  - id: hydra-embed-02
+    hostname: hydra-embed-02
+    ip: 192.168.10.61
+    <<: *m4_defaults
+    pools: [embed]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+  # ── SpeechPool: 1 × M4 — Whisper large-v3 · tag=speech ──────────────────
+  - id: hydra-speech-01
+    hostname: hydra-speech-01
+    ip: 192.168.10.70
+    <<: *m4_defaults
+    pools: [speech]
+    models_dir: "/Users/dk/models"
+    llm_endpoints:
+      - { provider: llamacpp, url: "http://127.0.0.1:21434/v1", api_key: ~ }
+
+# ── Phase 1 pilot nodes (benchmark baseline — kept for testing) ───────────────
 nodes:
   - id: p1-m2-8g
     hostname: mac-m2-8g

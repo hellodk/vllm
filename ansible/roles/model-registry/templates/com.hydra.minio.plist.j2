@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.minio.plist
+  Managed by Ansible (model-registry role) — do not edit manually.
+  Object storage for all approved LLM model artifacts (GGUF + MLX).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.minio</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/minio</string>
+    <string>server</string>
+    <string>{{ minio_data_dir }}</string>
+    <string>--address</string>
+    <string>:{{ minio_port }}</string>
+    <string>--console-address</string>
+    <string>:{{ minio_console_port }}</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MINIO_ROOT_USER</key>
+    <string>{{ minio_access_key }}</string>
+    <key>MINIO_ROOT_PASSWORD</key>
+    <string>{{ minio_secret_key }}</string>
+    <key>MINIO_BROWSER</key>
+    <string>on</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/minio.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/minio-error.log</string>
+</dict>
+</plist>

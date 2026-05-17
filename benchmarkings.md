@@ -1,8 +1,8 @@
 # Hydra LLM Benchmark Log
 
-**Cluster**: 40-node Apple Silicon Mac Mini (M1/M3/M4)  
+**Cluster**: 28-node Apple Silicon Mac Mini M4 16 GB (uniform) — 10 GbE + RDMA  
 **Scale target**: ≤1,000 internal users  
-**Revision**: 1.1 — 2026-04-28  
+**Revision**: 1.2 — 2026-05-16  
 **Status**: Live — append rows to Section 11 (Run Log) after each run
 
 > **Phase 1 (current)**: 3-machine pilot — Apple M2 8 GB, Apple M3 16 GB, Intel i7-12th Gen + RTX 3050 4 GB (Linux).  
@@ -326,15 +326,23 @@ uname -a
 
 ### 5.1 Hydra cluster node pool assignment
 
-| Pool | Node count | Chip | Primary workload |
-|------|-----------|------|-----------------|
-| FastPool | 20 | M4 | Autocomplete, short chat (8B Q4_K_M) |
-| ReasonPool | 8 | M4 | Long chat, reasoning (14B Q4_K_M) |
-| VisionPool | 6 | M3 | Vision/multimodal (8B VL Q4_K_M) |
-| EmbedPool | 4 | M1/M3 | Embeddings (BGE-M3) |
-| SpeechPool | 2 | M1 | ASR (Whisper) |
-| Gateway × 2 | 2 | M1 | LiteLLM + HAProxy (no inference) |
-| Model Store | 2 | M1 | MinIO / NFS |
+All 28 nodes are **Mac Mini M4 16 GB** (homogeneous). Network: **10 GbE, MTU 9000**.
+
+| Pool | Nodes | Chip | Network | Primary workload |
+|------|-------|------|---------|-----------------|
+| FastPool | 10 | M4 | 10 GbE | Autocomplete, short chat (8B Q4_K_M) |
+| ReasonPool | 4 | M4 | 10 GbE | Long chat, reasoning (14B Q4_K_M) |
+| **LargePool** | **4** | **M4** | **10 GbE + RDMA** | **Distributed 32B–70B (2×2 tensor-parallel via RoCE-v2)** |
+| VisionPool | 3 | M4 | 10 GbE | Vision/multimodal (8B VL Q4_K_M) |
+| EmbedPool | 2 | M4 | 10 GbE | Embeddings (BGE-M3) |
+| SpeechPool | 1 | M4 | 10 GbE | ASR (Whisper) |
+| Gateway | 2 | M4 | 10 GbE | LiteLLM + HAProxy (no inference) |
+| Model Store / Registry | 1 | M4 | 10 GbE | MinIO :9000 + Registry API :8100 |
+| Services | 1 | M4 | 10 GbE | Fleet API + PostgreSQL + Redis + Grafana + VictoriaMetrics + NTP |
+| **Total** | **28** | M4 | — | — |
+
+> **10 GbE impact on model distribution**: 8B model (~5 GB) pulls from MinIO in ~4 s (was ~40 s at 1 Gbps). 32B model (~20 GB) in ~16 s.  
+> **RDMA impact on LargePool**: AllReduce latency ~2 μs (RoCE-v2) vs ~320 ms at 1 Gbps TCP — makes 2-node tensor-parallel inference practical.
 
 ---
 
@@ -531,14 +539,21 @@ Target SLAs:
 
 ### 8.3 Architecture capacity model (theoretical, pre-measurement)
 
-Based on Section 1.2 chip bandwidth and the 60% RAM rule:
+Based on M4 memory bandwidth (120 GB/s), 60% RAM rule (9.6 GB weight ceiling), and 10 GbE network:
 
-| Pool | Nodes | Model | Estimated tok/s/node | Cluster tok/s | Est. max concurrent @ SLA |
-|------|-------|-------|---------------------|---------------|--------------------------|
-| FastPool | 20 × M4 | 8B Q4_K_M | 25–35 | 500–700 | ~140–200 users |
-| ReasonPool | 8 × M4 | 14B Q4_K_M | 15–22 | 120–176 | ~30–50 users |
-| VisionPool | 6 × M3 | 8B VL Q4_K_M | 18–25 | 108–150 | ~25–40 users |
-| EmbedPool | 4 × M1/M3 | BGE-M3 | ~500 seq/s | ~2000 seq/s | ~200+ users |
+| Pool | Nodes | Model | Est. tok/s/node | Cluster tok/s | Est. max concurrent @ SLA |
+|------|-------|-------|----------------|---------------|--------------------------|
+| FastPool | 10 × M4 | 8B Q4_K_M | 25–35 | 250–350 | ~70–100 users |
+| ReasonPool | 4 × M4 | 14B Q4_K_M | 15–22 | 60–88 | ~15–25 users |
+| **LargePool** | **4 × M4 (2×2 TP)** | **32B Q4_K_M** | **8–14 (per pair)** | **16–28** | **~5–10 users** |
+| VisionPool | 3 × M4 | 8B VL Q4_K_M | 20–28 | 60–84 | ~15–25 users |
+| EmbedPool | 2 × M4 | BGE-M3 | ~600 seq/s | ~1,200 seq/s | ~120+ users |
+| SpeechPool | 1 × M4 | Whisper large-v3 | real-time | 1× stream | ~5 concurrent streams |
+
+> **LargePool note**: 2-node tensor-parallel pairs enabled by 10 GbE + RDMA RoCE-v2.
+> Each M4 node holds ~10 GB of the 32B model (20 GB Q4_K_M); AllReduce at ~2 μs latency.
+> For 70B (Q3_K_M ~30 GB): extend to full 4-node group when both TP groups are idle.
+> Estimates will be replaced by measured values as Section 9 tables fill in.
 
 > These estimates will be validated and replaced by measured values as Section 8.1/8.2 fills in.
 
