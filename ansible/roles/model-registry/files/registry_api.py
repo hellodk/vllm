@@ -47,6 +47,22 @@ minio = Minio(
 
 
 def _db():
+    """Open a new psycopg2 connection.
+
+    Usage pattern::
+
+        conn = _db()
+        try:
+            with conn.cursor() as cur:
+                ...
+            conn.commit()
+        finally:
+            conn.close()
+
+    NOTE: psycopg2 uses the connection as a context manager for *transactions*
+    only — it does NOT close the connection on __exit__.  Always call
+    conn.close() explicitly (or use the helper below).
+    """
     return psycopg2.connect(DATABASE_URL)
 
 
@@ -82,7 +98,8 @@ def health():
 
 @app.get("/api/v1/models")
 def list_models(pool: Optional[str] = None, approved_only: bool = True):
-    with _db() as conn:
+    conn = _db()
+    try:
         with conn.cursor() as cur:
             query = """
                 SELECT name, version, format, quantization, size_bytes,
@@ -103,13 +120,16 @@ def list_models(pool: Optional[str] = None, approved_only: bool = True):
             cur.execute(query, params)
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
+    finally:
+        conn.close()
 
 
 # ── Get single model ──────────────────────────────────────────────────────────
 
 @app.get("/api/v1/models/{name}")
 def get_model(name: str):
-    with _db() as conn:
+    conn = _db()
+    try:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM hydra_models WHERE name = %s", (name,))
             row = cur.fetchone()
@@ -117,6 +137,8 @@ def get_model(name: str):
                 raise HTTPException(status_code=404, detail=f"Model {name!r} not found")
             cols = [d[0] for d in cur.description]
             result = dict(zip(cols, row))
+    finally:
+        conn.close()
     # Add a pre-signed download URL (valid 1 hour)
     try:
         from datetime import timedelta
@@ -150,8 +172,31 @@ def register_model(req: ModelRegisterRequest):
             detail=f"Size mismatch: MinIO reports {stat.size} bytes, request says {req.size_bytes}",
         )
 
-    # 3. Insert / upsert into registry
-    with _db() as conn:
+    # 3. Compute sha256 from the actual MinIO object and verify against caller-supplied value
+    response = None
+    try:
+        response = minio.get_object(MINIO_BUCKET, req.minio_path)
+        h = hashlib.sha256()
+        while True:
+            chunk = response.read(8192)
+            if not chunk:
+                break
+            h.update(chunk)
+        computed_hex = h.hexdigest()
+    finally:
+        if response is not None:
+            response.close()
+            response.release_conn()
+
+    if computed_hex != req.sha256.lower():
+        raise HTTPException(
+            status_code=400,
+            detail=f"SHA256 mismatch: computed {computed_hex}, request supplied {req.sha256.lower()}",
+        )
+
+    # 4. Insert / upsert into registry
+    conn = _db()
+    try:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO hydra_models
@@ -166,12 +211,14 @@ def register_model(req: ModelRegisterRequest):
                 RETURNING name, version
             """, (
                 req.name, req.version, req.format, req.quantization,
-                req.size_bytes, req.sha256, req.minio_path,
+                req.size_bytes, req.sha256.lower(), req.minio_path,
                 req.pool_assignment, req.license, req.notes,
                 datetime.now(timezone.utc),
             ))
             result = cur.fetchone()
         conn.commit()
+    finally:
+        conn.close()
     return {
         "registered": result[0],
         "version": result[1],
@@ -184,7 +231,8 @@ def register_model(req: ModelRegisterRequest):
 
 @app.post("/api/v1/models/{name}/approve", dependencies=[Depends(_require_admin)])
 def approve_model(name: str, approved_by: str = "admin"):
-    with _db() as conn:
+    conn = _db()
+    try:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE hydra_models SET approved_by=%s, approved_at=%s WHERE name=%s RETURNING name, pool_assignment",
@@ -194,6 +242,8 @@ def approve_model(name: str, approved_by: str = "admin"):
                 raise HTTPException(status_code=404, detail=f"Model {name!r} not found — register it first")
             row = cur.fetchone()
         conn.commit()
+    finally:
+        conn.close()
     return {
         "approved": row[0],
         "pool_assignment": row[1],
@@ -206,13 +256,16 @@ def approve_model(name: str, approved_by: str = "admin"):
 
 @app.delete("/api/v1/models/{name}", dependencies=[Depends(_require_admin)])
 def retire_model(name: str, delete_artifact: bool = False):
-    with _db() as conn:
+    conn = _db()
+    try:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM hydra_models WHERE name=%s RETURNING name, minio_path", (name,))
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail=f"Model {name!r} not found")
             row = cur.fetchone()
         conn.commit()
+    finally:
+        conn.close()
     result = {"retired": row[0]}
     if delete_artifact:
         try:

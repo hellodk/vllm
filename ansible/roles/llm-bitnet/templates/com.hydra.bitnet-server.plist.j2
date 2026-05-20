@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.bitnet-server.plist
+  Managed by Ansible (llm-bitnet role) — do not edit manually.
+  BitNet.cpp inference server — 1-bit/1.58-bit quantized models.
+  Uses pre-built binary when available, Python wheels otherwise.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.bitnet-server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+{% if bitnet_use_binary %}
+    <string>/usr/local/bin/bitnet-server</string>
+    <string>--model</string>
+    <string>{{ bitnet_default_model }}</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>{{ bitnet_port }}</string>
+{% else %}
+    <string>{{ bitnet_venv }}/bin/uvicorn</string>
+    <string>bitnet_server:app</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>{{ bitnet_port }}</string>
+    <string>--workers</string>
+    <string>1</string>
+{% endif %}
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ bitnet_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BITNET_MODEL_PATH</key>
+    <string>{{ bitnet_default_model }}</string>
+    <key>HF_DATASETS_OFFLINE</key>
+    <string>1</string>
+    <key>TRANSFORMERS_OFFLINE</key>
+    <string>1</string>
+    <key>HF_HUB_OFFLINE</key>
+    <string>1</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/bitnet-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/bitnet-server-error.log</string>
+</dict>
+</plist>

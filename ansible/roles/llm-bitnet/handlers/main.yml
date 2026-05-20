@@ -1,0 +1,8 @@
+# ansible/roles/llm-bitnet/handlers/main.yml
+---
+- name: restart bitnet-server
+  shell: |
+    launchctl bootout system/com.hydra.bitnet-server 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.bitnet-server.plist
+  become: true
+  ignore_errors: true

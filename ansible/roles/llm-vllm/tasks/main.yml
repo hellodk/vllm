@@ -1,0 +1,103 @@
+# ansible/roles/llm-vllm/tasks/main.yml
+# Deploys vLLM with Apple MLX backend (--device metal) — air-gapped.
+---
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+
+- name: Assert vLLM wheels directory exists in files/
+  delegate_to: localhost
+  stat:
+    path: "{{ role_path }}/files/wheels"
+  register: _vllm_wheels_dir
+  run_once: true
+
+- name: Fail if vLLM wheels are missing
+  fail:
+    msg: |
+      Missing: {{ role_path }}/files/wheels/
+      See ansible/roles/llm-vllm/files/README.md for offline wheel download instructions.
+  when: not _vllm_wheels_dir.stat.exists
+  run_once: true
+
+- name: Warn that vLLM metal backend is experimental
+  debug:
+    msg: |
+      WARNING: vLLM --device metal (Apple Silicon) is an experimental backend.
+      Known issues: KV-cache correctness on some quantized models.
+      Set vllm_metal_experimental: false in vars to skip vLLM deployment on this node.
+  when: vllm_metal_experimental | bool
+
+# ── Directories ───────────────────────────────────────────────────────────────
+
+- name: Create vLLM directory
+  file:
+    path: "{{ vllm_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+# ── Wheels ────────────────────────────────────────────────────────────────────
+
+- name: Sync vLLM wheels (offline)
+  synchronize:
+    src: "{{ role_path }}/files/wheels/"
+    dest: "{{ vllm_dir }}/wheels/"
+    delete: false
+  become: true
+  when: vllm_metal_experimental | bool
+
+# ── Virtualenv ────────────────────────────────────────────────────────────────
+
+- name: Create vLLM virtualenv
+  command: >
+    {{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}
+    -m venv {{ vllm_venv }}
+  args:
+    creates: "{{ vllm_venv }}/bin/python"
+  become: true
+  when: vllm_metal_experimental | bool
+
+- name: Install vLLM packages from local wheels
+  pip:
+    name: "{{ vllm_packages }}"
+    virtualenv: "{{ vllm_venv }}"
+    extra_args: "--no-index --find-links {{ vllm_dir }}/wheels"
+    state: present
+  become: true
+  when: vllm_metal_experimental | bool
+
+# ── LaunchDaemon ──────────────────────────────────────────────────────────────
+
+- name: Install vLLM server LaunchDaemon
+  template:
+    src: com.hydra.vllm-server.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.vllm-server.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart vllm-server
+  when: vllm_metal_experimental | bool
+
+- name: Bootstrap vLLM server LaunchDaemon (first load)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.vllm-server.plist
+  become: true
+  register: _vllm_boot
+  changed_when: _vllm_boot.rc == 0
+  ignore_errors: true
+  when: vllm_metal_experimental | bool
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Wait for vLLM server health
+  uri:
+    url: "http://localhost:{{ vllm_port }}/health"
+    status_code: 200
+    timeout: 5
+  register: _vllm_health
+  until: _vllm_health.status == 200
+  retries: 18
+  delay: 10
+  ignore_errors: true
+  when: vllm_metal_experimental | bool

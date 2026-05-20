@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.airllm-server.plist
+  Managed by Ansible (llm-airllm role) — do not edit manually.
+  AirLLM layer-by-layer streaming inference (OpenAI-compat wrapper).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.airllm-server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ airllm_venv }}/bin/uvicorn</string>
+    <string>airllm_server:app</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>{{ airllm_port }}</string>
+    <string>--workers</string>
+    <string>1</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ airllm_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AIRLLM_MODEL_PATH</key>
+    <string>{{ airllm_default_model }}</string>
+    <key>AIRLLM_CACHE_DIR</key>
+    <string>{{ airllm_cache_dir }}</string>
+    <key>AIRLLM_COMPRESSION</key>
+    <string>{{ airllm_compression_ratio }}</string>
+    <key>HF_DATASETS_OFFLINE</key>
+    <string>1</string>
+    <key>TRANSFORMERS_OFFLINE</key>
+    <string>1</string>
+    <key>HF_HUB_OFFLINE</key>
+    <string>1</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/airllm-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/airllm-server-error.log</string>
+</dict>
+</plist>

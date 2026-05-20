@@ -23,7 +23,7 @@
   tags: [salt-master]
   vars:
     hydra_salt_master_os: "{{ hostvars[inventory_hostname].hydra_salt_master_os | default('linux') }}"
-    hydra_salt_auto_accept: "{{ hostvars[inventory_hostname].hydra_salt_auto_accept | default(true) }}"
+    hydra_salt_auto_accept: "{{ hostvars[inventory_hostname].hydra_salt_auto_accept | default(false) }}"
     hydra_salt_log_level: "{{ hostvars[inventory_hostname].hydra_salt_log_level | default('info') }}"
     hydra_salt_kri_app_dir: "{{ hostvars[inventory_hostname].hydra_salt_kri_app_dir }}"
     hydra_salt_kri_venv_dir: "{{ hostvars[inventory_hostname].hydra_salt_kri_venv_dir }}"

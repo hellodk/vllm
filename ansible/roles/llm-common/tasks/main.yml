@@ -1,0 +1,36 @@
+# ansible/roles/llm-common/tasks/main.yml
+# Common setup applied to every LLM node before framework-specific roles.
+---
+
+- name: Create base LLM directory tree
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ llm_base_dir }}"
+    - "{{ llm_log_dir }}"
+    - /var/log/hydra
+
+- name: Check Homebrew Python {{ python_version }} is installed
+  stat:
+    path: "{{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}"
+  register: _brew_python
+
+- name: Fail with instructions if Homebrew Python is missing
+  fail:
+    msg: |
+      python@{{ python_version }} not found at {{ homebrew_prefix }}/opt/python@{{ python_version }}.
+      On the target node run:  brew install python@{{ python_version }}
+      (Homebrew must already be installed offline — bottles pre-staged.)
+  when: not _brew_python.stat.exists
+
+- name: Install Hydra log rotation config
+  copy:
+    src: hydra-logrotate.conf
+    dest: /etc/newsyslog.d/hydra.conf
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true

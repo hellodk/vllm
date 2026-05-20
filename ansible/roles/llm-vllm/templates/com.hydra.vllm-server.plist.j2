@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.vllm-server.plist
+  Managed by Ansible (llm-vllm role) — do not edit manually.
+  vLLM OpenAI-compatible server with Apple MLX backend (--device metal).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.vllm-server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ vllm_venv }}/bin/python</string>
+    <string>-m</string>
+    <string>vllm.entrypoints.openai.api_server</string>
+    <string>--model</string>
+    <string>{{ vllm_default_model }}</string>
+    <string>--device</string>
+    <string>metal</string>
+    <string>--dtype</string>
+    <string>{{ vllm_dtype }}</string>
+    <string>--max-model-len</string>
+    <string>{{ vllm_max_model_len }}</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>{{ vllm_port }}</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ vllm_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HF_DATASETS_OFFLINE</key>
+    <string>1</string>
+    <key>TRANSFORMERS_OFFLINE</key>
+    <string>1</string>
+    <key>HF_HUB_OFFLINE</key>
+    <string>1</string>
+    <key>VLLM_WORKER_MULTIPROC_METHOD</key>
+    <string>spawn</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/vllm-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/vllm-server-error.log</string>
+</dict>
+</plist>

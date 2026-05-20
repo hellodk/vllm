@@ -1,0 +1,113 @@
+# ansible/roles/llm-bitnet/tasks/main.yml
+# Deploys BitNet.cpp — prefer pre-built binary; fall back to Python wheels.
+---
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+
+- name: Check for pre-built BitNet binary in files/
+  delegate_to: localhost
+  stat:
+    path: "{{ role_path }}/files/{{ bitnet_binary }}"
+  register: _bitnet_bin
+  run_once: true
+
+- name: Set bitnet_use_binary fact based on binary presence
+  set_fact:
+    bitnet_use_binary: "{{ _bitnet_bin.stat.exists }}"
+
+- name: Check for BitNet Python wheels directory
+  delegate_to: localhost
+  stat:
+    path: "{{ role_path }}/files/wheels"
+  register: _bitnet_wheels_dir
+  run_once: true
+
+- name: Fail if neither binary nor wheels are present
+  fail:
+    msg: |
+      Neither {{ role_path }}/files/{{ bitnet_binary }}
+      nor      {{ role_path }}/files/wheels/
+      found. See ansible/roles/llm-bitnet/files/README.md.
+  when: not _bitnet_bin.stat.exists and not _bitnet_wheels_dir.stat.exists
+  run_once: true
+
+# ── Directories ───────────────────────────────────────────────────────────────
+
+- name: Create BitNet directory
+  file:
+    path: "{{ bitnet_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+# ── Binary path ───────────────────────────────────────────────────────────────
+
+- name: Copy BitNet pre-built binary (preferred)
+  copy:
+    src: "{{ bitnet_binary }}"
+    dest: /usr/local/bin/bitnet-server
+    mode: "0755"
+  become: true
+  when: _bitnet_bin.stat.exists
+  notify: restart bitnet-server
+
+# ── Python path (fallback) ────────────────────────────────────────────────────
+
+- name: Sync BitNet Python wheels (offline)
+  synchronize:
+    src: "{{ role_path }}/files/wheels/"
+    dest: "{{ bitnet_dir }}/wheels/"
+    delete: false
+  become: true
+  when: not _bitnet_bin.stat.exists and _bitnet_wheels_dir.stat.exists
+
+- name: Create BitNet virtualenv (Python path)
+  command: >
+    {{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}
+    -m venv {{ bitnet_venv }}
+  args:
+    creates: "{{ bitnet_venv }}/bin/python"
+  become: true
+  when: not _bitnet_bin.stat.exists
+
+- name: Install BitNet Python packages from local wheels
+  pip:
+    name: "{{ bitnet_packages }}"
+    virtualenv: "{{ bitnet_venv }}"
+    extra_args: "--no-index --find-links {{ bitnet_dir }}/wheels"
+    state: present
+  become: true
+  when: not _bitnet_bin.stat.exists
+
+# ── LaunchDaemon ──────────────────────────────────────────────────────────────
+
+- name: Install BitNet server LaunchDaemon
+  template:
+    src: com.hydra.bitnet-server.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.bitnet-server.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart bitnet-server
+
+- name: Bootstrap BitNet server LaunchDaemon (first load)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.bitnet-server.plist
+  become: true
+  register: _bitnet_boot
+  changed_when: _bitnet_boot.rc == 0
+  ignore_errors: true
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Wait for BitNet server health
+  uri:
+    url: "http://localhost:{{ bitnet_port }}/health"
+    status_code: 200
+    timeout: 5
+  register: _bitnet_health
+  until: _bitnet_health.status == 200
+  retries: 18
+  delay: 10
+  ignore_errors: true

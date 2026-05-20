@@ -1,0 +1,104 @@
+# ansible/roles/llm-exo/tasks/main.yml
+# Deploys exo P2P distributed inference — tensor-parallel across large_pool pairs.
+# Each host in a pair knows its peer via the exo_peers list in inventory.
+---
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+
+- name: Assert exo wheels directory exists in files/
+  delegate_to: localhost
+  stat:
+    path: "{{ role_path }}/files/wheels"
+  register: _exo_wheels_dir
+  run_once: true
+
+- name: Fail if exo wheels are missing
+  fail:
+    msg: |
+      Missing: {{ role_path }}/files/wheels/
+      See ansible/roles/llm-exo/files/README.md for offline wheel download instructions.
+      Note: grpcio may need a source wheel for arm64.
+  when: not _exo_wheels_dir.stat.exists
+  run_once: true
+
+# ── Directories ───────────────────────────────────────────────────────────────
+
+- name: Create exo directory
+  file:
+    path: "{{ exo_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Check exo model directory exists
+  stat:
+    path: "{{ exo_model_local_path }}"
+  register: _exo_model_dir
+
+- name: Fail if exo model is missing
+  fail:
+    msg: |
+      exo model not found at {{ exo_model_local_path }}
+      Place a compatible MLX model directory there before deploying.
+      For large_pool 32B models: set exo_model_local_path in host_vars.
+  when: not _exo_model_dir.stat.exists
+
+# ── Wheels ────────────────────────────────────────────────────────────────────
+
+- name: Sync exo wheels (offline)
+  synchronize:
+    src: "{{ role_path }}/files/wheels/"
+    dest: "{{ exo_dir }}/wheels/"
+    delete: false
+  become: true
+
+# ── Virtualenv ────────────────────────────────────────────────────────────────
+
+- name: Create exo virtualenv
+  command: >
+    {{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}
+    -m venv {{ exo_venv }}
+  args:
+    creates: "{{ exo_venv }}/bin/python"
+  become: true
+
+- name: Install exo packages from local wheels
+  pip:
+    name: "{{ exo_packages }}"
+    virtualenv: "{{ exo_venv }}"
+    extra_args: "--no-index --find-links {{ exo_dir }}/wheels"
+    state: present
+  become: true
+
+# ── LaunchDaemon ──────────────────────────────────────────────────────────────
+
+- name: Install exo LaunchDaemon
+  template:
+    src: com.hydra.exo.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.exo.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart exo
+
+- name: Bootstrap exo LaunchDaemon (first load)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.exo.plist
+  become: true
+  register: _exo_boot
+  changed_when: _exo_boot.rc == 0
+  ignore_errors: true
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Wait for exo API to respond
+  uri:
+    url: "http://localhost:{{ exo_api_port }}/v1/models"
+    status_code: [200, 404]   # exo may return 404 on /v1/models but 200 on actual requests
+    timeout: 5
+  register: _exo_health
+  until: _exo_health.status in [200, 404]
+  retries: 24
+  delay: 10
+  ignore_errors: true

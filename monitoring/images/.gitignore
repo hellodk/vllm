@@ -1,0 +1,3 @@
+# Docker image tarballs — too large for git; stage offline on hydra-svc-01
+*.tar.gz
+*.tar

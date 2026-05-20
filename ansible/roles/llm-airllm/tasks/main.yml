@@ -1,0 +1,102 @@
+# ansible/roles/llm-airllm/tasks/main.yml
+# Deploys AirLLM layer-by-layer inference — minimal RAM, air-gapped.
+---
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+
+- name: Assert AirLLM wheels directory exists in files/
+  delegate_to: localhost
+  stat:
+    path: "{{ role_path }}/files/wheels"
+  register: _airllm_wheels_dir
+  run_once: true
+
+- name: Fail if AirLLM wheels are missing
+  fail:
+    msg: |
+      Missing: {{ role_path }}/files/wheels/
+      See ansible/roles/llm-airllm/files/README.md for offline wheel download instructions.
+  when: not _airllm_wheels_dir.stat.exists
+  run_once: true
+
+# ── Directories ───────────────────────────────────────────────────────────────
+
+- name: Create AirLLM directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ airllm_dir }}"
+    - "{{ airllm_cache_dir }}"
+
+# ── Wheels ────────────────────────────────────────────────────────────────────
+
+- name: Sync AirLLM wheels (offline)
+  synchronize:
+    src: "{{ role_path }}/files/wheels/"
+    dest: "{{ airllm_dir }}/wheels/"
+    delete: false
+  become: true
+
+# ── Server script ─────────────────────────────────────────────────────────────
+
+- name: Copy AirLLM server script
+  copy:
+    src: airllm_server.py
+    dest: "{{ airllm_dir }}/airllm_server.py"
+    mode: "0644"
+  become: true
+  notify: restart airllm-server
+
+# ── Virtualenv ────────────────────────────────────────────────────────────────
+
+- name: Create AirLLM virtualenv
+  command: >
+    {{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}
+    -m venv {{ airllm_venv }}
+  args:
+    creates: "{{ airllm_venv }}/bin/python"
+  become: true
+
+- name: Install AirLLM packages from local wheels
+  pip:
+    name: "{{ airllm_packages }}"
+    virtualenv: "{{ airllm_venv }}"
+    extra_args: "--no-index --find-links {{ airllm_dir }}/wheels"
+    state: present
+  become: true
+
+# ── LaunchDaemon ──────────────────────────────────────────────────────────────
+
+- name: Install AirLLM server LaunchDaemon
+  template:
+    src: com.hydra.airllm-server.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.airllm-server.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart airllm-server
+
+- name: Bootstrap AirLLM server LaunchDaemon (first load)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.airllm-server.plist
+  become: true
+  register: _airllm_boot
+  changed_when: _airllm_boot.rc == 0
+  ignore_errors: true
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Wait for AirLLM server health
+  uri:
+    url: "http://localhost:{{ airllm_port }}/health"
+    status_code: 200
+    timeout: 5
+  register: _airllm_health
+  until: _airllm_health.status == 200
+  retries: 18
+  delay: 10
+  ignore_errors: true

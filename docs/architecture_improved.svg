@@ -1,0 +1,508 @@
+<svg viewBox="0 0 1480 840" xmlns="http://www.w3.org/2000/svg"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+
+  <defs>
+    <!-- Background Grid Pattern -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#0F172A" stroke-width="1" opacity="0.03" />
+    </pattern>
+
+    <!-- Ambient Color Shadows (Premium Soft Bloom Shadows) -->
+    <filter id="shadow-indigo" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#4F46E5" flood-opacity="0.08" />
+    </filter>
+    <filter id="shadow-purple" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#7C3AED" flood-opacity="0.08" />
+    </filter>
+    <filter id="shadow-blue" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#2563EB" flood-opacity="0.08" />
+    </filter>
+    <filter id="shadow-cyan" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0891B2" flood-opacity="0.08" />
+    </filter>
+    <filter id="shadow-green" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#059669" flood-opacity="0.06" />
+    </filter>
+    <filter id="shadow-yellow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#D97706" flood-opacity="0.08" />
+    </filter>
+    <filter id="shadow-red" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#DC2626" flood-opacity="0.08" />
+    </filter>
+    <filter id="shadow-gray" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#4B5563" flood-opacity="0.06" />
+    </filter>
+
+    <!-- Linear Gradients for Premium Borders -->
+    <linearGradient id="grad-indigo" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8" />
+      <stop offset="100%" stop-color="#4F46E5" stop-opacity="0.1" />
+    </linearGradient>
+    <linearGradient id="grad-purple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC" />
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0.1" />
+    </linearGradient>
+    <linearGradient id="grad-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#2563EB" stop-opacity="0.1" />
+    </linearGradient>
+    <linearGradient id="grad-green" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="100%" stop-color="#059669" stop-opacity="0.1" />
+    </linearGradient>
+    <linearGradient id="grad-yellow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24" />
+      <stop offset="100%" stop-color="#D97706" stop-opacity="0.1" />
+    </linearGradient>
+    <linearGradient id="grad-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22D3EE" />
+      <stop offset="100%" stop-color="#0891B2" stop-opacity="0.1" />
+    </linearGradient>
+    <linearGradient id="grad-red" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F87171" />
+      <stop offset="100%" stop-color="#DC2626" stop-opacity="0.1" />
+    </linearGradient>
+    <linearGradient id="grad-gray" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D1D5DB" />
+      <stop offset="100%" stop-color="#4B5563" stop-opacity="0.05" />
+    </linearGradient>
+
+    <!-- Arrow markers -->
+    <marker id="ap" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#7C3AED"/></marker>
+    <marker id="ab" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#2563EB"/></marker>
+    <marker id="aa" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#D97706"/></marker>
+    <marker id="ag" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#059669"/></marker>
+    <marker id="agr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#6B7280"/></marker>
+    <marker id="ac" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#0891B2"/></marker>
+
+    <style>
+      /* ── Flowing data-flow animations with soft dropshadow ── */
+      .flow      { stroke-dasharray: 8 4; animation: dash 1.2s linear infinite; filter: drop-shadow(0 1px 1px rgba(124, 58, 237, 0.25)); }
+      .flow-blue  { stroke-dasharray: 8 4; animation: dash 1.2s linear infinite; filter: drop-shadow(0 1px 1px rgba(37, 99, 235, 0.25)); }
+      .flow-med  { stroke-dasharray:  8 4; animation: dash 2.0s linear infinite; filter: drop-shadow(0 1px 1px rgba(8, 145, 178, 0.25)); }
+      .flow-slow { stroke-dasharray:  6 4; animation: dash 3.0s linear infinite; filter: drop-shadow(0 1px 1px rgba(217, 119, 6, 0.25)); }
+      @keyframes dash { to { stroke-dashoffset: -36; } }
+
+      /* ── Live status pulse ── */
+      .live      { animation: live 1.8s ease-in-out infinite; }
+      .live-slow { animation: live 3.0s ease-in-out infinite; }
+      @keyframes live { 0%,100%{ r:3.5; opacity:0.9; } 50%{ r:5.5; opacity:0.4; } }
+
+      /* ── Layer fade-in on load ── */
+      .l1 { animation: fi .5s .0s ease-out both; }
+      .l2 { animation: fi .5s .15s ease-out both; }
+      .l3 { animation: fi .5s .3s ease-out both; }
+      .l4 { animation: fi .5s .45s ease-out both; }
+      .l5 { animation: fi .5s .6s ease-out both; }
+      .l6 { animation: fi .5s .75s ease-out both; }
+      .l7 { animation: fi .5s .9s ease-out both; }
+      @keyframes fi { from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+
+      /* ── Typography ── */
+      .t-title   { font-size:24px; font-weight:800; fill:#0F172A; letter-spacing:-0.02em; }
+      .t-sub     { font-size:14px; fill:#475569; font-weight: 500; }
+      .t-head    { font-size:13px; font-weight:700; fill:#0F172A; }
+      .t-body    { font-size:11px; fill:#334155; }
+      .t-small   { font-size:10px; fill:#64748B; }
+      .t-badge   { font-size:10px; font-weight:800; }
+      .t-layer   { font-size:11px; font-weight:800; letter-spacing:.12em; }
+    </style>
+  </defs>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       BACKGROUND + GRID MESH + LAYER BANDS
+  ═══════════════════════════════════════════════════════════ -->
+  <rect width="1480" height="840" fill="#F8FAFC"/>
+  <rect width="1480" height="840" fill="url(#grid)" />
+
+  <!-- Spacious layer bands for high-contrast spatial structure -->
+  <rect x="0" y="80"  width="1480" height="65"  fill="#6366F1" opacity=".03"/>  <!-- client   -->
+  <rect x="0" y="155" width="1480" height="185" fill="#8B5CF6" opacity=".02"/>  <!-- gateway  -->
+  <rect x="0" y="350" width="1480" height="160" fill="#3B82F6" opacity=".02"/>  <!-- inference -->
+  <rect x="0" y="520" width="1480" height="200" fill="#10B981" opacity=".01"/>  <!-- support  -->
+
+  <!-- Horizontal divider lines -->
+  <line x1="30" y1="155" x2="1450" y2="155" stroke="#E2E8F0" stroke-width="1.2" stroke-dasharray="8 6"/>
+  <line x1="30" y1="350" x2="1450" y2="350" stroke="#E2E8F0" stroke-width="1.2" stroke-dasharray="8 6"/>
+  <line x1="30" y1="520" x2="1450" y2="520" stroke="#E2E8F0" stroke-width="1.2" stroke-dasharray="8 6"/>
+  <line x1="30" y1="730" x2="1450" y2="730" stroke="#E2E8F0" stroke-width="1.2" stroke-dasharray="8 6"/>
+
+  <!-- Layer labels -->
+  <g opacity="0.9">
+    <text transform="rotate(-90,16,112)" x="0" y="0" text-anchor="middle" class="t-layer" fill="#4F46E5">CLIENT</text>
+    <text transform="rotate(-90,16,245)" x="0" y="0" text-anchor="middle" class="t-layer" fill="#7C3AED">GATEWAY</text>
+    <text transform="rotate(-90,16,430)" x="0" y="0" text-anchor="middle" class="t-layer" fill="#2563EB">INFERENCE</text>
+    <text transform="rotate(-90,16,620)" x="0" y="0" text-anchor="middle" class="t-layer" fill="#059669">SUPPORT</text>
+    <text transform="rotate(-90,16,760)" x="0" y="0" text-anchor="middle" class="t-layer" fill="#DC2626">DEPLOY</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TITLE HEADER
+  ═══════════════════════════════════════════════════════════ -->
+  <text x="740" y="32" text-anchor="middle" class="t-title">Hydra — Local Enterprise LLM Farm</text>
+  <text x="740" y="54" text-anchor="middle" class="t-sub">40-node Apple Silicon Mac Mini · ≤1,000 internal users · On-premises · Air-gapped capable</text>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       1. CLIENTS (Frosted Glass Light Card + Ambient Shadow)
+  ═══════════════════════════════════════════════════════════ -->
+  <g class="l1">
+    <rect x="530" y="85" width="420" height="52" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-indigo)" stroke-width="1.2" filter="url(#shadow-indigo)"/>
+    <!-- SVG Laptop Icon -->
+    <path d="M544 101 H558 V111 H544 Z M541 112 H561 V114 H541 Z" fill="none" stroke="#4F46E5" stroke-width="1.5"/>
+    <circle cx="572" cy="111" r="4.5" fill="#10B981" class="live"/>
+    <text x="584"  y="106"  class="t-head">Clients  ≤ 1,000 users</text>
+    <text x="584"  y="123" class="t-body">OpenAI-compatible REST  ·  HTTPS/TLS  ·  Any OpenAI SDK</text>
+  </g>
+
+  <!-- ↓ Clients → HAProxy -->
+  <line x1="740" y1="137" x2="740" y2="165" stroke="#7C3AED" stroke-width="2" class="flow" marker-end="url(#ap)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       2. HAPROXY LOAD BALANCER (Spaced horizontally to align cleanly)
+  ═══════════════════════════════════════════════════════════ -->
+  <g class="l2">
+    <rect x="200" y="165" width="1080" height="52" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-purple)" stroke-width="1.2" filter="url(#shadow-purple)"/>
+    <!-- Load Balancer Icon -->
+    <path d="M214 183 H222 M214 197 H222 M214 190 H228" stroke="#7C3AED" stroke-width="1.5"/>
+    <circle cx="242" cy="191" r="3.5" fill="#10B981" class="live"/>
+    <text x="252"  y="188" class="t-small" fill="#059669">active</text>
+    <circle cx="298" cy="191" r="3.5" fill="#9CA3AF"/>
+    <text x="308"  y="188" class="t-small" fill="#6B7280">passive</text>
+    
+    <text x="740"  y="187" text-anchor="middle" class="t-head">HAProxy + keepalived</text>
+    <text x="740"  y="203" text-anchor="middle" class="t-body">Layer-4 TCP load balancing  ·  Virtual IP failover &lt; 10 s  ·  Health-check every 5 s  ·  2 dedicated M1 nodes</text>
+  </g>
+
+  <!-- HAProxy → Gateways split (Spaced curves to prevent overlapping paths) -->
+  <path d="M540,217 L540,232 L460,232 L460,250" fill="none" stroke="#7C3AED" stroke-width="2" class="flow" marker-end="url(#ap)"/>
+  <path d="M740,217 L740,232 L740,250"           fill="none" stroke="#7C3AED" stroke-width="2" class="flow" marker-end="url(#ap)"/>
+  <path d="M940,217 L940,232 L1020,232 L1020,250" fill="none" stroke="#7C3AED" stroke-width="2" class="flow" marker-end="url(#ap)"/>
+  <path d="M1140,217 L1140,232 L1296,232 L1296,250" fill="none" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#agr)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       3. LITELLEM GATEWAYS
+  ═══════════════════════════════════════════════════════════ -->
+  <g class="l3">
+    <!-- GW 1 -->
+    <rect x="310" y="250" width="300" height="80" rx="10" fill="#FFFFFF" fill-opacity="0.85" stroke="url(#grad-purple)" stroke-width="1.2" filter="url(#shadow-purple)"/>
+    <circle cx="326" cy="269" r="4.5" fill="#10B981" class="live"/>
+    <text x="338"  y="270" class="t-head">LiteLLM Gateway 1  :4000</text>
+    <text x="322"  y="287" class="t-body">Auth (OIDC / API key) · Rate limits</text>
+    <text x="322"  y="302" class="t-body">Tag-based pool routing · Least-busy</text>
+    <text x="322"  y="317" class="t-small" fill="#64748B">Token budgets · Context enforcement · Audit log</text>
+
+    <!-- GW 2 -->
+    <rect x="870" y="250" width="300" height="80" rx="10" fill="#FFFFFF" fill-opacity="0.85" stroke="url(#grad-purple)" stroke-width="1.2" filter="url(#shadow-purple)"/>
+    <circle cx="886" cy="269" r="4.5" fill="#10B981" class="live"/>
+    <text x="898"  y="270" class="t-head">LiteLLM Gateway 2  :4000</text>
+    <text x="882"  y="287" class="t-body">Stateless · Redis-backed counters</text>
+    <text x="882"  y="302" class="t-body">Per-user + per-group budgets</text>
+    <text x="882"  y="317" class="t-small" fill="#64748B">Structured request records → audit store</text>
+
+    <!-- Cold Spare -->
+    <rect x="1200" y="250" width="192" height="80" rx="10" fill="#F8FAFC" stroke="#D1D5DB" stroke-width="1.2" stroke-dasharray="5 3"/>
+    <text x="1296" y="283" text-anchor="middle" class="t-head" fill="#9CA3AF">Cold spare</text>
+    <text x="1296" y="299" text-anchor="middle" class="t-small" fill="#9CA3AF">auto-promote</text>
+    <text x="1296" y="313" text-anchor="middle" class="t-small" fill="#9CA3AF">on GW failure</text>
+
+    <!-- Redis shared counters -->
+    <rect x="378" y="318" width="180" height="18" rx="5" fill="#7C3AED" fill-opacity="0.08" stroke="#7C3AED" stroke-width="0.7"/>
+    <text x="468" y="330" text-anchor="middle" font-size="9" fill="#7C3AED" font-weight="800">⇄ Redis shared rate-limit</text>
+  </g>
+
+  <!-- Routing Fan with generous spacing -->
+  <path d="M460,330 Q460,344 740,345 Q1020,344 1020,330" fill="none" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <!-- tag labels + arrows with 40px gaps to let them breathe -->
+  <text x="122" y="348" font-size="9" fill="#2563EB" font-weight="800">tag=fast</text>
+  <line x1="137" y1="349" x2="137" y2="360" stroke="#2563EB" stroke-width="2" class="flow-blue" marker-end="url(#ab)"/>
+
+  <text x="330" y="348" font-size="9" fill="#7C3AED" font-weight="800">tag=reason</text>
+  <line x1="365" y1="349" x2="365" y2="360" stroke="#7C3AED" stroke-width="2" class="flow" marker-end="url(#ap)"/>
+
+  <text x="560" y="348" font-size="9" fill="#0891B2" font-weight="800">tag=vision</text>
+  <line x1="595" y1="349" x2="595" y2="360" stroke="#0891B2" stroke-width="2" class="flow-med" marker-end="url(#ac)"/>
+
+  <text x="790" y="348" font-size="9" fill="#059669" font-weight="800">tag=embed</text>
+  <line x1="825" y1="349" x2="825" y2="360" stroke="#059669" stroke-width="2" class="flow-med" marker-end="url(#ag)"/>
+
+  <text x="1020" y="348" font-size="9" fill="#D97706" font-weight="800">tag=speech</text>
+  <line x1="1055" y1="349" x2="1055" y2="360" stroke="#D97706" stroke-width="2" class="flow-slow" marker-end="url(#aa)"/>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       4. INFERENCE POOLS (Spacious cluster deck arrays with 40px gaps)
+  ═══════════════════════════════════════════════════════════ -->
+
+  <!-- FastPool  x=40 (Layered deck representing 20x Mac Minis) -->
+  <g class="l4">
+    <rect x="48" y="352" width="174" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.4" stroke="#2563EB" stroke-width="1" opacity="0.3"/>
+    <rect x="44" y="356" width="182" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#2563EB" stroke-width="1" opacity="0.5"/>
+    <rect x="40" y="360" width="190" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.95" stroke="url(#grad-blue)" stroke-width="1.2" filter="url(#shadow-blue)"/>
+    <rect x="48"  y="375" width="174" height="19"  rx="5" fill="#2563EB" fill-opacity="0.08"/>
+    <text x="135" y="388" text-anchor="middle" class="t-badge" fill="#2563EB">FastPool  ·  20 × M4</text>
+    <circle cx="56" cy="385" r="2.5" fill="#2563EB"/>
+    <text x="135" y="409" text-anchor="middle" font-size="12" font-weight="700" fill="#0F172A">Llama 3  8B  Q4_K_M</text>
+    <text x="135" y="425" text-anchor="middle" class="t-body">25–35 tok/s · node</text>
+    <text x="135" y="440" text-anchor="middle" class="t-body">~500–700 tok/s cluster</text>
+    <line x1="48" y1="448" x2="222" y2="448" stroke="#F1F5F9" stroke-width="1"/>
+    <text x="135" y="463" text-anchor="middle" font-size="11" font-weight="700" fill="#2563EB">Chat · Autocomplete</text>
+    <text x="135" y="479" text-anchor="middle" class="t-small" fill="#64748B">TTFT p50 &lt; 500 ms</text>
+  </g>
+
+  <!-- ReasonPool  x=270 -->
+  <g class="l4">
+    <rect x="278" y="352" width="174" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.4" stroke="#7C3AED" stroke-width="1" opacity="0.3"/>
+    <rect x="274" y="356" width="182" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#7C3AED" stroke-width="1" opacity="0.5"/>
+    <rect x="270" y="360" width="190" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.95" stroke="url(#grad-purple)" stroke-width="1.2" filter="url(#shadow-purple)"/>
+    <rect x="278" y="375" width="174" height="19"  rx="5" fill="#7C3AED" fill-opacity="0.08"/>
+    <text x="365" y="388" text-anchor="middle" class="t-badge" fill="#7C3AED">ReasonPool  ·  8 × M4</text>
+    <circle cx="286" cy="385" r="2.5" fill="#7C3AED"/>
+    <text x="365" y="409" text-anchor="middle" font-size="12" font-weight="700" fill="#0F172A">Qwen 2.5  14B  Q4_K_M</text>
+    <text x="365" y="425" text-anchor="middle" class="t-body">15–22 tok/s · node</text>
+    <text x="365" y="440" text-anchor="middle" class="t-body">~120–176 tok/s cluster</text>
+    <line x1="278" y1="448" x2="452" y2="448" stroke="#F1F5F9" stroke-width="1"/>
+    <text x="365" y="463" text-anchor="middle" font-size="11" font-weight="700" fill="#7C3AED">Long-context · Reasoning</text>
+    <text x="365" y="479" text-anchor="middle" class="t-small" fill="#64748B">TTFT p50 &lt; 2 s</text>
+  </g>
+
+  <!-- VisionPool  x=500 -->
+  <g class="l4">
+    <rect x="508" y="352" width="174" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.4" stroke="#0891B2" stroke-width="1" opacity="0.3"/>
+    <rect x="504" y="356" width="182" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#0891B2" stroke-width="1" opacity="0.5"/>
+    <rect x="500" y="360" width="190" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.95" stroke="url(#grad-cyan)" stroke-width="1.2" filter="url(#shadow-cyan)"/>
+    <rect x="508" y="375" width="174" height="19"  rx="5" fill="#0891B2" fill-opacity="0.08"/>
+    <text x="595" y="388" text-anchor="middle" class="t-badge" fill="#0891B2">VisionPool  ·  6 × M3</text>
+    <circle cx="516" cy="385" r="2.5" fill="#0891B2"/>
+    <text x="595" y="409" text-anchor="middle" font-size="12" font-weight="700" fill="#0F172A">8B VL  Q4_K_M</text>
+    <text x="595" y="425" text-anchor="middle" class="t-body">18–25 tok/s · node</text>
+    <text x="595" y="440" text-anchor="middle" class="t-body">~108–150 tok/s cluster</text>
+    <line x1="508" y1="448" x2="682" y2="448" stroke="#F1F5F9" stroke-width="1"/>
+    <text x="595" y="463" text-anchor="middle" font-size="11" font-weight="700" fill="#0891B2">Image + text · Multimodal</text>
+    <text x="595" y="479" text-anchor="middle" class="t-small" fill="#64748B">TTFT p50 &lt; 3 s</text>
+  </g>
+
+  <!-- EmbedPool  x=730 -->
+  <g class="l5">
+    <rect x="738" y="352" width="174" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.4" stroke="#059669" stroke-width="1" opacity="0.3"/>
+    <rect x="734" y="356" width="182" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#059669" stroke-width="1" opacity="0.5"/>
+    <rect x="730" y="360" width="190" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.95" stroke="url(#grad-green)" stroke-width="1.2" filter="url(#shadow-green)"/>
+    <rect x="738" y="375" width="174" height="19"  rx="5" fill="#059669" fill-opacity="0.08"/>
+    <text x="825" y="388" text-anchor="middle" class="t-badge" fill="#059669">EmbedPool  ·  4 × M1/M3</text>
+    <circle cx="746" cy="385" r="2.5" fill="#059669"/>
+    <text x="825" y="409" text-anchor="middle" font-size="12" font-weight="700" fill="#0F172A">BGE-M3  F16</text>
+    <text x="825" y="425" text-anchor="middle" class="t-body">~500 seq/s · node</text>
+    <text x="825" y="440" text-anchor="middle" class="t-body">~2,000 seq/s cluster</text>
+    <line x1="738" y1="448" x2="912" y2="448" stroke="#F1F5F9" stroke-width="1"/>
+    <text x="825" y="463" text-anchor="middle" font-size="11" font-weight="700" fill="#059669">Semantic search · RAG</text>
+    <text x="825" y="479" text-anchor="middle" class="t-small" fill="#64748B">p95 &lt; 200 ms</text>
+  </g>
+
+  <!-- SpeechPool  x=960 -->
+  <g class="l5">
+    <rect x="968" y="352" width="174" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.4" stroke="#D97706" stroke-width="1" opacity="0.3"/>
+    <rect x="964" y="356" width="182" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#D97706" stroke-width="1" opacity="0.5"/>
+    <rect x="960" y="360" width="190" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.95" stroke="url(#grad-yellow)" stroke-width="1.2" filter="url(#shadow-yellow)"/>
+    <rect x="968" y="375" width="174" height="19"  rx="5" fill="#D97706" fill-opacity="0.08"/>
+    <text x="1055" y="388" text-anchor="middle" class="t-badge" fill="#D97706">SpeechPool  ·  2 × M1</text>
+    <circle cx="976" cy="385" r="2.5" fill="#D97706"/>
+    <text x="1055" y="409" text-anchor="middle" font-size="12" font-weight="700" fill="#0F172A">Whisper large-v3  F16</text>
+    <text x="1055" y="425" text-anchor="middle" class="t-body">~3 GB per node</text>
+    <text x="1055" y="440" text-anchor="middle" class="t-body">Real-time streaming</text>
+    <line x1="968" y1="448" x2="1142" y2="448" stroke="#F1F5F9" stroke-width="1"/>
+    <text x="1055" y="463" text-anchor="middle" font-size="11" font-weight="700" fill="#D97706">Audio → text · ASR</text>
+    <text x="1055" y="479" text-anchor="middle" class="t-small" fill="#64748B">Streaming transcription</text>
+  </g>
+
+  <!-- Model Store  x=1190 -->
+  <g class="l5">
+    <rect x="1198" y="352" width="242" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.4" stroke="#9CA3AF" stroke-width="1" opacity="0.3"/>
+    <rect x="1194" y="356" width="250" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#9CA3AF" stroke-width="1" opacity="0.5"/>
+    <rect x="1190" y="360" width="250" height="138" rx="10" fill="#FFFFFF" fill-opacity="0.95" stroke="url(#grad-gray)" stroke-width="1.2" filter="url(#shadow-gray)"/>
+    <rect x="1198" y="375" width="234" height="19"  rx="5" fill="#4B5563" fill-opacity="0.08"/>
+    <text x="1315" y="388" text-anchor="middle" class="t-badge" fill="#4B5563">Model Store  (MinIO / NFS)</text>
+    <!-- DB stack visual representation -->
+    <ellipse cx="1212" cy="382" rx="3.5" ry="1.5" fill="none" stroke="#4B5563" stroke-width="1"/>
+    <path d="M1208.5 382 v 3.5 a 3.5 1.5 0 0 0 7 0 v -3.5" fill="none" stroke="#4B5563" stroke-width="1"/>
+    
+    <text x="1315" y="409" text-anchor="middle" font-size="11" font-weight="700" fill="#0F172A">GGUF + MLX weight artifacts</text>
+    <text x="1315" y="424" text-anchor="middle" class="t-body">Approved model registry</text>
+    <text x="1315" y="439" text-anchor="middle" class="t-body">sha256 · version · pool_assignment</text>
+    <line x1="1198" y1="448" x2="1432" y2="448" stroke="#F1F5F9" stroke-width="1"/>
+    <text x="1315" y="463" text-anchor="middle" font-size="11" font-weight="700" fill="#4B5563">Dedicated node pair  (primary + replica)</text>
+    <text x="1315" y="479" text-anchor="middle" class="t-small" fill="#64748B">All pools pull from here on startup</text>
+  </g>
+
+  <!-- Pools ← pull arrow from model store -->
+  <line x1="1190" y1="429" x2="1160" y2="429" stroke="#9CA3AF" stroke-width="1.5" class="flow-slow" marker-end="url(#agr)"/>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       5. SUPPORT LAYER (Spaced vertically by 37px to prevent overlap)
+  ═══════════════════════════════════════════════════════════ -->
+
+  <!-- ── MONITORING CORE (Left Side x=40–940 with 40px gaps) ── -->
+
+  <!-- OTEL Collector -->
+  <g class="l6">
+    <rect x="40"  y="535" width="210" height="95" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-yellow)" stroke-width="1.2" filter="url(#shadow-yellow)"/>
+    <circle cx="56" cy="553" r="4.5" fill="#D97706" class="live-slow"/>
+    <text x="68"  y="554" class="t-head">OTEL Collector</text>
+    <text x="68"  y="567" class="t-small" fill="#64748B">on every Mac Mini</text>
+    <text x="48"  y="584" class="t-body">hostmetrics → CPU, RAM, disk, net, swap</text>
+    <text x="48"  y="598" class="t-body">prometheus/apple_hw → GPU%, ANE%,</text>
+    <text x="48"  y="612" class="t-body">   thermal pressure, system watts</text>
+    <text x="48"  y="625" font-size="10" fill="#D97706" font-weight="800">salt.minion_id metric tag ← Node Key</text>
+  </g>
+
+  <!-- → Victoria Metrics -->
+  <path d="M250,583 L290,583" fill="none" stroke="#D97706" stroke-width="2" class="flow-slow" marker-end="url(#aa)"/>
+  <text x="254" y="576" font-size="9" fill="#D97706" font-weight="800">remote_write</text>
+
+  <!-- Victoria Metrics -->
+  <g class="l6">
+    <rect x="290" y="535" width="185" height="95" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-yellow)" stroke-width="1.2" filter="url(#shadow-yellow)"/>
+    <text x="382" y="555" text-anchor="middle" class="t-head">Victoria Metrics</text>
+    <text x="382" y="571" text-anchor="middle" class="t-body">prometheusremotewrite</text>
+    <text x="382" y="586" text-anchor="middle" class="t-body">Long-term metric storage</text>
+    <text x="382" y="601" text-anchor="middle" class="t-body">PromQL-compatible</text>
+    <text x="382" y="616" text-anchor="middle" class="t-small" fill="#64748B">+ otlp/grpc → kube-prometheus</text>
+  </g>
+
+  <!-- → Grafana -->
+  <path d="M475,583 L515,583" fill="none" stroke="#D97706" stroke-width="2" class="flow-slow" marker-end="url(#aa)"/>
+
+  <!-- Grafana -->
+  <g class="l6">
+    <rect x="515" y="535" width="185" height="95" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-yellow)" stroke-width="1.2" filter="url(#shadow-yellow)"/>
+    <text x="607" y="555" text-anchor="middle" class="t-head">Grafana</text>
+    <text x="607" y="572" text-anchor="middle" class="t-body">Fleet Overview dashboard</text>
+    <text x="607" y="587" text-anchor="middle" class="t-body">Node Deep Dive dashboard</text>
+    <text x="607" y="602" text-anchor="middle" class="t-body">Quality Monitor dashboard</text>
+    <text x="607" y="617" text-anchor="middle" class="t-small" fill="#64748B">$node · $pool · $gpu · $provider</text>
+  </g>
+
+  <!-- → Alertmanager -->
+  <path d="M700,583 L740,583" fill="none" stroke="#D97706" stroke-width="2" class="flow-slow" marker-end="url(#aa)"/>
+
+  <!-- Alertmanager -->
+  <g class="l6">
+    <rect x="740" y="535" width="200" height="95" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-red)" stroke-width="1.2" filter="url(#shadow-red)"/>
+    <text x="840" y="555" text-anchor="middle" class="t-head" fill="#DC2626">Alertmanager</text>
+    <text x="840" y="572" text-anchor="middle" class="t-body">50+ custom alert rules</text>
+    <text x="840" y="587" text-anchor="middle" class="t-body">GPU · thermal · SLA latency</text>
+    <text x="840" y="602" text-anchor="middle" class="t-body">Hallucination detection</text>
+    <text x="840" y="617" text-anchor="middle" class="t-small" fill="#64748B">Slack + PagerDuty integrations</text>
+  </g>
+
+
+  <!-- ── FLEET MANAGEMENT (Right Side x=980–1390) ── -->
+
+  <!-- Salt Master -->
+  <g class="l6">
+    <rect x="980" y="535" width="185" height="95" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-green)" stroke-width="1.2" filter="url(#shadow-green)"/>
+    <circle cx="996" cy="553" r="4.5" fill="#059669" class="live-slow"/>
+    <text x="1008" y="554" class="t-head">Salt Master</text>
+    <text x="988" y="570" class="t-body">Config orchestration</text>
+    <text x="988" y="585" class="t-body">State push to all minions</text>
+    <text x="988" y="600" class="t-body">Reactor on minion startup</text>
+    <text x="988" y="615" class="t-small" fill="#64748B">ZeroMQ  4505/4506 secure</text>
+  </g>
+
+  <!-- → Fleet API -->
+  <path d="M1165,582 L1205,582" fill="none" stroke="#059669" stroke-width="2" class="flow-med" marker-end="url(#ag)"/>
+  <text x="1168" y="575" font-size="9" fill="#059669" font-weight="800">POST /ingest</text>
+
+  <!-- Fleet Platform API -->
+  <g class="l6">
+    <rect x="1205" y="535" width="185" height="95" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-green)" stroke-width="1.2" filter="url(#shadow-green)"/>
+    <text x="1297" y="554" text-anchor="middle" class="t-head">Fleet Platform API</text>
+    <text x="1297" y="571" text-anchor="middle" class="t-body">Node registry + access keys</text>
+    <text x="1297" y="586" text-anchor="middle" class="t-body">Grain ingest + drift metric</text>
+    <text x="1297" y="601" text-anchor="middle" class="t-body">SBOM explorer &amp; registry</text>
+    <text x="1297" y="616" text-anchor="middle" class="t-small" fill="#64748B">FastAPI · PostgreSQL</text>
+  </g>
+
+  <!-- → Celery -->
+  <path d="M1297,630 L1297,650" fill="none" stroke="#059669" stroke-width="1.5" class="flow-slow" marker-end="url(#ag)"/>
+
+  <!-- Celery workers bar (Spaced vertically by 20px) -->
+  <g class="l7">
+    <rect x="980" y="650" width="410" height="52" rx="10" fill="#FFFFFF" fill-opacity="0.8" stroke="url(#grad-purple)" stroke-width="1.2" filter="url(#shadow-purple)"/>
+    <circle cx="996" cy="668" r="4.5" fill="#7C3AED" class="live-slow"/>
+    <text x="1008" y="669" class="t-head">Celery Workers</text>
+    <text x="988" y="687" class="t-body" fill="#334155">drift queue: grain diff → DriftRecord  ·  sbom: CycloneDX ingestion  ·  5-min sweep</text>
+  </g>
+
+  <!-- Salt → Celery -->
+  <path d="M1072,630 L1072,650" fill="none" stroke="#059669" stroke-width="1.5" class="flow-slow" marker-end="url(#ag)"/>
+
+  <!-- Jenkins Integration Border -->
+  <g class="l7">
+    <rect x="1449" y="535" width="2" height="167" fill="#E2E8F0"/>
+  </g>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       6. ANSIBLE DEPLOYMENT BANNER
+  ═══════════════════════════════════════════════════════════ -->
+  <g class="l7">
+    <rect x="40"  y="735" width="1400" height="52" rx="10" fill="#FFFFFF" fill-opacity="0.85" stroke="url(#grad-red)" stroke-width="1.2" filter="url(#shadow-red)"/>
+
+    <text x="60"  y="756" class="t-head" fill="#DC2626">⚙  Ansible Playbooks  (ansible/)</text>
+    <text x="220" y="756" class="t-body">cluster.yml → Orchestration blueprint for M-series metal  ·  Strictly offline / air-gapped target execution</text>
+    <text x="220" y="772" class="t-small" fill="#64748B">System Roles: otel-mac-agent  ·  salt-minion  ·  salt-master  ·  jenkins-ios-agent  ·  base  ·  hw-exporter  ·  llm-discovery  ·  monitoring-cfg</text>
+
+    <!-- Glowing Pill Badges -->
+    <rect x="920"  y="744" width="115" height="18" rx="5" fill="#EF4444" fill-opacity="0.08" stroke="#DC2626" stroke-width="0.7"/>
+    <text x="977.5"  y="756" text-anchor="middle" font-size="9" fill="#DC2626" font-weight="800">offline · air-gapped</text>
+
+    <rect x="1047" y="744" width="135" height="18" rx="5" fill="#EF4444" fill-opacity="0.08" stroke="#DC2626" stroke-width="0.7"/>
+    <text x="1114.5" y="756" text-anchor="middle" font-size="9" fill="#DC2626" font-weight="800">cluster.yml → all nodes</text>
+
+    <rect x="1194" y="744" width="105" height="18" rx="5" fill="#EF4444" fill-opacity="0.08" stroke="#DC2626" stroke-width="0.7"/>
+    <text x="1246.5" y="756" text-anchor="middle" font-size="9" fill="#DC2626" font-weight="800">idempotent execution</text>
+
+    <rect x="1311" y="744" width="82" height="18" rx="5" fill="#EF4444" fill-opacity="0.08" stroke="#DC2626" stroke-width="0.7"/>
+    <text x="1352" y="756" text-anchor="middle" font-size="9" fill="#DC2626" font-weight="800">8 robust roles</text>
+  </g>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       7. GRAPH KEY & LEGEND (Frosted Light Indicators)
+  ═══════════════════════════════════════════════════════════ -->
+  <g class="l7">
+    <!-- Inference -->
+    <circle cx="120" cy="812" r="4.5" fill="#2563EB" filter="url(#shadow-blue)"/>
+    <text   x="132"  y="816" class="t-body">Inference Pool</text>
+
+    <!-- Monitoring -->
+    <circle cx="280" cy="812" r="4.5" fill="#D97706" filter="url(#shadow-yellow)"/>
+    <text   x="292"  y="816" class="t-body">Monitoring / OTEL</text>
+
+    <!-- Fleet -->
+    <circle cx="460" cy="812" r="4.5" fill="#059669" filter="url(#shadow-green)"/>
+    <text   x="472"  y="816" class="t-body">Fleet Management</text>
+
+    <!-- Gateway -->
+    <circle cx="640" cy="812" r="4.5" fill="#7C3AED" filter="url(#shadow-purple)"/>
+    <text   x="652"  y="816" class="t-body">Gateway / Network</text>
+
+    <!-- Storage -->
+    <circle cx="810" cy="812" r="4.5" fill="#4B5563" filter="url(#shadow-gray)"/>
+    <text   x="822"  y="816" class="t-body">Model Registry</text>
+
+    <!-- Ansible -->
+    <circle cx="960" cy="812" r="4.5" fill="#DC2626" filter="url(#shadow-red)"/>
+    <text   x="972"  y="816" class="t-body">Ansible Deployment</text>
+
+    <!-- Animated flow key -->
+    <line x1="1120" y1="812" x2="1190" y2="812" stroke="#7C3AED" stroke-width="2" class="flow" marker-end="url(#ap)"/>
+    <text x="1202" y="816" class="t-body">glowing data flow</text>
+
+    <!-- Standby path -->
+    <line x1="1300" y1="812" x2="1370" y2="812" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="1382" y="816" class="t-body">standby</text>
+  </g>
+
+</svg>

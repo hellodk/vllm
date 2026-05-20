@@ -1,0 +1,16 @@
+# ansible/roles/llm-airllm/vars/main.yml
+---
+airllm_dir: "{{ llm_base_dir }}/airllm"
+airllm_venv: "{{ airllm_dir }}/venv"
+airllm_port: 8001
+airllm_cache_dir: "{{ airllm_dir }}/cache"
+airllm_compression_ratio: 0.16
+airllm_default_model: /opt/hydra/models/gguf/Mistral-7B-Instruct-v0.3.Q4_K_M.gguf
+airllm_packages:
+  - "airllm>=0.2.4"
+  - "torch>=2.3.0"
+  - "transformers>=4.41.0"
+  - "huggingface-hub>=0.23.0"
+  - "fastapi==0.115.0"
+  - "uvicorn[standard]==0.32.0"
+  - "numpy>=1.26.0"

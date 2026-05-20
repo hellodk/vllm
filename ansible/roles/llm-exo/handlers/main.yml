@@ -1,0 +1,8 @@
+# ansible/roles/llm-exo/handlers/main.yml
+---
+- name: restart exo
+  shell: |
+    launchctl bootout system/com.hydra.exo 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.exo.plist
+  become: true
+  ignore_errors: true

@@ -1,0 +1,113 @@
+# monitoring/otel-agent-linux/otel-agent-config.yaml
+# OTEL agent for Linux dev/control node (Ubuntu x86_64).
+# Collects host metrics and any local LLM inference metrics, then PUSHES
+# via OTLP gRPC to the central OTEL Collector — no scraping by Prometheus.
+#
+# Install: see install.sh
+# Edit OTEL_GATEWAY_ENDPOINT below to match your hydra-svc-01 IP.
+
+receivers:
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      disk:
+      filesystem:
+        exclude_mount_points:
+          mount_points: ["/dev", "/proc", "/sys", "/run/lock"]
+          match_type: strict
+      network:
+      load:
+      processes:
+      paging:
+
+  # Scrape any local LLM endpoints running on this machine
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: local-llm
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - "localhost:11434"   # mlx-lm if running locally
+                - "localhost:8000"    # vllm if running locally
+                - "localhost:8080"    # litellm if running locally
+          relabel_configs:
+            - target_label: node
+              replacement: "dev-linux"
+          # Ignore connection refused — endpoints optional
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: "up"
+              action: keep
+
+processors:
+  resource:
+    attributes:
+      - key: cluster
+        value: hydra
+        action: upsert
+      - key: node_id
+        value: dev-linux
+        action: upsert
+      - key: pool
+        value: infra
+        action: upsert
+      - key: os
+        value: linux
+        action: upsert
+      - key: salt.minion_id
+        value: dev-linux
+        action: upsert
+
+  resourcedetection:
+    detectors: [env, system, docker]
+    timeout: 5s
+    system:
+      hostname_sources: [os]
+
+  batch:
+    send_batch_size: 8192
+    timeout: 10s
+
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 128
+    spike_limit_mib: 32
+
+exporters:
+  otlp:
+    endpoint: "192.168.10.13:4317"   # hydra-svc-01 OTEL Collector — change if running stack locally
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers:  [hostmetrics, prometheus]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters:  [otlp]
+
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      address: "127.0.0.1:8888"

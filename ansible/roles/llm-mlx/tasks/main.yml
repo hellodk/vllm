@@ -1,0 +1,103 @@
+# ansible/roles/llm-mlx/tasks/main.yml
+# Deploys Apple MLX (mlx-lm) inference server — air-gapped, wheels from files/.
+---
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+
+- name: Assert MLX wheels directory exists in files/
+  delegate_to: localhost
+  stat:
+    path: "{{ role_path }}/files/wheels"
+  register: _mlx_wheels_dir
+  run_once: true
+
+- name: Fail if MLX wheels are missing
+  fail:
+    msg: |
+      Missing: {{ role_path }}/files/wheels/
+      See ansible/roles/llm-mlx/files/README.md — download wheels on a Mac with internet and place here.
+      pip download mlx>=0.16.0 mlx-lm>=0.19.0 huggingface-hub transformers sentencepiece protobuf numpy \
+        --platform macosx_14_0_arm64 --python-version 311 --only-binary=:all: -d files/wheels/
+  when: not _mlx_wheels_dir.stat.exists
+  run_once: true
+
+# ── Directories ───────────────────────────────────────────────────────────────
+
+- name: Create MLX directory
+  file:
+    path: "{{ mlx_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Check MLX model directory exists
+  stat:
+    path: "{{ mlx_default_model }}"
+  register: _mlx_model_dir
+
+- name: Fail if MLX model directory is missing
+  fail:
+    msg: |
+      MLX model not found at {{ mlx_default_model }}
+      Place a quantized MLX model directory there before running this role.
+      Example: rsync -av /path/to/model {{ mlx_models_dir }}/
+  when: not _mlx_model_dir.stat.exists
+
+# ── Wheels ────────────────────────────────────────────────────────────────────
+
+- name: Sync MLX wheels (offline)
+  synchronize:
+    src: "{{ role_path }}/files/wheels/"
+    dest: "{{ mlx_dir }}/wheels/"
+    delete: false
+  become: true
+
+# ── Virtualenv ────────────────────────────────────────────────────────────────
+
+- name: Create MLX virtualenv
+  command: >
+    {{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}
+    -m venv {{ mlx_venv }}
+  args:
+    creates: "{{ mlx_venv }}/bin/python"
+  become: true
+
+- name: Install MLX packages from local wheels
+  pip:
+    name: "{{ mlx_packages }}"
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--no-index --find-links {{ mlx_dir }}/wheels"
+    state: present
+  become: true
+
+# ── LaunchDaemon ──────────────────────────────────────────────────────────────
+
+- name: Install MLX server LaunchDaemon
+  template:
+    src: com.hydra.mlx-server.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.mlx-server.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart mlx-server
+
+- name: Bootstrap MLX server LaunchDaemon (first load)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-server.plist
+  become: true
+  register: _mlx_boot
+  changed_when: _mlx_boot.rc == 0
+  ignore_errors: true
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Wait for MLX server to serve /v1/models
+  uri:
+    url: "http://localhost:{{ mlx_port }}/v1/models"
+    status_code: 200
+    timeout: 5
+  register: _mlx_health
+  until: _mlx_health.status == 200
+  retries: 24
+  delay: 10

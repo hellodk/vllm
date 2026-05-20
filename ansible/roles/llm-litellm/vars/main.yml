@@ -1,0 +1,141 @@
+# ansible/roles/llm-litellm/vars/main.yml
+---
+litellm_dir: /opt/hydra/litellm
+litellm_venv: /opt/hydra/litellm/venv
+litellm_port: 8080
+litellm_master_key: sk-hydra-master-changeme   # rotate before prod
+litellm_db_url: ""                              # optional: postgres for persistence
+litellm_config: /opt/hydra/litellm/litellm_config.yml
+litellm_packages:
+  - "litellm[proxy]>=1.40.0"
+  - "uvicorn[standard]==0.32.0"
+  - "python-dotenv>=1.0.0"
+  - "pydantic>=2.7.0"
+  - "httpx>=0.27.0"
+  - "redis>=5.0.0"    # optional caching; comment out if no Redis on GW nodes
+
+# Pool → model → backend routing — mirrors cluster.yml pool layout
+# Each entry in litellm_models becomes a "virtual model" that clients call by name.
+litellm_models:
+  # ── Fast pool: low-latency chat (10 nodes × 2 backends) ──────────────────
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.20:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.21:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.22:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.23:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.24:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.25:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.26:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.27:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.28:11434
+      api_key: none
+  - model_name: fast/mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.10.29:11434
+      api_key: none
+
+  # ── Reason pool: CoT / long-context (4 nodes) ────────────────────────────
+  - model_name: reason/qwen2.5-14b
+    litellm_params:
+      model: openai/qwen2.5-14b-instruct
+      api_base: http://192.168.10.30:11434
+      api_key: none
+  - model_name: reason/qwen2.5-14b
+    litellm_params:
+      model: openai/qwen2.5-14b-instruct
+      api_base: http://192.168.10.31:11434
+      api_key: none
+  - model_name: reason/qwen2.5-14b
+    litellm_params:
+      model: openai/qwen2.5-14b-instruct
+      api_base: http://192.168.10.32:11434
+      api_key: none
+  - model_name: reason/qwen2.5-14b
+    litellm_params:
+      model: openai/qwen2.5-14b-instruct
+      api_base: http://192.168.10.33:11434
+      api_key: none
+
+  # ── Large pool: tensor-parallel exo pairs (2 pairs via RDMA) ─────────────
+  # Pair A — requests go to either node; exo distributes internally
+  - model_name: largepool/qwen2.5-32b
+    litellm_params:
+      model: openai/qwen2.5-32b-instruct
+      api_base: http://192.168.10.40:52416
+      api_key: none
+  - model_name: largepool/qwen2.5-32b
+    litellm_params:
+      model: openai/qwen2.5-32b-instruct
+      api_base: http://192.168.10.42:52416
+      api_key: none
+
+  # ── Vision pool (3 nodes) ─────────────────────────────────────────────────
+  - model_name: vision/llava-7b
+    litellm_params:
+      model: openai/llava-v1.6-mistral-7b
+      api_base: http://192.168.10.50:11434
+      api_key: none
+  - model_name: vision/llava-7b
+    litellm_params:
+      model: openai/llava-v1.6-mistral-7b
+      api_base: http://192.168.10.51:11434
+      api_key: none
+  - model_name: vision/llava-7b
+    litellm_params:
+      model: openai/llava-v1.6-mistral-7b
+      api_base: http://192.168.10.52:11434
+      api_key: none
+
+  # ── Embed pool (2 nodes) ──────────────────────────────────────────────────
+  - model_name: embed/nomic-embed
+    litellm_params:
+      model: openai/nomic-embed-text
+      api_base: http://192.168.10.60:11434
+      api_key: none
+  - model_name: embed/nomic-embed
+    litellm_params:
+      model: openai/nomic-embed-text
+      api_base: http://192.168.10.61:11434
+      api_key: none
+
+  # ── Speech pool (1 node) ──────────────────────────────────────────────────
+  - model_name: speech/whisper-large
+    litellm_params:
+      model: openai/whisper-large-v3
+      api_base: http://192.168.10.70:11434
+      api_key: none

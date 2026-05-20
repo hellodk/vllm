@@ -44,6 +44,22 @@
     mode: "0755"
   become: true
 
+# ── DB schema migration ───────────────────────────────────────────────────────
+
+- name: Copy DB schema to application directory
+  copy:
+    src: schema.sql
+    dest: "{{ model_registry_dir }}/schema.sql"
+    mode: "0644"
+  become: true
+
+- name: Apply hydra_models schema (idempotent)
+  command: >
+    psql "{{ model_registry_db_url }}"
+    -f {{ model_registry_dir }}/schema.sql
+  become: true
+  changed_when: false   # CREATE TABLE IF NOT EXISTS is always safe to re-run
+
 # ── MinIO ─────────────────────────────────────────────────────────────────────
 
 - name: Copy MinIO server binary (offline)

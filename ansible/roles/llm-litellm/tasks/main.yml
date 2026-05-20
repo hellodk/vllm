@@ -1,0 +1,111 @@
+# ansible/roles/llm-litellm/tasks/main.yml
+# Deploys LiteLLM proxy gateway on hydra-gw-01/02 — routes to all pool backends.
+# Runs as LaunchDaemon; config synced from Ansible — restart on change.
+---
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+
+- name: Assert LiteLLM wheels directory exists in files/
+  delegate_to: localhost
+  stat:
+    path: "{{ role_path }}/files/wheels"
+  register: _litellm_wheels_dir
+  run_once: true
+
+- name: Fail if LiteLLM wheels are missing
+  fail:
+    msg: |
+      Missing: {{ role_path }}/files/wheels/
+      See ansible/roles/llm-litellm/files/README.md for offline wheel download instructions.
+  when: not _litellm_wheels_dir.stat.exists
+  run_once: true
+
+# ── Directories ───────────────────────────────────────────────────────────────
+
+- name: Create LiteLLM directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ litellm_dir }}"
+
+# ── Wheels ────────────────────────────────────────────────────────────────────
+
+- name: Sync LiteLLM wheels (offline)
+  synchronize:
+    src: "{{ role_path }}/files/wheels/"
+    dest: "{{ litellm_dir }}/wheels/"
+    delete: false
+  become: true
+
+# ── Virtualenv ────────────────────────────────────────────────────────────────
+
+- name: Create LiteLLM virtualenv
+  command: >
+    {{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}
+    -m venv {{ litellm_venv }}
+  args:
+    creates: "{{ litellm_venv }}/bin/python"
+  become: true
+
+- name: Install LiteLLM packages from local wheels
+  pip:
+    name: "{{ litellm_packages }}"
+    virtualenv: "{{ litellm_venv }}"
+    extra_args: "--no-index --find-links {{ litellm_dir }}/wheels"
+    state: present
+  become: true
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+- name: Deploy LiteLLM proxy config
+  template:
+    src: litellm_config.yml.j2
+    dest: "{{ litellm_config }}"
+    owner: root
+    group: wheel
+    mode: "0640"
+  become: true
+  notify: restart litellm
+
+# ── LaunchDaemon ──────────────────────────────────────────────────────────────
+
+- name: Install LiteLLM LaunchDaemon
+  template:
+    src: com.hydra.litellm.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.litellm.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart litellm
+
+- name: Bootstrap LiteLLM LaunchDaemon (first load)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.litellm.plist
+  become: true
+  register: _litellm_boot
+  changed_when: _litellm_boot.rc == 0
+  ignore_errors: true
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Wait for LiteLLM health endpoint
+  uri:
+    url: "http://localhost:{{ litellm_port }}/health"
+    status_code: 200
+    timeout: 5
+  register: _litellm_health
+  until: _litellm_health.status == 200
+  retries: 18
+  delay: 10
+
+- name: LiteLLM gateway summary
+  debug:
+    msg:
+      - "LiteLLM proxy:  http://{{ inventory_hostname }}:{{ litellm_port }}"
+      - "OpenAI API:     http://{{ inventory_hostname }}:{{ litellm_port }}/v1"
+      - "Admin UI:       http://{{ inventory_hostname }}:{{ litellm_port }}/ui"
+      - "Model list:     http://{{ inventory_hostname }}:{{ litellm_port }}/v1/models"

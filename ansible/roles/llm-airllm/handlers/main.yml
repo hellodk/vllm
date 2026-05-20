@@ -1,0 +1,8 @@
+# ansible/roles/llm-airllm/handlers/main.yml
+---
+- name: restart airllm-server
+  shell: |
+    launchctl bootout system/com.hydra.airllm-server 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.airllm-server.plist
+  become: true
+  ignore_errors: true

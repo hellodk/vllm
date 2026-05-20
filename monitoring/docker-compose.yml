@@ -1,0 +1,231 @@
+# monitoring/docker-compose.yml
+# Hydra monitoring + telemetry stack — air-gapped deployment.
+# DO NOT bring this up until images are pre-pulled and saved to monitoring/images/.
+# See monitoring/README.md for offline image prep and startup procedure.
+#
+# Services:
+#   victoria-metrics  — long-term TSDB (replaces Prometheus storage)
+#   prometheus        — scrape agent (remote_write → victoria-metrics)
+#   grafana           — dashboards
+#   alertmanager      — alert routing
+#   otel-collector    — OTEL pipeline (metrics, traces, logs)
+#   loki              — log aggregation
+#   opik-backend      — LLM observability platform (backend)
+#   opik-frontend     — Opik UI
+#   opik-mysql        — Opik metadata store
+#   opik-clickhouse   — Opik trace/span store
+#   opik-redis        — Opik cache / task queue
+---
+version: "3.9"
+
+networks:
+  hydra-monitor:
+    driver: bridge
+
+volumes:
+  victoria-data:
+  grafana-data:
+  loki-data:
+  alertmanager-data:
+  opik-mysql-data:
+  opik-clickhouse-data:
+  opik-redis-data:
+
+services:
+
+  # ── Victoria Metrics ──────────────────────────────────────────────────────
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.101.0
+    container_name: victoria-metrics
+    restart: unless-stopped
+    mem_limit: 1g
+    command:
+      - "-storageDataPath=/victoria-data"
+      - "-retentionPeriod=${VM_RETENTION:-90d}"
+      - "-httpListenAddr=:8428"
+      - "-selfScrapeInterval=15s"
+    volumes:
+      - victoria-data:/victoria-data
+    ports:
+      - "8428:8428"
+    networks: [hydra-monitor]
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    restart: unless-stopped
+    mem_limit: 512m
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=2h"
+      - "--web.enable-remote-write-receiver"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+    ports:
+      - "9090:9090"
+    networks: [hydra-monitor]
+    depends_on: [victoria-metrics]
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GF_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GF_ADMIN_PASSWORD}"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_FEATURE_TOGGLES_ENABLE: "publicDashboards"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks: [hydra-monitor]
+    depends_on: [victoria-metrics, loki]
+
+  # ── Alertmanager ─────────────────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    restart: unless-stopped
+    mem_limit: 256m
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+    networks: [hydra-monitor]
+
+  # ── OTEL Collector ────────────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    container_name: otel-collector
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["--config=/etc/otel/otel-gateway-config.yaml"]
+    volumes:
+      - ./otel-collector/otel-gateway-config.yaml:/etc/otel/otel-gateway-config.yaml:ro
+    ports:
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+      - "8889:8889"    # Prometheus exporter (self-metrics)
+    networks: [hydra-monitor]
+    depends_on: [victoria-metrics, loki]
+
+  # ── Loki ─────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: loki
+    restart: unless-stopped
+    mem_limit: 512m
+    command: "-config.file=/etc/loki/loki-config.yml"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks: [hydra-monitor]
+
+  # ── Opik MySQL ────────────────────────────────────────────────────────────
+  opik-mysql:
+    image: mysql:8.0
+    container_name: opik-mysql
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      MYSQL_ROOT_PASSWORD: "${OPIK_MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE: "${OPIK_MYSQL_DATABASE:-opik}"
+      MYSQL_USER: "${OPIK_MYSQL_USER:-opik}"
+      MYSQL_PASSWORD: "${OPIK_MYSQL_PASSWORD}"
+    volumes:
+      - opik-mysql-data:/var/lib/mysql
+      - ./opik/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [hydra-monitor]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Opik ClickHouse ───────────────────────────────────────────────────────
+  opik-clickhouse:
+    image: clickhouse/clickhouse-server:24.6
+    container_name: opik-clickhouse
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: "1.0"
+    environment:
+      CLICKHOUSE_PASSWORD: "${OPIK_CLICKHOUSE_PASSWORD}"
+    volumes:
+      - opik-clickhouse-data:/var/lib/clickhouse
+    networks: [hydra-monitor]
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  # ── Opik Redis ────────────────────────────────────────────────────────────
+  opik-redis:
+    image: redis:7.2-alpine
+    container_name: opik-redis
+    restart: unless-stopped
+    mem_limit: 256m
+    command: redis-server --requirepass "${OPIK_REDIS_PASSWORD}"
+    volumes:
+      - opik-redis-data:/data
+    networks: [hydra-monitor]
+
+  # ── Opik Backend ─────────────────────────────────────────────────────────
+  opik-backend:
+    image: comet/opik-backend:latest
+    container_name: opik-backend
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      OPIK_MYSQL_HOST: opik-mysql
+      OPIK_MYSQL_PORT: "3306"
+      OPIK_MYSQL_DATABASE: "${OPIK_MYSQL_DATABASE:-opik}"
+      OPIK_MYSQL_USER: "${OPIK_MYSQL_USER:-opik}"
+      OPIK_MYSQL_PASSWORD: "${OPIK_MYSQL_PASSWORD}"
+      OPIK_CLICKHOUSE_HOST: opik-clickhouse
+      OPIK_CLICKHOUSE_PORT: "8123"
+      OPIK_CLICKHOUSE_PASSWORD: "${OPIK_CLICKHOUSE_PASSWORD}"
+      OPIK_REDIS_HOST: opik-redis
+      OPIK_REDIS_PORT: "6379"
+      OPIK_REDIS_PASSWORD: "${OPIK_REDIS_PASSWORD}"
+      # Judge LLM for hallucination scoring (our own LiteLLM gateway — air-gapped)
+      OPIK_JUDGE_MODEL_BASE_URL: "http://192.168.10.10:8080/v1"
+      OPIK_JUDGE_MODEL_API_KEY: "${LITELLM_MASTER_KEY:-sk-hydra-master-changeme}"
+      OPIK_JUDGE_MODEL_NAME: "fast/mistral-7b"
+    ports:
+      - "8080:8080"
+    networks: [hydra-monitor]
+    depends_on:
+      opik-mysql:
+        condition: service_healthy
+      opik-clickhouse:
+        condition: service_started
+      opik-redis:
+        condition: service_started
+
+  # ── Opik Frontend ─────────────────────────────────────────────────────────
+  opik-frontend:
+    image: comet/opik-frontend:latest
+    container_name: opik-frontend
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      OPIK_BACKEND_URL: http://opik-backend:8080
+    ports:
+      - "5173:5173"
+    networks: [hydra-monitor]
+    depends_on: [opik-backend]

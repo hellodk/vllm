@@ -1,0 +1,119 @@
+# monitoring/prometheus/rules/apple-silicon-alerts.yml
+# Apple Silicon hardware health alert rules.
+# Metrics are pushed from apple-silicon-exporter via OTEL mac-agent → Victoria Metrics.
+# Evaluated by Prometheus (evaluation_interval: 15s) against Victoria Metrics remote data.
+
+groups:
+  - name: apple_silicon_hardware
+    interval: 30s
+    rules:
+
+      # ── GPU Utilization ──────────────────────────────────────────────────────
+      - alert: AppleSiliconGPUHighUtilization
+        expr: apple_gpu_utilization_percent > 90
+        for: 5m
+        labels:
+          severity: warning
+          pool: "{{ $labels.pool }}"
+        annotations:
+          summary: "GPU utilization critically high on {{ $labels.node_id }}"
+          description: >
+            Node {{ $labels.node_id }} (pool={{ $labels.pool }}, chip={{ $labels.chip }})
+            has sustained GPU utilization of {{ $value | printf "%.1f" }}% (threshold: 90%)
+            for over 5 minutes. Consider redistributing inference load.
+          runbook: "Check /var/log/hydra/apple-exporter.log on {{ $labels.node_id }}"
+
+      # ── GPU Temperature ──────────────────────────────────────────────────────
+      - alert: AppleSiliconGPUCriticalTemperature
+        expr: apple_gpu_temperature_celsius > 85
+        for: 2m
+        labels:
+          severity: critical
+          pool: "{{ $labels.pool }}"
+        annotations:
+          summary: "GPU temperature critical on {{ $labels.node_id }}"
+          description: >
+            Node {{ $labels.node_id }} (pool={{ $labels.pool }}, chip={{ $labels.chip }})
+            GPU temperature is {{ $value | printf "%.1f" }}°C (threshold: 85°C).
+            Thermal throttling or hardware damage risk is imminent.
+          runbook: "Check /var/log/hydra/apple-exporter.log on {{ $labels.node_id }}"
+
+      # ── Thermal Throttling ───────────────────────────────────────────────────
+      - alert: AppleSiliconThermalThrottling
+        expr: apple_thermal_throttle_active == 1
+        for: 1m
+        labels:
+          severity: warning
+          pool: "{{ $labels.pool }}"
+        annotations:
+          summary: "Thermal throttling active on {{ $labels.node_id }}"
+          description: >
+            Node {{ $labels.node_id }} (pool={{ $labels.pool }}, chip={{ $labels.chip }})
+            has active thermal throttling. Inference throughput will be degraded.
+            Check ambient temperature and ensure adequate airflow around the node.
+          runbook: "Check /var/log/hydra/apple-exporter.log on {{ $labels.node_id }}"
+
+      # ── Thermal Pressure ─────────────────────────────────────────────────────
+      - alert: AppleSiliconThermalPressureCritical
+        expr: apple_thermal_pressure >= 2
+        for: 3m
+        labels:
+          severity: critical
+          pool: "{{ $labels.pool }}"
+        annotations:
+          summary: "Critical thermal pressure on {{ $labels.node_id }}"
+          description: >
+            Node {{ $labels.node_id }} (pool={{ $labels.pool }}, chip={{ $labels.chip }})
+            thermal pressure level is {{ $value | printf "%.0f" }}
+            (0=Nominal, 1=Fair, 2=Serious, 3=Critical). Sustained serious/critical
+            thermal pressure degrades performance and risks hardware longevity.
+          runbook: "Check /var/log/hydra/apple-exporter.log on {{ $labels.node_id }}"
+
+      # ── System Power ─────────────────────────────────────────────────────────
+      - alert: AppleSiliconHighSystemPower
+        expr: apple_system_power_watts > 65
+        for: 10m
+        labels:
+          severity: warning
+          pool: "{{ $labels.pool }}"
+        annotations:
+          summary: "Sustained peak power draw on {{ $labels.node_id }}"
+          description: >
+            Node {{ $labels.node_id }} (pool={{ $labels.pool }}, chip={{ $labels.chip }})
+            system power is {{ $value | printf "%.1f" }}W (threshold: 65W).
+            M4 TDP is ~38W sustained; >65W for 10+ minutes indicates continuous
+            peak load which may reduce hardware lifespan.
+          runbook: "Check /var/log/hydra/apple-exporter.log on {{ $labels.node_id }}"
+
+      # ── Node Availability ────────────────────────────────────────────────────
+      - alert: AppleSiliconNodeDown
+        expr: up{job="hw-exporter"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          pool: "{{ $labels.pool }}"
+        annotations:
+          summary: "Apple Silicon node exporter unreachable: {{ $labels.node_id }}"
+          description: >
+            The hardware exporter on node {{ $labels.node_id }}
+            (pool={{ $labels.pool }}) has been unreachable for over 3 minutes.
+            Metrics scraping has stopped — the node may be down or the
+            apple-silicon-exporter service may have crashed.
+          runbook: "Check /var/log/hydra/apple-exporter.log on {{ $labels.node_id }}"
+
+      # ── Memory Pressure ──────────────────────────────────────────────────────
+      - alert: AppleSiliconHighMemoryPressure
+        expr: system_memory_utilization > 0.88
+        for: 5m
+        labels:
+          severity: warning
+          pool: "{{ $labels.pool }}"
+        annotations:
+          summary: "High memory utilization on {{ $labels.node_id }}"
+          description: >
+            Node {{ $labels.node_id }} (pool={{ $labels.pool }})
+            memory utilization is {{ $value | printf "%.1f" }}
+            ({{ $value | printf "%.0f" }}% — threshold: 88%).
+            At 16GB unified memory, 88% ≈ 14GB used. The active model is near
+            the swap boundary; inference latency may increase significantly.
+          runbook: "Check /var/log/hydra/apple-exporter.log on {{ $labels.node_id }}"

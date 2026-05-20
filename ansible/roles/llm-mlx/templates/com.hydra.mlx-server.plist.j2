@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.mlx-server.plist
+  Managed by Ansible (llm-mlx role) — do not edit manually.
+  Apple MLX inference server (mlx_lm.server).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.mlx-server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ mlx_venv }}/bin/python</string>
+    <string>-m</string>
+    <string>mlx_lm.server</string>
+    <string>--model</string>
+    <string>{{ mlx_default_model }}</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>{{ mlx_port }}</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ mlx_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TOKENIZERS_PARALLELISM</key>
+    <string>false</string>
+    <key>HF_DATASETS_OFFLINE</key>
+    <string>1</string>
+    <key>TRANSFORMERS_OFFLINE</key>
+    <string>1</string>
+    <key>HF_HUB_OFFLINE</key>
+    <string>1</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/mlx-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/mlx-server-error.log</string>
+</dict>
+</plist>

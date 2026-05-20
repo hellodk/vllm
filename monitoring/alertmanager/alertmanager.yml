@@ -1,0 +1,44 @@
+# monitoring/alertmanager/alertmanager.yml
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: [alertname, cluster, pool]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: slack-hydra
+
+  routes:
+    - match:
+        severity: critical
+      receiver: slack-hydra
+      group_wait: 10s
+      repeat_interval: 1h
+
+    - match:
+        severity: warning
+      receiver: slack-hydra
+      repeat_interval: 4h
+
+receivers:
+  - name: slack-hydra
+    slack_configs:
+      - api_url: "${ALERTMANAGER_SLACK_WEBHOOK}"
+        channel: "${ALERTMANAGER_SLACK_CHANNEL:-#hydra-alerts}"
+        icon_emoji: ":robot_face:"
+        title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Pool:* {{ .Labels.pool }}
+          *Node:* {{ .Labels.instance }}
+          {{ end }}
+
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: [alertname, cluster, instance]

@@ -15,8 +15,8 @@ pillar_roots:
     - /srv/salt/pillar
 
 # ── Key management ────────────────────────────────────────────────────────────
-# auto_accept: safe on a private LAN; set to False for stricter environments
-auto_accept: {{ hydra_salt_auto_accept | default(true) | lower }}
+# auto_accept: set to true only on a fully trusted private LAN; false by default (secure)
+auto_accept: {{ hydra_salt_auto_accept | default(false) | lower }}
 
 # ── Reactor ───────────────────────────────────────────────────────────────────
 # Fires grain_report on every minion start/reconnect

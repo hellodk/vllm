@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 800" width="1400" height="800"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+
+<defs>
+<style>
+  .t-title  { font-size:21px; font-weight:700; fill:#111827; }
+  .t-sub    { font-size:12px; font-weight:400; fill:#4B5563; }
+  .t-label  { font-size:13px; font-weight:600; fill:#111827; }
+  .t-small  { font-size:11px; font-weight:400; fill:#4B5563; }
+  .t-tiny   { font-size:10px; font-weight:400; fill:#6B7280; }
+  .t-sec    { font-size:10px; font-weight:600; fill:#9CA3AF; letter-spacing:1.4px; }
+  .t-push   { font-size:11px; font-weight:700; }
+  .card     { fill:#FFFFFF; stroke:#E5E7EB; stroke-width:1; }
+  .card-hub { fill:#FFFBEB; stroke:#FCD34D; stroke-width:1.5; }
+</style>
+
+<filter id="sh" x="-6%" y="-12%" width="112%" height="132%">
+  <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.07"/>
+</filter>
+<filter id="sh-hub" x="-8%" y="-8%" width="116%" height="124%">
+  <feDropShadow dx="0" dy="2" stdDeviation="5" flood-color="#D97706" flood-opacity="0.15"/>
+</filter>
+
+<marker id="a-pur" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+  <polygon points="0 0,9 3.5,0 7" fill="#6D28D9"/>
+</marker>
+<marker id="a-gry" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+  <polygon points="0 0,9 3.5,0 7" fill="#9CA3AF"/>
+</marker>
+</defs>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     BACKGROUND
+     ═══════════════════════════════════════════════════════════════ -->
+<rect width="1400" height="800" fill="#F9FAFB"/>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HEADER
+     ═══════════════════════════════════════════════════════════════ -->
+<rect x="0" y="0" width="1400" height="56" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="28" y="26" class="t-title">HYDRA</text>
+<text x="105" y="26" font-size="21px" font-weight="400" fill="#6B7280"> — LLM Cluster · Push-Only Telemetry</text>
+<text x="28" y="45" class="t-sub">28 × Mac Mini M4 16 GB · 10 GbE + RDMA RoCE-v2 · Air-Gapped · Zero Pull Scraping</text>
+
+<!-- Legend -->
+<circle cx="1010" cy="28" r="5" fill="#1D4ED8"/><text x="1020" y="32" class="t-small">Fast</text>
+<circle cx="1062" cy="28" r="5" fill="#6D28D9"/><text x="1072" y="32" class="t-small">Reason</text>
+<circle cx="1124" cy="28" r="5" fill="#B91C1C"/><text x="1134" y="32" class="t-small">Large</text>
+<circle cx="1180" cy="28" r="5" fill="#15803D"/><text x="1190" y="32" class="t-small">Vision</text>
+<circle cx="1235" cy="28" r="5" fill="#D97706"/><text x="1245" y="32" class="t-small">Embed</text>
+<circle cx="1291" cy="28" r="5" fill="#BE185D"/><text x="1301" y="32" class="t-small">Speech</text>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     INFERENCE TRAFFIC SECTION
+     ═══════════════════════════════════════════════════════════════ -->
+<text x="28" y="76" class="t-sec">INFERENCE TRAFFIC</text>
+
+<!-- Client -->
+<rect x="18" y="83" width="88" height="60" rx="7" class="card" filter="url(#sh)"/>
+<rect x="18" y="83" width="5" height="60" rx="2" fill="#475569"/>
+<text x="62" y="110" text-anchor="middle" class="t-label">Client</text>
+<text x="62" y="127" text-anchor="middle" class="t-tiny">app / user</text>
+
+<!-- Arrow client → GW -->
+<line x1="106" y1="113" x2="140" y2="113" stroke="#6D28D9" stroke-width="1.5" marker-end="url(#a-pur)"/>
+
+<!-- LiteLLM Gateway -->
+<rect x="143" y="79" width="160" height="70" rx="7" class="card" filter="url(#sh)"/>
+<rect x="143" y="79" width="5" height="70" rx="2" fill="#6D28D9"/>
+<text x="158" y="103" class="t-label">LiteLLM Gateway</text>
+<text x="158" y="119" class="t-small">hydra-gw-01/02  :8080</text>
+<text x="158" y="134" class="t-tiny">latency-based routing · HA pair</text>
+
+<!-- Arrow GW → pools -->
+<line x1="303" y1="113" x2="344" y2="113" stroke="#6D28D9" stroke-width="1.5" marker-end="url(#a-pur)"/>
+<text x="323" y="109" class="t-tiny" text-anchor="middle" fill="#6D28D9">routes</text>
+
+<!-- Pool badges -->
+<rect x="347" y="83" width="124" height="60" rx="7" fill="#DBEAFE" stroke="#93C5FD" stroke-width="1"/>
+<text x="409" y="108" text-anchor="middle" font-size="12px" font-weight="700" fill="#1E3A8A">Fast Pool</text>
+<text x="409" y="124" text-anchor="middle" class="t-tiny" fill="#1D4ED8">×10 nodes · :11434</text>
+<text x="409" y="138" text-anchor="middle" class="t-tiny" fill="#3B82F6">mlx · vllm</text>
+
+<rect x="479" y="83" width="124" height="60" rx="7" fill="#EDE9FE" stroke="#C4B5FD" stroke-width="1"/>
+<text x="541" y="108" text-anchor="middle" font-size="12px" font-weight="700" fill="#4C1D95">Reason Pool</text>
+<text x="541" y="124" text-anchor="middle" class="t-tiny" fill="#6D28D9">×4 nodes · :11434</text>
+<text x="541" y="138" text-anchor="middle" class="t-tiny" fill="#7C3AED">mlx · vllm</text>
+
+<rect x="611" y="83" width="126" height="60" rx="7" fill="#FEE2E2" stroke="#FCA5A5" stroke-width="1"/>
+<text x="674" y="105" text-anchor="middle" font-size="12px" font-weight="700" fill="#7F1D1D">Large Pool</text>
+<text x="674" y="120" text-anchor="middle" class="t-tiny" fill="#B91C1C">×4 nodes · :52416</text>
+<text x="674" y="134" text-anchor="middle" class="t-tiny" fill="#DC2626">exo · RDMA</text>
+<rect x="686" y="136" width="30" height="12" rx="6" fill="#B91C1C"/>
+<text x="701" y="145" text-anchor="middle" font-size="9px" font-weight="700" fill="#FFFFFF">TP×2</text>
+
+<rect x="745" y="83" width="118" height="60" rx="7" fill="#DCFCE7" stroke="#86EFAC" stroke-width="1"/>
+<text x="804" y="108" text-anchor="middle" font-size="12px" font-weight="700" fill="#14532D">Vision Pool</text>
+<text x="804" y="124" text-anchor="middle" class="t-tiny" fill="#15803D">×3 nodes · :11434</text>
+<text x="804" y="138" text-anchor="middle" class="t-tiny" fill="#16A34A">mlx</text>
+
+<rect x="871" y="83" width="110" height="60" rx="7" fill="#FEF3C7" stroke="#FCD34D" stroke-width="1"/>
+<text x="926" y="108" text-anchor="middle" font-size="12px" font-weight="700" fill="#78350F">Embed Pool</text>
+<text x="926" y="124" text-anchor="middle" class="t-tiny" fill="#D97706">×2 · :11434</text>
+<text x="926" y="138" text-anchor="middle" class="t-tiny" fill="#D97706">mlx</text>
+
+<rect x="989" y="83" width="110" height="60" rx="7" fill="#FCE7F3" stroke="#F9A8D4" stroke-width="1"/>
+<text x="1044" y="108" text-anchor="middle" font-size="12px" font-weight="700" fill="#831843">Speech Pool</text>
+<text x="1044" y="124" text-anchor="middle" class="t-tiny" fill="#BE185D">×1 · :11434</text>
+<text x="1044" y="138" text-anchor="middle" class="t-tiny" fill="#DB2777">Whisper v3</text>
+
+<rect x="1107" y="83" width="140" height="60" rx="7" fill="#E0F2FE" stroke="#7DD3FC" stroke-width="1"/>
+<text x="1177" y="107" text-anchor="middle" font-size="12px" font-weight="700" fill="#0C4A6E">Model Registry</text>
+<text x="1177" y="122" text-anchor="middle" class="t-tiny" fill="#0369A1">MinIO :9000 · API :8100</text>
+<text x="1177" y="137" text-anchor="middle" class="t-tiny" fill="#0284C7">sha256 verified · approval</text>
+
+<!-- Animated inference request dots -->
+<path id="ip-f" d="M 303 113 L 347 113" fill="none"/>
+<path id="ip-r" d="M 303 113 C 390 113 420 113 479 113" fill="none"/>
+<path id="ip-l" d="M 303 113 C 450 113 520 113 611 113" fill="none"/>
+<path id="ip-v" d="M 303 113 C 520 113 610 113 745 113" fill="none"/>
+
+<circle r="4" fill="#1D4ED8" opacity="0.85"><animateMotion dur="1.6s" repeatCount="indefinite" begin="0s"><mpath href="#ip-f"/></animateMotion></circle>
+<circle r="4" fill="#1D4ED8" opacity="0.85"><animateMotion dur="1.6s" repeatCount="indefinite" begin="0.8s"><mpath href="#ip-f"/></animateMotion></circle>
+<circle r="4" fill="#6D28D9" opacity="0.85"><animateMotion dur="2s" repeatCount="indefinite" begin="0.3s"><mpath href="#ip-r"/></animateMotion></circle>
+<circle r="4" fill="#B91C1C" opacity="0.85"><animateMotion dur="2.8s" repeatCount="indefinite" begin="0.7s"><mpath href="#ip-l"/></animateMotion></circle>
+<circle r="3.5" fill="#15803D" opacity="0.85"><animateMotion dur="2.2s" repeatCount="indefinite" begin="0.5s"><mpath href="#ip-v"/></animateMotion></circle>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     DIVIDER
+     ═══════════════════════════════════════════════════════════════ -->
+<line x1="18" y1="196" x2="1382" y2="196" stroke="#E5E7EB" stroke-width="1"/>
+<text x="28" y="214" class="t-sec">PUSH TELEMETRY — OTLP gRPC :4317 · HTTP :4318 — NO PULL SCRAPING</text>
+
+<!-- "push only" badge -->
+<rect x="1250" y="202" width="130" height="18" rx="9" fill="#ECFDF5" stroke="#6EE7B7" stroke-width="1"/>
+<text x="1315" y="214" text-anchor="middle" font-size="10px" font-weight="700" fill="#065F46">✓ PUSH ONLY</text>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FLOW PATHS (drawn before cards — appear behind)
+     ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Source → OTEL (dashed, semi-transparent) -->
+<path id="pf" d="M 232 280 C 346 280 346 462 455 462" stroke="#1D4ED8" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="pr" d="M 232 337 C 346 337 346 462 455 462" stroke="#6D28D9" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="pl" d="M 232 394 C 346 394 346 462 455 462" stroke="#B91C1C" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="pv" d="M 232 451 C 346 451 346 462 455 462" stroke="#15803D" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="pe" d="M 232 508 C 346 508 346 462 455 462" stroke="#D97706" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="pd" d="M 232 587 C 346 587 346 462 455 462" stroke="#334155" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="pi" d="M 232 645 C 346 645 346 462 455 462" stroke="#0E7490" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+
+<!-- OTEL → Backends -->
+<path id="ovm" d="M 737 462 C 858 462 858 296 980 296" stroke="#15803D" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="olk" d="M 737 462 C 858 462 858 374 980 374" stroke="#3730A3" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="ook" d="M 737 462 C 858 462 858 452 980 452" stroke="#BE185D" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="ogf" d="M 737 462 C 858 462 858 530 980 530" stroke="#C2410C" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+<path id="oal" d="M 737 462 C 858 462 858 610 980 610" stroke="#B91C1C" stroke-width="1.5" stroke-dasharray="5 3" stroke-opacity="0.22" fill="none"/>
+
+<!-- Grafana reads VM (dashed gray going up on right side) -->
+<path d="M 1095 528 L 1095 318" stroke="#9CA3AF" stroke-width="1" stroke-dasharray="3 3" stroke-opacity="0.6" fill="none" marker-end="url(#a-gry)"/>
+<text x="1098" y="428" class="t-tiny" fill="#9CA3AF">reads</text>
+
+<!-- Model Registry ↔ OTEL -->
+<path id="preg" d="M 596 672 L 596 710" stroke="#0E7490" stroke-width="1.5" stroke-dasharray="4 3" stroke-opacity="0.3" fill="none"/>
+
+<!-- Protocol label (rotated) -->
+<text text-anchor="middle" font-size="10px" fill="#9CA3AF" transform="translate(328,460) rotate(-90)">OTLP push</text>
+<text text-anchor="middle" font-size="10px" fill="#9CA3AF" transform="translate(860,462) rotate(-90)">forward</text>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SOURCE CARDS — LEFT COLUMN
+     ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Fast Pool ×10 -->
+<rect x="18" y="257" width="214" height="46" rx="7" class="card" filter="url(#sh)"/>
+<rect x="18" y="257" width="5" height="46" rx="2" fill="#1D4ED8"/>
+<text x="34" y="277" class="t-label">Fast Pool</text>
+<text x="34" y="293" class="t-small">×10 — mlx :11434 · vllm :8000</text>
+<text x="223" y="277" text-anchor="end" class="t-push" fill="#1D4ED8">PUSH →</text>
+
+<!-- Reason Pool ×4 -->
+<rect x="18" y="314" width="214" height="46" rx="7" class="card" filter="url(#sh)"/>
+<rect x="18" y="314" width="5" height="46" rx="2" fill="#6D28D9"/>
+<text x="34" y="334" class="t-label">Reason Pool</text>
+<text x="34" y="350" class="t-small">×4 — mlx :11434 · vllm :8000</text>
+<text x="223" y="334" text-anchor="end" class="t-push" fill="#6D28D9">PUSH →</text>
+
+<!-- Large Pool ×4 -->
+<rect x="18" y="371" width="214" height="46" rx="7" class="card" filter="url(#sh)"/>
+<rect x="18" y="371" width="5" height="46" rx="2" fill="#B91C1C"/>
+<text x="34" y="391" class="t-label">Large Pool</text>
+<text x="34" y="407" class="t-small">×4 — exo :52416 · RDMA pairs</text>
+<text x="223" y="391" text-anchor="end" class="t-push" fill="#B91C1C">PUSH →</text>
+<rect x="133" y="408" width="38" height="12" rx="6" fill="#B91C1C"/>
+<text x="152" y="417" text-anchor="middle" font-size="9px" font-weight="700" fill="#FFFFFF">TP ×2</text>
+
+<!-- Vision Pool ×3 -->
+<rect x="18" y="428" width="214" height="46" rx="7" class="card" filter="url(#sh)"/>
+<rect x="18" y="428" width="5" height="46" rx="2" fill="#15803D"/>
+<text x="34" y="448" class="t-label">Vision Pool</text>
+<text x="34" y="464" class="t-small">×3 — mlx :11434</text>
+<text x="223" y="448" text-anchor="end" class="t-push" fill="#15803D">PUSH →</text>
+
+<!-- Embed + Speech ×3 -->
+<rect x="18" y="485" width="214" height="46" rx="7" class="card" filter="url(#sh)"/>
+<rect x="18" y="485" width="5" height="46" rx="2" fill="#D97706"/>
+<text x="34" y="505" class="t-label">Embed + Speech</text>
+<text x="34" y="521" class="t-small">×3 — mlx :11434</text>
+<text x="223" y="505" text-anchor="end" class="t-push" fill="#D97706">PUSH →</text>
+
+<!-- Dev Linux (prominent) -->
+<rect x="18" y="553" width="214" height="66" rx="7" class="card" filter="url(#sh)"/>
+<rect x="18" y="553" width="5" height="66" rx="2" fill="#334155"/>
+<text x="34" y="573" class="t-label">Dev Machine</text>
+<text x="34" y="589" class="t-small">Ubuntu 24.04 · 192.168.1.10</text>
+<text x="34" y="604" class="t-tiny">otelcol-contrib · hostmetrics</text>
+<text x="223" y="573" text-anchor="end" class="t-push" fill="#334155">PUSH →</text>
+<rect x="100" y="607" width="132" height="14" rx="7" fill="#334155"/>
+<text x="166" y="617" text-anchor="middle" font-size="9px" font-weight="600" fill="#FFFFFF">← this machine</text>
+
+<!-- Infrastructure nodes -->
+<rect x="18" y="632" width="214" height="46" rx="7" class="card" filter="url(#sh)"/>
+<rect x="18" y="632" width="5" height="46" rx="2" fill="#0E7490"/>
+<text x="34" y="652" class="t-label">Infrastructure</text>
+<text x="34" y="668" class="t-small">store-01 · svc-01 · hostmetrics</text>
+<text x="223" y="652" text-anchor="end" class="t-push" fill="#0E7490">PUSH →</text>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     OTEL COLLECTOR HUB — CENTER
+     ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Pulse rings (behind card) -->
+<circle cx="596" cy="462" r="28" fill="none" stroke="#F59E0B" stroke-width="2.5">
+  <animate attributeName="r" values="28;78" dur="2.8s" repeatCount="indefinite"/>
+  <animate attributeName="opacity" values="0.55;0" dur="2.8s" repeatCount="indefinite"/>
+</circle>
+<circle cx="596" cy="462" r="28" fill="none" stroke="#F59E0B" stroke-width="1.5">
+  <animate attributeName="r" values="28;78" dur="2.8s" repeatCount="indefinite" begin="1.4s"/>
+  <animate attributeName="opacity" values="0.4;0" dur="2.8s" repeatCount="indefinite" begin="1.4s"/>
+</circle>
+
+<!-- Hub card -->
+<rect x="455" y="228" width="282" height="444" rx="11" class="card-hub" filter="url(#sh-hub)"/>
+<rect x="455" y="228" width="7" height="444" rx="3" fill="#D97706"/>
+
+<!-- Hub icon -->
+<circle cx="596" cy="288" r="24" fill="#FEF3C7" stroke="#FDE68A" stroke-width="1.5"/>
+<text x="596" y="295" text-anchor="middle" font-size="20px" fill="#D97706">⬡</text>
+
+<text x="596" y="332" text-anchor="middle" font-size="15px" font-weight="700" fill="#111827">OTEL Collector</text>
+<text x="596" y="350" text-anchor="middle" class="t-small" fill="#92400E">otel/otelcol-contrib:0.104.0</text>
+<text x="596" y="366" text-anchor="middle" class="t-tiny" fill="#B45309">hydra-svc-01 · 192.168.10.13</text>
+
+<line x1="475" y1="378" x2="717" y2="378" stroke="#FDE68A" stroke-width="1" stroke-opacity="0.8"/>
+
+<text x="475" y="396" font-size="11px" font-weight="600" fill="#92400E">Receivers</text>
+<text x="475" y="412" class="t-small">OTLP gRPC  :4317</text>
+<text x="475" y="427" class="t-small">OTLP HTTP  :4318</text>
+
+<text x="475" y="448" font-size="11px" font-weight="600" fill="#92400E">Processors</text>
+<text x="475" y="464" class="t-small">resourcedetection · resource</text>
+<text x="475" y="479" class="t-small">filter/health · batch</text>
+
+<text x="475" y="500" font-size="11px" font-weight="600" fill="#92400E">Resource Labels (all nodes)</text>
+<text x="475" y="516" class="t-small">cluster · pool · node_id</text>
+<text x="475" y="531" class="t-small">salt.minion_id · environment</text>
+
+<line x1="475" y1="545" x2="717" y2="545" stroke="#FDE68A" stroke-width="1" stroke-opacity="0.8"/>
+
+<text x="475" y="563" font-size="11px" font-weight="600" fill="#92400E">Pipelines</text>
+<text x="475" y="579" class="t-small">metrics → Victoria Metrics</text>
+<text x="475" y="594" class="t-small">logs     → Loki</text>
+<text x="475" y="609" class="t-small">traces   → Opik</text>
+
+<text x="475" y="636" class="t-tiny">mem_limit 512m · batch 10k · retries</text>
+<text x="475" y="651" class="t-tiny">docker network: hydra-monitor</text>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     BACKEND CARDS — RIGHT COLUMN
+     ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Victoria Metrics -->
+<rect x="980" y="270" width="238" height="52" rx="7" class="card" filter="url(#sh)"/>
+<rect x="980" y="270" width="5" height="52" rx="2" fill="#15803D"/>
+<text x="997" y="293" class="t-label">Victoria Metrics</text>
+<text x="997" y="310" class="t-small">:8428 · 90-day retention · remote write</text>
+<rect x="1165" y="275" width="44" height="14" rx="7" fill="#DCFCE7" stroke="#86EFAC" stroke-width="1"/>
+<text x="1187" y="285" text-anchor="middle" font-size="9px" font-weight="700" fill="#15803D">metrics</text>
+
+<!-- Loki -->
+<rect x="980" y="348" width="238" height="52" rx="7" class="card" filter="url(#sh)"/>
+<rect x="980" y="348" width="5" height="52" rx="2" fill="#3730A3"/>
+<text x="997" y="371" class="t-label">Loki</text>
+<text x="997" y="388" class="t-small">:3100 · 31-day retention · log aggregation</text>
+<rect x="1175" y="353" width="34" height="14" rx="7" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1"/>
+<text x="1192" y="363" text-anchor="middle" font-size="9px" font-weight="700" fill="#3730A3">logs</text>
+
+<!-- Opik -->
+<rect x="980" y="426" width="238" height="52" rx="7" class="card" filter="url(#sh)"/>
+<rect x="980" y="426" width="5" height="52" rx="2" fill="#BE185D"/>
+<text x="997" y="449" class="t-label">Opik</text>
+<text x="997" y="466" class="t-small">:8080 · LLM trace/span observability</text>
+<rect x="1170" y="431" width="40" height="14" rx="7" fill="#FCE7F3" stroke="#F9A8D4" stroke-width="1"/>
+<text x="1190" y="441" text-anchor="middle" font-size="9px" font-weight="700" fill="#BE185D">traces</text>
+
+<!-- Grafana -->
+<rect x="980" y="504" width="238" height="52" rx="7" class="card" filter="url(#sh)"/>
+<rect x="980" y="504" width="5" height="52" rx="2" fill="#C2410C"/>
+<text x="997" y="527" class="t-label">Grafana</text>
+<text x="997" y="544" class="t-small">:3000 · reads VM + Loki · dashboards</text>
+<rect x="1157" y="509" width="52" height="14" rx="7" fill="#FEF3C7" stroke="#FCD34D" stroke-width="1"/>
+<text x="1183" y="519" text-anchor="middle" font-size="9px" font-weight="700" fill="#C2410C">ui/query</text>
+
+<!-- Alertmanager -->
+<rect x="980" y="582" width="238" height="52" rx="7" class="card" filter="url(#sh)"/>
+<rect x="980" y="582" width="5" height="52" rx="2" fill="#B91C1C"/>
+<text x="997" y="605" class="t-label">Alertmanager</text>
+<text x="997" y="622" class="t-small">:9093 · Slack routing · severity grouping</text>
+<rect x="1162" y="587" width="48" height="14" rx="7" fill="#FEE2E2" stroke="#FCA5A5" stroke-width="1"/>
+<text x="1186" y="597" text-anchor="middle" font-size="9px" font-weight="700" fill="#B91C1C">alerts</text>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODEL REGISTRY (bottom center)
+     ═══════════════════════════════════════════════════════════════ -->
+<rect x="455" y="710" width="282" height="72" rx="8" class="card" filter="url(#sh)"/>
+<rect x="455" y="710" width="5" height="72" rx="2" fill="#0E7490"/>
+<text x="472" y="733" class="t-label">Model Registry + MinIO</text>
+<text x="472" y="750" class="t-small">hydra-store-01 · API :8100 · MinIO :9000</text>
+<text x="472" y="766" class="t-tiny">register → approve → serve · sha256 stream-verified</text>
+<rect x="598" y="714" width="130" height="14" rx="7" fill="#E0F2FE" stroke="#7DD3FC" stroke-width="1"/>
+<text x="663" y="724" text-anchor="middle" font-size="9px" font-weight="700" fill="#0369A1">air-gapped artifact store</text>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     ANIMATED PARTICLES — SOURCE → OTEL
+     ═══════════════════════════════════════════════════════════════ -->
+<circle r="4" fill="#1D4ED8" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" begin="0s"><mpath href="#pf"/></animateMotion></circle>
+<circle r="4" fill="#1D4ED8" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" begin="0.67s"><mpath href="#pf"/></animateMotion></circle>
+<circle r="4" fill="#1D4ED8" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" begin="1.33s"><mpath href="#pf"/></animateMotion></circle>
+
+<circle r="3.5" fill="#6D28D9" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="0.2s"><mpath href="#pr"/></animateMotion></circle>
+<circle r="3.5" fill="#6D28D9" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="1.4s"><mpath href="#pr"/></animateMotion></circle>
+
+<circle r="3.5" fill="#B91C1C" opacity="0.9"><animateMotion dur="3s" repeatCount="indefinite" begin="0.4s"><mpath href="#pl"/></animateMotion></circle>
+<circle r="3.5" fill="#B91C1C" opacity="0.9"><animateMotion dur="3s" repeatCount="indefinite" begin="1.9s"><mpath href="#pl"/></animateMotion></circle>
+
+<circle r="3.5" fill="#15803D" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="0.6s"><mpath href="#pv"/></animateMotion></circle>
+<circle r="3.5" fill="#15803D" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="1.8s"><mpath href="#pv"/></animateMotion></circle>
+
+<circle r="3.5" fill="#D97706" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="0.8s"><mpath href="#pe"/></animateMotion></circle>
+<circle r="3.5" fill="#D97706" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="2s"><mpath href="#pe"/></animateMotion></circle>
+
+<circle r="3.5" fill="#334155" opacity="0.9"><animateMotion dur="2.6s" repeatCount="indefinite" begin="1s"><mpath href="#pd"/></animateMotion></circle>
+<circle r="3.5" fill="#334155" opacity="0.9"><animateMotion dur="2.6s" repeatCount="indefinite" begin="2.3s"><mpath href="#pd"/></animateMotion></circle>
+
+<circle r="3.5" fill="#0E7490" opacity="0.9"><animateMotion dur="2.6s" repeatCount="indefinite" begin="1.2s"><mpath href="#pi"/></animateMotion></circle>
+<circle r="3.5" fill="#0E7490" opacity="0.9"><animateMotion dur="2.6s" repeatCount="indefinite" begin="2.5s"><mpath href="#pi"/></animateMotion></circle>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     ANIMATED PARTICLES — OTEL → BACKENDS
+     ═══════════════════════════════════════════════════════════════ -->
+<circle r="4" fill="#15803D" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" begin="0.1s"><mpath href="#ovm"/></animateMotion></circle>
+<circle r="4" fill="#15803D" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" begin="0.77s"><mpath href="#ovm"/></animateMotion></circle>
+<circle r="4" fill="#15803D" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" begin="1.43s"><mpath href="#ovm"/></animateMotion></circle>
+
+<circle r="3.5" fill="#3730A3" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="0.3s"><mpath href="#olk"/></animateMotion></circle>
+<circle r="3.5" fill="#3730A3" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="1.5s"><mpath href="#olk"/></animateMotion></circle>
+
+<circle r="3.5" fill="#BE185D" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="0.5s"><mpath href="#ook"/></animateMotion></circle>
+<circle r="3.5" fill="#BE185D" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="1.7s"><mpath href="#ook"/></animateMotion></circle>
+
+<circle r="3.5" fill="#C2410C" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="0.7s"><mpath href="#ogf"/></animateMotion></circle>
+<circle r="3.5" fill="#C2410C" opacity="0.9"><animateMotion dur="2.4s" repeatCount="indefinite" begin="1.9s"><mpath href="#ogf"/></animateMotion></circle>
+
+<circle r="3.5" fill="#B91C1C" opacity="0.9"><animateMotion dur="4s" repeatCount="indefinite" begin="0.9s"><mpath href="#oal"/></animateMotion></circle>
+
+<!-- Registry ↔ OTEL particle -->
+<circle r="3" fill="#0E7490" opacity="0.8"><animateMotion dur="1.8s" repeatCount="indefinite" begin="0s"><mpath href="#preg"/></animateMotion></circle>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOOTER
+     ═══════════════════════════════════════════════════════════════ -->
+<rect x="0" y="782" width="1400" height="18" fill="#F3F4F6"/>
+<text x="28" y="794" class="t-tiny">docker compose · monitoring/ · Victoria Metrics + Prometheus + Grafana + OTEL Collector + Loki + Opik (MySQL · ClickHouse · Redis)</text>
+<text x="1372" y="794" text-anchor="end" class="t-tiny">hydra v1 · 2026</text>
+
+</svg>

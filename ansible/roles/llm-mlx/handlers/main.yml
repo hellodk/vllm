@@ -1,0 +1,8 @@
+# ansible/roles/llm-mlx/handlers/main.yml
+---
+- name: restart mlx-server
+  shell: |
+    launchctl bootout system/com.hydra.mlx-server 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-server.plist
+  become: true
+  ignore_errors: true

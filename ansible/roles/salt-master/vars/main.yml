@@ -9,3 +9,7 @@ salt_pillar_dir: /srv/salt/pillar
 salt_reactors_dir: /srv/salt/reactors
 salt_log_dir: /var/log/salt
 fleet_log_dir: /var/log/fleet
+
+# Key management — pre-seed minion keys instead of auto-accepting
+# Override to true only for initial bootstrap in a fully isolated lab
+hydra_salt_auto_accept: false

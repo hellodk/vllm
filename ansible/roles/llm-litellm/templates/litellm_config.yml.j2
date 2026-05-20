@@ -1,0 +1,59 @@
+# /opt/hydra/litellm/litellm_config.yml
+# Managed by Ansible (llm-litellm role) — do not edit manually.
+# LiteLLM proxy config — routes client requests to pool backends.
+# Clients send:  POST /v1/chat/completions  with model: "fast/mistral-7b"
+
+general_settings:
+  master_key: "{{ litellm_master_key }}"
+  allow_requests_on_db_unavailable: true
+  request_timeout: 120
+  max_parallel_requests: 200
+  drop_params: true        # silently drop unknown OpenAI params
+{% if litellm_db_url %}
+  database_url: "{{ litellm_db_url }}"
+{% endif %}
+
+litellm_settings:
+  # Load-balance within a model_name group — round-robin across all backends
+  num_retries: 2
+  request_timeout: 120
+  allowed_fails: 2         # mark backend unhealthy after 2 consecutive failures
+  cooldown_time: 60        # seconds to wait before retrying a failed backend
+  success_callback: []
+  failure_callback: []
+  # OpenTelemetry tracing → OTEL Collector → Opik
+  callbacks: ["otel"]
+
+model_list:
+{% for m in litellm_models %}
+  - model_name: {{ m.model_name }}
+    litellm_params:
+      model: {{ m.litellm_params.model }}
+      api_base: "{{ m.litellm_params.api_base }}"
+      api_key: "{{ m.litellm_params.api_key | default('none') }}"
+{% endfor %}
+
+# Model aliases — clients can use these short names instead of "pool/model" format
+# Uncomment and customise as needed:
+# model_alias:
+#   gpt-3.5-turbo: fast/mistral-7b
+#   gpt-4: reason/qwen2.5-14b
+#   gpt-4-32k: largepool/qwen2.5-32b
+
+router_settings:
+  routing_strategy: "latency-based-routing"
+  routing_strategy_args:
+    ttl: 30               # seconds — how often to refresh latency stats
+  num_retries: 2
+  retry_after: 5
+  allowed_fails: 2
+  cooldown_time: 60
+
+cache:
+  type: local                  # in-memory; switch to "redis" if Redis is available on GW nodes
+  ttl: 60                      # seconds — cache identical prompts for 60s
+  max_size_in_memory: 256      # MB
+  supported_call_types:
+    - acompletion
+    - completion
+    - embedding

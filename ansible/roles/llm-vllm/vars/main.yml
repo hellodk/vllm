@@ -1,0 +1,16 @@
+# ansible/roles/llm-vllm/vars/main.yml
+---
+vllm_dir: "{{ llm_base_dir }}/vllm"
+vllm_venv: "{{ vllm_dir }}/venv"
+vllm_port: 8000
+vllm_default_model: /opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit
+vllm_max_model_len: 8192
+vllm_dtype: float16
+vllm_metal_experimental: true   # vLLM --device metal is experimental on Apple Silicon; set false to skip
+vllm_packages:
+  - "vllm>=0.4.0"
+  - "torch>=2.3.0"
+  - "numpy>=1.26.0"
+  - "transformers>=4.41.0"
+  - "huggingface-hub>=0.23.0"
+  - "sentencepiece>=0.2.0"

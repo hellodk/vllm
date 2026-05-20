@@ -1,0 +1,8 @@
+# ansible/roles/llm-vllm/handlers/main.yml
+---
+- name: restart vllm-server
+  shell: |
+    launchctl bootout system/com.hydra.vllm-server 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.vllm-server.plist
+  become: true
+  ignore_errors: true

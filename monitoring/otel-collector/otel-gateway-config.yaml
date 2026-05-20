@@ -1,0 +1,90 @@
+# monitoring/otel-collector/otel-gateway-config.yaml
+# Central OTEL Collector gateway — receives from all 28 nodes via OTLP,
+# enriches with cluster label, ships to Victoria Metrics + Loki + Opik.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-self
+          static_configs:
+            - targets: ["localhost:8888"]
+
+processors:
+  batch:
+    send_batch_size: 10000
+    timeout: 10s
+
+  resource:
+    attributes:
+      - key: cluster
+        value: hydra
+        action: upsert
+      - key: environment
+        value: production
+        action: upsert
+
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 5s
+
+  filter/exclude_health:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - ".*_health_.*"
+
+exporters:
+  prometheusremotewrite:
+    endpoint: "http://victoria-metrics:8428/api/v1/write"
+    tls:
+      insecure: true
+
+  loki:
+    endpoint: "http://loki:3100/loki/api/v1/push"
+    tls:
+      insecure: true
+    default_labels_enabled:
+      exporter: false
+      job: true
+      instance: true
+      level: true
+
+  otlphttp/opik:
+    endpoint: "http://opik-backend:8080"
+    traces_endpoint: "http://opik-backend:8080/api/v1/traces"
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers:  [otlp, prometheus]
+      processors: [resourcedetection, resource, filter/exclude_health, batch]
+      exporters:  [prometheusremotewrite]
+
+    logs:
+      receivers:  [otlp]
+      processors: [resourcedetection, resource, batch]
+      exporters:  [loki]
+
+    traces:
+      receivers:  [otlp]
+      processors: [resourcedetection, resource, batch]
+      exporters:  [otlphttp/opik]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: "0.0.0.0:8888"

@@ -1,0 +1,8 @@
+# ansible/roles/llm-litellm/handlers/main.yml
+---
+- name: restart litellm
+  shell: |
+    launchctl bootout system/com.hydra.litellm 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.litellm.plist
+  become: true
+  ignore_errors: true

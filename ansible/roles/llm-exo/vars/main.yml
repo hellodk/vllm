@@ -1,0 +1,24 @@
+# ansible/roles/llm-exo/vars/main.yml
+---
+exo_dir: "{{ llm_base_dir }}/exo"
+exo_venv: "{{ exo_dir }}/venv"
+exo_p2p_port: 52415
+exo_api_port: 52416
+exo_default_model: mlx-community/Mistral-7B-Instruct-v0.3-4bit
+exo_models_dir: /opt/hydra/models/mlx
+exo_model_local_path: "{{ exo_models_dir }}/Mistral-7B-Instruct-v0.3-4bit"
+# For 2-node tensor parallel pairs (large_pool), override exo_default_model in host_vars:
+# exo_default_model: mlx-community/Qwen2.5-32B-Instruct-4bit
+# exo_model_local_path: /opt/hydra/models/mlx/Qwen2.5-32B-Instruct-4bit
+exo_node_id: "{{ inventory_hostname }}"
+exo_peers: []   # override per host in inventory: ["192.168.10.32"]
+exo_packages:
+  - "exo-explore>=0.0.1"
+  - "mlx>=0.16.0"
+  - "mlx-lm>=0.19.0"
+  - "grpcio>=1.64.0"
+  - "grpcio-tools>=1.64.0"
+  - "protobuf>=4.25.0"
+  - "numpy>=1.26.0"
+  - "huggingface-hub>=0.23.0"
+  - "transformers>=4.41.0"

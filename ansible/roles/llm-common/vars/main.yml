@@ -1,0 +1,6 @@
+# ansible/roles/llm-common/vars/main.yml
+---
+llm_base_dir: /opt/hydra/llm
+llm_log_dir: /var/log/hydra
+llm_python_bin: "/opt/hydra/llm/python/bin/python3"
+homebrew_prefix: /opt/homebrew

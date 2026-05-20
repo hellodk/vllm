@@ -1,0 +1,44 @@
+# ansible/llm-frameworks.yml
+# Master playbook for LLM inference framework deployment.
+# Usage:
+#   ansible-playbook -i inventories/llm/hosts.yml llm-frameworks.yml           # all nodes
+#   ansible-playbook -i inventories/llm/hosts.yml llm-frameworks.yml --limit fast_pool
+#   ansible-playbook -i inventories/llm/hosts.yml llm-frameworks.yml --tags mlx
+#   ansible-playbook -i inventories/llm/hosts.yml llm-frameworks.yml --tags litellm
+---
+
+# ── Inference nodes (all pools) ───────────────────────────────────────────────
+- name: Deploy LLM inference frameworks
+  hosts: all:!gateway
+  gather_facts: true
+  roles:
+    - role: llm-common
+
+    - role: llm-mlx
+      when: "'mlx' in llm_frameworks"
+      tags: [mlx]
+
+    - role: llm-vllm
+      when: "'vllm' in llm_frameworks"
+      tags: [vllm]
+
+    - role: llm-airllm
+      when: "'airllm' in llm_frameworks"
+      tags: [airllm]
+
+    - role: llm-bitnet
+      when: "'bitnet' in llm_frameworks"
+      tags: [bitnet]
+
+    - role: llm-exo
+      when: "'exo' in llm_frameworks"
+      tags: [exo]
+
+# ── Gateway nodes (hydra-gw-01/02) ────────────────────────────────────────────
+- name: Deploy LiteLLM proxy gateway
+  hosts: gateway
+  gather_facts: true
+  tags: [litellm, gateway]
+  roles:
+    - role: llm-common
+    - role: llm-litellm

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.exo.plist
+  Managed by Ansible (llm-exo role) — do not edit manually.
+  exo P2P distributed inference — large_pool tensor-parallel pairs.
+  Peers discovered via initial_peers; RDMA via 10 GbE interface.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.exo</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ exo_venv }}/bin/exo</string>
+    <string>--node-id</string>
+    <string>{{ exo_node_id }}</string>
+    <string>--port</string>
+    <string>{{ exo_p2p_port }}</string>
+    <string>--inference-engine</string>
+    <string>mlx</string>
+    <string>--chatgpt-api-port</string>
+    <string>{{ exo_api_port }}</string>
+    <string>--model</string>
+    <string>{{ exo_model_local_path }}</string>
+{% for peer in exo_peers %}
+    <string>--initial-peers</string>
+    <string>{{ peer }}:{{ exo_p2p_port }}</string>
+{% endfor %}
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ exo_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HF_DATASETS_OFFLINE</key>
+    <string>1</string>
+    <key>TRANSFORMERS_OFFLINE</key>
+    <string>1</string>
+    <key>HF_HUB_OFFLINE</key>
+    <string>1</string>
+    <key>HF_HOME</key>
+    <string>{{ exo_models_dir }}</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/exo.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/exo-error.log</string>
+</dict>
+</plist>

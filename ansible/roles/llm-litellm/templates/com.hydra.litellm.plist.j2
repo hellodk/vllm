@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.litellm.plist
+  Managed by Ansible (llm-litellm role) — do not edit manually.
+  LiteLLM OpenAI-compatible proxy gateway.
+  Routes to: fast (x10), reason (x4), largepool (x2 exo pairs), vision (x3),
+             embed (x2), speech (x1) — 28 nodes total.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.litellm</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ litellm_venv }}/bin/litellm</string>
+    <string>--config</string>
+    <string>{{ litellm_config }}</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>{{ litellm_port }}</string>
+    <string>--num_workers</string>
+    <string>4</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ litellm_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LITELLM_MASTER_KEY</key>
+    <string>{{ litellm_master_key }}</string>
+    <key>LITELLM_LOG</key>
+    <string>INFO</string>
+    <key>PYTHONDONTWRITEBYTECODE</key>
+    <string>1</string>
+    <key>OTEL_EXPORTER_OTLP_ENDPOINT</key>
+    <string>http://192.168.10.13:4318</string>
+    <key>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</key>
+    <string>http://192.168.10.13:4318/v1/traces</string>
+    <key>OTEL_SERVICE_NAME</key>
+    <string>litellm-proxy</string>
+    <key>OTEL_RESOURCE_ATTRIBUTES</key>
+    <string>cluster=hydra,component=gateway</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/litellm.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/litellm-error.log</string>
+</dict>
+</plist>

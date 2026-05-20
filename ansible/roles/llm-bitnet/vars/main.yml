@@ -1,0 +1,16 @@
+# ansible/roles/llm-bitnet/vars/main.yml
+---
+bitnet_dir: "{{ llm_base_dir }}/bitnet"
+bitnet_venv: "{{ bitnet_dir }}/venv"
+bitnet_port: 8002
+bitnet_default_model: /opt/hydra/models/bitnet/BitNet-b1.58-2B-4T
+bitnet_binary: bitnet-server-darwin-arm64
+bitnet_use_binary: true   # set false to use Python wrapper instead
+bitnet_packages:
+  - "bitnet>=0.0.1"
+  - "torch>=2.3.0"
+  - "transformers>=4.41.0"
+  - "huggingface-hub>=0.23.0"
+  - "fastapi==0.115.0"
+  - "uvicorn[standard]==0.32.0"
+  - "numpy>=1.26.0"
