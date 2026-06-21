@@ -32,3 +32,8 @@ mlx_vllm_packages:
 mlx_telemetry_packages:
   - "llm-telemetry>=0.1.0"
   - "prometheus-client>=0.20.0"
+
+# OOM guardrails (16 GB M4 — weight ceiling ~9.6 GB, KV budget 3.8–8 GB)
+mlx_max_tokens: 2048          # default per-request output cap
+mlx_max_kv_size: 4096         # rotating KV cache ceiling (tokens)
+mlx_memory_limit_mb: 12000    # MLX wired-memory limit; abort-guard

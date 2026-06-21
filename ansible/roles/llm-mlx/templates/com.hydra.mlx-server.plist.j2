@@ -22,6 +22,8 @@
     <string>0.0.0.0</string>
     <string>--port</string>
     <string>{{ mlx_port }}</string>
+    <string>--max-tokens</string>
+    <string>{{ mlx_max_tokens }}</string>
   </array>
 
   <key>WorkingDirectory</key>
@@ -37,6 +39,10 @@
     <string>1</string>
     <key>HF_HUB_OFFLINE</key>
     <string>1</string>
+    <key>MLX_METAL_DEBUG</key>
+    <string>0</string>
+    <key>HYDRA_MLX_MAX_KV_SIZE</key>
+    <string>{{ mlx_max_kv_size }}</string>
   </dict>
 
   <key>RunAtLoad</key><true/>
