@@ -4,6 +4,8 @@ mlx_dir: "{{ llm_base_dir }}/mlx"
 mlx_venv: "{{ mlx_dir }}/venv"
 mlx_port: 11500          # moved off 11434 (Ollama) — see Task 2
 mlx_metrics_port: 11501  # /metrics scrape target — see Task 5
+# vllm-mlx serves /metrics on the main port; the sidecar uses a separate port.
+mlx_effective_metrics_port: "{{ mlx_port if mlx_server_backend == 'vllm_mlx' else mlx_metrics_port }}"
 mlx_workers: 2
 mlx_default_model: /opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit
 mlx_models_dir: /opt/hydra/models/mlx
