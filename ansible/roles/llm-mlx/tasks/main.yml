@@ -10,6 +10,7 @@
     path: "{{ role_path }}/files/wheels"
   register: _mlx_wheels_dir
   run_once: true
+  when: not (mlx_use_jfrog | bool)
 
 - name: Fail if MLX wheels are missing
   fail:
@@ -18,7 +19,7 @@
       See ansible/roles/llm-mlx/files/README.md — download wheels on a Mac with internet and place here.
       pip download mlx>=0.16.0 mlx-lm>=0.19.0 huggingface-hub transformers sentencepiece protobuf numpy \
         --platform macosx_14_0_arm64 --python-version 311 --only-binary=:all: -d files/wheels/
-  when: not _mlx_wheels_dir.stat.exists
+  when: not (mlx_use_jfrog | bool) and not _mlx_wheels_dir.stat.exists
   run_once: true
 
 # ── Directories ───────────────────────────────────────────────────────────────
@@ -43,17 +44,7 @@
       Example: rsync -av /path/to/model {{ mlx_models_dir }}/
   when: not _mlx_model_dir.stat.exists
 
-# ── Wheels ────────────────────────────────────────────────────────────────────
-
-- name: Sync MLX wheels (offline)
-  synchronize:
-    src: "{{ role_path }}/files/wheels/"
-    dest: "{{ mlx_dir }}/wheels/"
-    delete: false
-  become: true
-
 # ── Virtualenv ────────────────────────────────────────────────────────────────
-
 - name: Create MLX virtualenv
   command: >
     {{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}
@@ -62,13 +53,37 @@
     creates: "{{ mlx_venv }}/bin/python"
   become: true
 
-- name: Install MLX packages from local wheels
+# ── Dependencies: JFrog Artifactory (primary) ─────────────────────────────────
+- name: Install MLX packages from JFrog Artifactory
+  pip:
+    name: "{{ mlx_packages }}"
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--index-url {{ jfrog_pypi_index }} --trusted-host {{ jfrog_pypi_trusted_host }}"
+    state: present
+  become: true
+  when: mlx_use_jfrog | bool
+  register: _mlx_pip_jfrog
+  retries: 2
+  delay: 5
+  until: _mlx_pip_jfrog is succeeded
+
+# ── Dependencies: vendored wheels (fallback for full air-gap) ─────────────────
+- name: Sync MLX wheels (offline fallback)
+  synchronize:
+    src: "{{ role_path }}/files/wheels/"
+    dest: "{{ mlx_dir }}/wheels/"
+    delete: false
+  become: true
+  when: not (mlx_use_jfrog | bool)
+
+- name: Install MLX packages from local wheels (offline fallback)
   pip:
     name: "{{ mlx_packages }}"
     virtualenv: "{{ mlx_venv }}"
     extra_args: "--no-index --find-links {{ mlx_dir }}/wheels"
     state: present
   become: true
+  when: not (mlx_use_jfrog | bool)
 
 # ── LaunchDaemon ──────────────────────────────────────────────────────────────
 

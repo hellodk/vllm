@@ -2,15 +2,33 @@
 ---
 mlx_dir: "{{ llm_base_dir }}/mlx"
 mlx_venv: "{{ mlx_dir }}/venv"
-mlx_port: 11434
+mlx_port: 11500          # moved off 11434 (Ollama) — see Task 2
+mlx_metrics_port: 11501  # /metrics scrape target — see Task 5
 mlx_workers: 2
 mlx_default_model: /opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit
 mlx_models_dir: /opt/hydra/models/mlx
+
+# Backend selector: vllm_mlx (4A, default) | mlx_lm_sidecar (4B) | mlx_lm (4C)
+mlx_server_backend: vllm_mlx
+
+# Dependency delivery
+mlx_use_jfrog: true
+jfrog_pypi_index: "{{ jfrog.pypi_index }}"
+jfrog_pypi_trusted_host: "{{ jfrog.pypi_trusted_host }}"
+
+# Pinned latest — verify exact mlx pin against the JFrog index before commit
 mlx_packages:
-  - "mlx>=0.16.0"
-  - "mlx-lm>=0.19.0"
-  - "huggingface-hub>=0.23.0"
-  - "transformers>=4.41.0"
+  - "mlx-lm==0.31.3"
+  - "mlx>=0.22.0"
+  - "huggingface-hub>=0.27.0"
+  - "transformers>=4.48.0"
   - "sentencepiece>=0.2.0"
   - "protobuf>=4.25.0"
-  - "numpy>=1.26.0"
+  - "numpy>=1.26.0,<2.3.0"
+
+mlx_vllm_packages:
+  - "vllm-mlx==0.4.0rc1"
+
+mlx_telemetry_packages:
+  - "llm-telemetry>=0.1.0"
+  - "prometheus-client>=0.20.0"
