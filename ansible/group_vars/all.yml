@@ -15,6 +15,11 @@ llm_probe_ports:
   8000: vllm-mlx
   8080: litellm
 
+# MLX /metrics scrape target. vllm-mlx serves /metrics on its main serving port (mlx_port=11500).
+# Kept here (not only in the llm-mlx role) so llm-discovery — which runs in site.yml without the
+# llm-mlx role loaded — can reference it without an undefined-variable error.
+mlx_scrape_port: 11500
+
 # ── Offline binary directory ──────────────────────────────────────────────────
 # NO internet access on targets — all binaries pre-staged here by operator.
 # See ansible/roles/otel-mac-agent/files/README.md and

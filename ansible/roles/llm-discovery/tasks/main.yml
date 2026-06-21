@@ -39,8 +39,8 @@
   set_fact:
     _endpoints_to_probe: >-
       {{ _endpoints_to_probe + [{'provider': 'mlx',
-         'url': 'http://127.0.0.1:' + mlx_port | string + '/v1',
-         'port': mlx_effective_metrics_port | string,
+         'url': 'http://127.0.0.1:' + mlx_scrape_port | string + '/v1',
+         'port': mlx_scrape_port | string,
          'api_key': none}] }}
   when: "'mlx' in (llm_frameworks | default([]))"
 
