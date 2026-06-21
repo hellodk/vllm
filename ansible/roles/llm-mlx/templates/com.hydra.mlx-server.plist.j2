@@ -13,17 +13,25 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>{{ mlx_venv }}/bin/python</string>
-    <string>-m</string>
-    <string>mlx_lm.server</string>
-    <string>--model</string>
+{% if mlx_server_backend == 'vllm_mlx' %}
+    <string>{{ mlx_venv }}/bin/vllm-mlx</string>
+    <string>serve</string>
     <string>{{ mlx_default_model }}</string>
-    <string>--host</string>
-    <string>0.0.0.0</string>
-    <string>--port</string>
-    <string>{{ mlx_port }}</string>
-    <string>--max-tokens</string>
-    <string>{{ mlx_max_tokens }}</string>
+    <string>--host</string><string>0.0.0.0</string>
+    <string>--port</string><string>{{ mlx_port }}</string>
+    <string>--enable-metrics</string>
+    <string>--continuous-batching</string>
+    <string>--use-paged-cache</string>
+    <string>--max-request-tokens</string><string>{{ mlx_max_tokens }}</string>
+    <string>--cache-memory-percent</string><string>0.20</string>
+{% else %}
+    <string>{{ mlx_venv }}/bin/python</string>
+    <string>-m</string><string>mlx_lm.server</string>
+    <string>--model</string><string>{{ mlx_default_model }}</string>
+    <string>--host</string><string>0.0.0.0</string>
+    <string>--port</string><string>{{ mlx_port }}</string>
+    <string>--max-tokens</string><string>{{ mlx_max_tokens }}</string>
+{% endif %}
   </array>
 
   <key>WorkingDirectory</key>

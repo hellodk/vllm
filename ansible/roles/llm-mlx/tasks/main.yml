@@ -86,6 +86,12 @@
   become: true
   when: not (mlx_use_jfrog | bool)
 
+# ── Backend-specific install ──────────────────────────────────────────────────
+
+- name: Install vllm-mlx backend
+  include_tasks: install_vllm_mlx.yml
+  when: mlx_server_backend == 'vllm_mlx'
+
 # ── LaunchDaemon ──────────────────────────────────────────────────────────────
 
 - name: Install MLX server LaunchDaemon
