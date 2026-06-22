@@ -23,6 +23,14 @@ auto_accept: {{ hydra_salt_auto_accept | default(false) | lower }}
 reactor:
   - 'salt/minion/*/start':
     - /srv/salt/reactors/grain_report.sls
+  - 'salt/beacon/*/mlx_metal/':
+    - /srv/salt/reactors/mlx_crash.sls
+
+# ── SMTP returner ─────────────────────────────────────────────────────────────
+smtp.from: 'hydra-alerts@hydra.local'
+smtp.to: 'ops@hydra.local'
+smtp.host: '{{ salt_smtp_host | default("smtp.hydra.local") }}'
+smtp.tls: True
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 log_level: {{ hydra_salt_log_level | default('info') }}

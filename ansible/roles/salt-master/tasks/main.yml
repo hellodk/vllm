@@ -80,6 +80,20 @@
     mode: "0644"
   become: true
 
+- name: Deploy mlx_crash_handler Salt state
+  template:
+    src: mlx_crash_handler.sls.j2
+    dest: "{{ salt_states_dir }}/base/mlx_crash_handler.sls"
+    mode: "0644"
+  become: true
+
+- name: Deploy reactor — mlx_crash
+  template:
+    src: reactor-mlx_crash.sls.j2
+    dest: "{{ salt_reactors_dir }}/mlx_crash.sls"
+    mode: "0644"
+  become: true
+
 # ── Create Pillar skeleton ────────────────────────────────────────────────────
 
 - name: Deploy pillar top.sls (references all registered minion IDs)

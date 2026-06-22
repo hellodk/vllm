@@ -1,0 +1,13 @@
+# /srv/salt/reactors/mlx_crash.sls — Managed by Ansible.
+# Fires when a minion's log beacon matches an MLX/Metal crash signature.
+{% raw %}
+handle_mlx_crash:
+  local.state.apply:
+    - tgt: {{ data['id'] }}
+    - arg:
+      - base.mlx_crash_handler
+    - kwarg:
+        pillar:
+          crash_node: {{ data['id'] }}
+          crash_line: {{ data['data'].get('match', 'unknown') | json }}
+{% endraw %}

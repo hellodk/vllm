@@ -58,6 +58,24 @@
     - restart salt-minion (Linux)
     - restart salt-minion (macOS)
 
+- name: Ensure minion.d directory exists
+  file:
+    path: "{{ salt_minion_config | dirname }}/minion.d"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Deploy MLX crash beacon
+  template:
+    src: beacons.conf.j2
+    dest: "{{ salt_minion_config | dirname }}/minion.d/beacons.conf"
+    mode: "0640"
+  become: true
+  when: "'mlx' in (llm_frameworks | default([]))"
+  notify:
+    - restart salt-minion (macOS)
+    - restart salt-minion (Linux)
+
 # ── Enable and start Salt Minion ──────────────────────────────────────────────
 
 - name: Enable and start salt-minion (Linux)

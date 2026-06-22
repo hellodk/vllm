@@ -1,0 +1,8 @@
+# /usr/local/etc/salt/minion.d/beacons.conf (macOS) — Managed by Ansible.
+beacons:
+  log:
+    - file: {{ llm_log_dir | default('/var/log/hydra') }}/mlx-server-error.log
+    - tags:
+        mlx_metal:
+          regex: '.*(check_error|MetalAllocator|CommandBuffer|Insufficient Memory|abort).*'
+    - interval: 5
