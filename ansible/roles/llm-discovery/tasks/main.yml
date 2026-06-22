@@ -35,6 +35,18 @@
     - not item.failed | default(true)
     - item.status | default(0) in [200, 404, 405]
 
+# MLX-presence signal. Works under BOTH inventories:
+#   - static inventories/llm/hosts.yml sets `llm_frameworks` per pool (deployment view)
+#   - dynamic cluster.yml (inventory_plugin.py) sets `hydra_llm_endpoints` (runtime view);
+#     an MLX node is one declaring a `vllm-mlx` endpoint there.
+# Both source vars are guarded with default([]) since each only exists under one inventory.
+- name: Determine whether MLX runs on this node
+  set_fact:
+    _mlx_on_node: >-
+      {{ ('mlx' in (llm_frameworks | default([])))
+         or (hydra_llm_endpoints | default([])
+             | selectattr('provider', 'equalto', 'vllm-mlx') | list | length > 0) }}
+
 - name: Add MLX /metrics endpoint to discovery (when MLX deployed on this node)
   set_fact:
     _endpoints_to_probe: >-
@@ -42,7 +54,7 @@
          'url': 'http://127.0.0.1:' + mlx_scrape_port | string + '/v1',
          'port': mlx_scrape_port | string,
          'api_key': none}] }}
-  when: "'mlx' in (llm_frameworks | default([]))"
+  when: _mlx_on_node | bool
 
 - name: Add MLX log-exporter /metrics endpoint to discovery (when MLX deployed on this node)
   set_fact:
@@ -51,7 +63,7 @@
          'url': 'http://127.0.0.1:' + mlx_logexporter_scrape_port | string + '/metrics',
          'port': mlx_logexporter_scrape_port | string,
          'api_key': none}] }}
-  when: "'mlx' in (llm_frameworks | default([]))"
+  when: _mlx_on_node | bool
 
 # Step B: Write /etc/hydra/discovered.yml
 - name: Write /etc/hydra/discovered.yml

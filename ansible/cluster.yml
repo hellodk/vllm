@@ -418,6 +418,9 @@ nodes:
       - provider: ollama
         url: "http://127.0.0.1:11434/v1"
         api_key: ~
+      - provider: vllm-mlx          # MLX server (port 11500) — lights up llm-discovery MLX scrape under site.yml
+        url: "http://127.0.0.1:11500/v1"
+        api_key: ~
 
   - id: p1-i7-rtx3050
     hostname: linux-i7-rtx
