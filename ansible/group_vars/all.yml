@@ -23,6 +23,15 @@ mlx_scrape_port: 11500
 # Defined here so llm-discovery (site.yml, no llm-mlx role loaded) can reference it safely.
 mlx_logexporter_scrape_port: 11502
 
+# ── JFrog Artifactory (on-prem PyPI mirror) ──────────────────────────────────
+# Source of truth is cluster.yml, but that file is only read by inventory_plugin.py
+# (which never surfaces `jfrog`). The llm-mlx role's vars reference `jfrog.pypi_index`,
+# so it must live in group_vars to resolve under BOTH the static llm inventory and the
+# dynamic site.yml inventory. Keep in sync with cluster.yml:jfrog.
+jfrog:
+  pypi_index: "https://artifactory.hydra.local/artifactory/api/pypi/pypi-remote/simple"
+  pypi_trusted_host: "artifactory.hydra.local"
+
 # ── Offline binary directory ──────────────────────────────────────────────────
 # NO internet access on targets — all binaries pre-staged here by operator.
 # See ansible/roles/otel-mac-agent/files/README.md and

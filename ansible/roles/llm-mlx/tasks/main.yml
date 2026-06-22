@@ -113,13 +113,21 @@
 
 # ── Log exporter ──────────────────────────────────────────────────────────────
 
-- name: Install prometheus-client for log exporter
+- name: Install prometheus-client for log exporter (JFrog)
   pip:
     name: ["prometheus-client>=0.20.0"]
     virtualenv: "{{ mlx_venv }}"
     extra_args: "--index-url {{ jfrog_pypi_index }} --trusted-host {{ jfrog_pypi_trusted_host }}"
   become: true
   when: mlx_use_jfrog | bool
+
+- name: Install prometheus-client for log exporter (offline wheels fallback)
+  pip:
+    name: ["prometheus-client>=0.20.0"]
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--no-index --find-links {{ mlx_dir }}/wheels"
+  become: true
+  when: not (mlx_use_jfrog | bool)
 
 - name: Copy MLX log exporter
   copy:

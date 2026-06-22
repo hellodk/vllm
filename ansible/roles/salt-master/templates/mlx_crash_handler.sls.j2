@@ -1,4 +1,4 @@
-# /srv/salt/base/mlx_crash_handler.sls — Managed by Ansible.
+# /srv/salt/states/base/mlx_crash_handler.sls — Managed by Ansible.
 # Email + restart + drain on MLX crash. Runs on the affected minion.
 {% raw %}
 restart_mlx_server:
@@ -10,7 +10,7 @@ restart_mlx_server:
 notify_ops_mlx_crash:
   cmd.run:
     - name: >
-        printf 'Subject: [HYDRA] MLX crash on %s\n\nNode %s logged an MLX/Metal failure:\n%s\n'
+        printf 'To: ops@hydra.local\nSubject: [HYDRA] MLX crash on %s\n\nNode %s logged an MLX/Metal failure:\n%s\n'
         "{{ pillar['crash_node'] }}" "{{ pillar['crash_node'] }}" "{{ pillar['crash_line'] }}"
         | /usr/sbin/sendmail -t -f hydra-alerts@hydra.local ops@hydra.local
     - require:

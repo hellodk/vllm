@@ -23,7 +23,7 @@ auto_accept: {{ hydra_salt_auto_accept | default(false) | lower }}
 reactor:
   - 'salt/minion/*/start':
     - /srv/salt/reactors/grain_report.sls
-  - 'salt/beacon/*/mlx_metal/':
+  - 'salt/beacon/*/log/mlx_metal':
     - /srv/salt/reactors/mlx_crash.sls
 
 # ── SMTP returner ─────────────────────────────────────────────────────────────

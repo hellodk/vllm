@@ -52,9 +52,20 @@ receivers:
     slack_configs:
       - api_url: "${ALERTMANAGER_SLACK_WEBHOOK}"
         channel: "${ALERTMANAGER_SLACK_CHANNEL:-#hydra-alerts}"
+        icon_emoji: ":robot_face:"
+        title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Pool:* {{ .Labels.pool }}
+          *Node:* {{ .Labels.instance }}
+          {{ end }}
     email_configs:
       - to: "${ALERTMANAGER_SMTP_TO}"
         send_resolved: true
+        headers:
+          subject: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }} on {{ .CommonLabels.node_id }}'
 
 inhibit_rules:
   - source_match:
