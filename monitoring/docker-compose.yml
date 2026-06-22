@@ -30,6 +30,7 @@ volumes:
   opik-mysql-data:
   opik-clickhouse-data:
   opik-redis-data:
+  tempo-data:
 
 services:
 
@@ -216,6 +217,20 @@ services:
         condition: service_started
       opik-redis:
         condition: service_started
+
+  # ── Tempo ─────────────────────────────────────────────────────────────────
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: tempo
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["-config.file=/etc/tempo/tempo-config.yml"]
+    volumes:
+      - ./tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo query
+    networks: [hydra-monitor]
 
   # ── Opik Frontend ─────────────────────────────────────────────────────────
   opik-frontend:
