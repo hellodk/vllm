@@ -19,6 +19,9 @@ llm_probe_ports:
 # Kept here (not only in the llm-mlx role) so llm-discovery — which runs in site.yml without the
 # llm-mlx role loaded — can reference it without an undefined-variable error.
 mlx_scrape_port: 11500
+# Log-exporter scrape port — must stay equal to mlx_logexporter_port in llm-mlx/vars/main.yml.
+# Defined here so llm-discovery (site.yml, no llm-mlx role loaded) can reference it safely.
+mlx_logexporter_scrape_port: 11502
 
 # ── Offline binary directory ──────────────────────────────────────────────────
 # NO internet access on targets — all binaries pre-staged here by operator.

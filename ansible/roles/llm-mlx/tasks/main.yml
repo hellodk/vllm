@@ -111,6 +111,34 @@
   changed_when: _mlx_boot.rc == 0
   ignore_errors: true
 
+# ── Log exporter ──────────────────────────────────────────────────────────────
+
+- name: Install prometheus-client for log exporter
+  pip:
+    name: ["prometheus-client>=0.20.0"]
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--index-url {{ jfrog_pypi_index }} --trusted-host {{ jfrog_pypi_trusted_host }}"
+  become: true
+  when: mlx_use_jfrog | bool
+
+- name: Copy MLX log exporter
+  copy:
+    src: mlx_log_exporter.py
+    dest: "{{ mlx_dir }}/mlx_log_exporter.py"
+    mode: "0755"
+  become: true
+  notify: restart mlx-logexporter
+
+- name: Install MLX log exporter LaunchDaemon
+  template:
+    src: com.hydra.mlx-logexporter.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.mlx-logexporter.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart mlx-logexporter
+
 - name: Flush handlers
   meta: flush_handlers
 

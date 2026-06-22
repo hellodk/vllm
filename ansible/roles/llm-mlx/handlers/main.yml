@@ -6,3 +6,10 @@
     launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-server.plist
   become: true
   ignore_errors: true
+
+- name: restart mlx-logexporter
+  shell: |
+    launchctl bootout system/com.hydra.mlx-logexporter 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-logexporter.plist
+  become: true
+  ignore_errors: true

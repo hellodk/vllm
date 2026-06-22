@@ -44,6 +44,15 @@
          'api_key': none}] }}
   when: "'mlx' in (llm_frameworks | default([]))"
 
+- name: Add MLX log-exporter /metrics endpoint to discovery (when MLX deployed on this node)
+  set_fact:
+    _endpoints_to_probe: >-
+      {{ _endpoints_to_probe + [{'provider': 'mlx_errors',
+         'url': 'http://127.0.0.1:' + mlx_logexporter_scrape_port | string + '/metrics',
+         'port': mlx_logexporter_scrape_port | string,
+         'api_key': none}] }}
+  when: "'mlx' in (llm_frameworks | default([]))"
+
 # Step B: Write /etc/hydra/discovered.yml
 - name: Write /etc/hydra/discovered.yml
   template:
