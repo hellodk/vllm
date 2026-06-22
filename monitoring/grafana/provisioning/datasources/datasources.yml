@@ -28,3 +28,9 @@ datasources:
     jsonData:
       handleGrafanaManagedAlerts: false
       implementation: prometheus
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    uid: tempo

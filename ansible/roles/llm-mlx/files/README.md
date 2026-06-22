@@ -6,18 +6,24 @@
 ansible/roles/llm-mlx/files/wheels/   ← Python wheels for mlx + mlx-lm + deps
 ```
 
-## Download (on a Mac with internet)
+## Dependency delivery
 
-```bash
-pip download \
-  "mlx>=0.16.0" "mlx-lm>=0.19.0" \
-  "huggingface-hub>=0.23.0" "transformers>=4.41.0" \
-  "sentencepiece>=0.2.0" "protobuf>=4.25.0" "numpy>=1.26.0" \
-  --platform macosx_14_0_arm64 \
-  --python-version 311 \
-  --only-binary=:all: \
-  -d ansible/roles/llm-mlx/files/wheels/
-```
+Packages install from the on-prem JFrog Artifactory PyPI repo by default
+(`mlx_use_jfrog: true`). No wheels need to be vendored for that path.
+
+### Fully air-gapped fallback
+
+Set `mlx_use_jfrog: false` and stage wheels into `files/wheels/`:
+
+    pip download "mlx-lm==0.31.3" "mlx>=0.22.0" "huggingface-hub>=0.27.0" \
+      "transformers>=4.48.0" "sentencepiece>=0.2.0" "protobuf>=4.25.0" \
+      "numpy>=1.26.0,<2.3.0" "prometheus-client>=0.20.0" "vllm-mlx==0.4.0rc1" \
+      --platform macosx_14_0_arm64 --python-version 311 \
+      --only-binary=:all: -d ansible/roles/llm-mlx/files/wheels/
+
+Note: `prometheus-client` (log exporter) and `vllm-mlx` (default backend) must be
+staged here too for the air-gapped path — they install from `files/wheels/` when
+`mlx_use_jfrog: false`.
 
 ## Model files
 

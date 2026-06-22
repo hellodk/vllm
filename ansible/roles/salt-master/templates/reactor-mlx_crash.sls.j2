@@ -1,0 +1,15 @@
+# /srv/salt/reactors/mlx_crash.sls — Managed by Ansible.
+# Fires when a minion's log beacon matches an MLX/Metal crash signature.
+{% raw %}
+# Beacon events are wrapped by the master: the minion id and beacon payload
+# live under data['data'] (NOT data) — see Salt reactor docs.
+handle_mlx_crash:
+  local.state.apply:
+    - tgt: {{ data['data']['id'] }}
+    - arg:
+      - base.mlx_crash_handler
+    - kwarg:
+        pillar:
+          crash_node: {{ data['data']['id'] }}
+          crash_line: {{ data['data'].get('raw', 'unknown') | json }}
+{% endraw %}

@@ -1,0 +1,30 @@
+groups:
+  - name: mlx-inference
+    interval: 30s
+    rules:
+      - alert: MLXServerDown
+        expr: up{job=~"llm-mlx"} == 0
+        for: 1m
+        labels: { severity: critical, team: ml-platform, category: mlx }
+        annotations:
+          summary: "MLX server down on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: "The MLX inference server is not serving /metrics for 1m. launchd KeepAlive should restart it; if this fires repeatedly the process is crash-looping."
+
+      - alert: MLXMetalFailure
+        expr: increase(mlx_metal_failures_total[5m]) > 0
+        for: 0m
+        labels: { severity: critical, team: ml-platform, category: mlx, pagerduty: trigger }
+        annotations:
+          summary: "MLX Metal/GPU command-buffer failure on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: "A Metal command buffer failure (check_error / MetalAllocator) was detected in the MLX error log. Likely unified-memory exhaustion. Reduce context/batch or move the model to a larger node."
+
+      - alert: MLXMemoryPressure
+        expr: apple_gpu_memory_used_bytes / apple_gpu_memory_total_bytes > 0.90
+        for: 2m
+        labels: { severity: warning, team: ml-platform, category: mlx }
+        annotations:
+          summary: "MLX unified-memory pressure >90% on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: "Approaching the 16 GB ceiling — OOM SIGABRT risk. Pre-emptive: lower max-kv-size or drain node."

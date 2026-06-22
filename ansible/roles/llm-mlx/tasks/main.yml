@@ -10,15 +10,16 @@
     path: "{{ role_path }}/files/wheels"
   register: _mlx_wheels_dir
   run_once: true
+  when: not (mlx_use_jfrog | bool)
 
 - name: Fail if MLX wheels are missing
   fail:
     msg: |
       Missing: {{ role_path }}/files/wheels/
       See ansible/roles/llm-mlx/files/README.md — download wheels on a Mac with internet and place here.
-      pip download mlx>=0.16.0 mlx-lm>=0.19.0 huggingface-hub transformers sentencepiece protobuf numpy \
+      pip download "mlx-lm==0.31.3" "mlx>=0.22.0" "huggingface-hub>=0.27.0" "transformers>=4.48.0" "sentencepiece>=0.2.0" "protobuf>=4.25.0" "numpy>=1.26.0,<2.3.0" \
         --platform macosx_14_0_arm64 --python-version 311 --only-binary=:all: -d files/wheels/
-  when: not _mlx_wheels_dir.stat.exists
+  when: not (mlx_use_jfrog | bool) and not _mlx_wheels_dir.stat.exists
   run_once: true
 
 # ── Directories ───────────────────────────────────────────────────────────────
@@ -43,17 +44,7 @@
       Example: rsync -av /path/to/model {{ mlx_models_dir }}/
   when: not _mlx_model_dir.stat.exists
 
-# ── Wheels ────────────────────────────────────────────────────────────────────
-
-- name: Sync MLX wheels (offline)
-  synchronize:
-    src: "{{ role_path }}/files/wheels/"
-    dest: "{{ mlx_dir }}/wheels/"
-    delete: false
-  become: true
-
 # ── Virtualenv ────────────────────────────────────────────────────────────────
-
 - name: Create MLX virtualenv
   command: >
     {{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}
@@ -62,13 +53,44 @@
     creates: "{{ mlx_venv }}/bin/python"
   become: true
 
-- name: Install MLX packages from local wheels
+# ── Dependencies: JFrog Artifactory (primary) ─────────────────────────────────
+- name: Install MLX packages from JFrog Artifactory
+  pip:
+    name: "{{ mlx_packages }}"
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--index-url {{ jfrog_pypi_index }} --trusted-host {{ jfrog_pypi_trusted_host }}"
+    state: present
+  become: true
+  when: mlx_use_jfrog | bool
+  register: _mlx_pip_jfrog
+  retries: 2
+  delay: 5
+  until: _mlx_pip_jfrog is succeeded
+
+# ── Dependencies: vendored wheels (fallback for full air-gap) ─────────────────
+- name: Sync MLX wheels (offline fallback)
+  synchronize:
+    src: "{{ role_path }}/files/wheels/"
+    dest: "{{ mlx_dir }}/wheels/"
+    delete: false
+  become: true
+  changed_when: false
+  when: not (mlx_use_jfrog | bool)
+
+- name: Install MLX packages from local wheels (offline fallback)
   pip:
     name: "{{ mlx_packages }}"
     virtualenv: "{{ mlx_venv }}"
     extra_args: "--no-index --find-links {{ mlx_dir }}/wheels"
     state: present
   become: true
+  when: not (mlx_use_jfrog | bool)
+
+# ── Backend-specific install ──────────────────────────────────────────────────
+
+- name: Install vllm-mlx backend
+  include_tasks: install_vllm_mlx.yml
+  when: mlx_server_backend == 'vllm_mlx'
 
 # ── LaunchDaemon ──────────────────────────────────────────────────────────────
 
@@ -88,6 +110,42 @@
   register: _mlx_boot
   changed_when: _mlx_boot.rc == 0
   ignore_errors: true
+
+# ── Log exporter ──────────────────────────────────────────────────────────────
+
+- name: Install prometheus-client for log exporter (JFrog)
+  pip:
+    name: ["prometheus-client>=0.20.0"]
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--index-url {{ jfrog_pypi_index }} --trusted-host {{ jfrog_pypi_trusted_host }}"
+  become: true
+  when: mlx_use_jfrog | bool
+
+- name: Install prometheus-client for log exporter (offline wheels fallback)
+  pip:
+    name: ["prometheus-client>=0.20.0"]
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--no-index --find-links {{ mlx_dir }}/wheels"
+  become: true
+  when: not (mlx_use_jfrog | bool)
+
+- name: Copy MLX log exporter
+  copy:
+    src: mlx_log_exporter.py
+    dest: "{{ mlx_dir }}/mlx_log_exporter.py"
+    mode: "0755"
+  become: true
+  notify: restart mlx-logexporter
+
+- name: Install MLX log exporter LaunchDaemon
+  template:
+    src: com.hydra.mlx-logexporter.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.mlx-logexporter.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart mlx-logexporter
 
 - name: Flush handlers
   meta: flush_handlers

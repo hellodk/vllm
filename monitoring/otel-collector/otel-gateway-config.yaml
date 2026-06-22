@@ -63,6 +63,11 @@ exporters:
     tls:
       insecure: true
 
+  otlp/tempo:
+    endpoint: "tempo:4317"
+    tls:
+      insecure: true
+
   debug:
     verbosity: basic
 
@@ -81,7 +86,7 @@ service:
     traces:
       receivers:  [otlp]
       processors: [resourcedetection, resource, batch]
-      exporters:  [otlphttp/opik]
+      exporters:  [otlphttp/opik, otlp/tempo]
 
   telemetry:
     logs:

@@ -31,6 +31,13 @@ cluster:
     minio_access_key: "hydra-admin"
     minio_secret_key: "changeme-v2"   # override before production use
 
+# ── JFrog Artifactory (on-prem package mirror) ───────────────────────────────
+jfrog:
+  pypi_index: "https://artifactory.hydra.local/artifactory/api/pypi/pypi-remote/simple"
+  pypi_trusted_host: "artifactory.hydra.local"
+  # TODO v2: move token to vault
+  token: "changeme-jfrog-token"
+
 # ── OTEL monitoring fan-out destinations ─────────────────────────────────────
 # Used by ansible/mac-monitoring.yml (otel-mac-agent role)
 # Binaries must be pre-staged locally — NO internet on targets.
@@ -410,6 +417,9 @@ nodes:
         api_key: ~
       - provider: ollama
         url: "http://127.0.0.1:11434/v1"
+        api_key: ~
+      - provider: vllm-mlx          # MLX server (port 11500) — lights up llm-discovery MLX scrape under site.yml
+        url: "http://127.0.0.1:11500/v1"
         api_key: ~
 
   - id: p1-i7-rtx3050

@@ -1,0 +1,19 @@
+# ansible/roles/llm-mlx/tasks/install_vllm_mlx.yml
+---
+- name: Install vllm-mlx from JFrog
+  pip:
+    name: "{{ mlx_vllm_packages }}"
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--index-url {{ jfrog_pypi_index }} --trusted-host {{ jfrog_pypi_trusted_host }}"
+    state: present
+  become: true
+  when: mlx_use_jfrog | bool
+
+- name: Install vllm-mlx from local wheels (offline fallback)
+  pip:
+    name: "{{ mlx_vllm_packages }}"
+    virtualenv: "{{ mlx_venv }}"
+    extra_args: "--no-index --find-links {{ mlx_dir }}/wheels"
+    state: present
+  become: true
+  when: not (mlx_use_jfrog | bool)
