@@ -1,5 +1,7 @@
-// Package iokit provides access to Apple Silicon metrics via IOKit framework
-// This requires running as root or with appropriate entitlements
+//go:build darwin
+
+// This file provides access to Apple Silicon metrics via the IOKit framework.
+// It requires running as root or with appropriate entitlements.
 package iokit
 
 /*
@@ -31,25 +33,25 @@ int get_gpu_metrics(GPUMetrics* metrics) {
     io_iterator_t iterator;
     io_service_t service;
     kern_return_t result;
-    
+
     // Find IOAccelerator services
     result = IOServiceGetMatchingServices(
         kIOMasterPortDefault,
         IOServiceMatching("IOAccelerator"),
         &iterator
     );
-    
+
     if (result != KERN_SUCCESS) {
         return -1;
     }
-    
+
     // Get first GPU (Apple Silicon typically has unified GPU)
     service = IOIteratorNext(iterator);
     if (!service) {
         IOObjectRelease(iterator);
         return -1;
     }
-    
+
     // Get performance statistics
     CFMutableDictionaryRef props = NULL;
     result = IORegistryEntryCreateCFProperties(
@@ -58,7 +60,7 @@ int get_gpu_metrics(GPUMetrics* metrics) {
         kCFAllocatorDefault,
         0
     );
-    
+
     if (result == KERN_SUCCESS && props) {
         // Get utilization from PerformanceStatistics
         CFDictionaryRef perfStats = CFDictionaryGetValue(props, CFSTR("PerformanceStatistics"));
@@ -69,13 +71,13 @@ int get_gpu_metrics(GPUMetrics* metrics) {
                 CFNumberGetValue(utilRef, kCFNumberSInt64Type, &util);
                 metrics->utilization = (double)util;
             }
-            
+
             // Memory used
             CFNumberRef memUsedRef = CFDictionaryGetValue(perfStats, CFSTR("In use system memory"));
             if (memUsedRef) {
                 CFNumberGetValue(memUsedRef, kCFNumberSInt64Type, (int64_t*)&metrics->memory_used);
             }
-            
+
             // Allocated memory (as proxy for total available)
             CFNumberRef memAllocRef = CFDictionaryGetValue(perfStats, CFSTR("Allocated system memory"));
             if (memAllocRef) {
@@ -84,7 +86,7 @@ int get_gpu_metrics(GPUMetrics* metrics) {
         }
         CFRelease(props);
     }
-    
+
     IOObjectRelease(service);
     IOObjectRelease(iterator);
     return 0;
@@ -94,18 +96,18 @@ int get_gpu_metrics(GPUMetrics* metrics) {
 int get_thermal_metrics(ThermalMetrics* metrics) {
     io_service_t service;
     kern_return_t result;
-    
+
     // Initialize defaults
     metrics->thermal_level = -1;
     metrics->cpu_throttled = 0;
     metrics->gpu_throttled = 0;
-    
+
     // Find AppleSMC service for thermal data
     service = IOServiceGetMatchingService(
         kIOMasterPortDefault,
         IOServiceMatching("AppleSMC")
     );
-    
+
     if (!service) {
         // Try alternative service name
         service = IOServiceGetMatchingService(
@@ -113,11 +115,11 @@ int get_thermal_metrics(ThermalMetrics* metrics) {
             IOServiceMatching("AppleARMSMC")
         );
     }
-    
+
     if (!service) {
         return -1;
     }
-    
+
     CFMutableDictionaryRef props = NULL;
     result = IORegistryEntryCreateCFProperties(
         service,
@@ -125,7 +127,7 @@ int get_thermal_metrics(ThermalMetrics* metrics) {
         kCFAllocatorDefault,
         0
     );
-    
+
     if (result == KERN_SUCCESS && props) {
         // Thermal level might be in various keys depending on macOS version
         // Try common keys
@@ -137,7 +139,7 @@ int get_thermal_metrics(ThermalMetrics* metrics) {
         }
         CFRelease(props);
     }
-    
+
     IOObjectRelease(service);
     return 0;
 }
@@ -163,35 +165,17 @@ import (
 	"go.uber.org/zap"
 )
 
-// GPUMetrics contains metrics for a single GPU
-type GPUMetrics struct {
-	Utilization float64
-	MemoryUsed  uint64
-	MemoryTotal uint64
-	Temperature float64
-}
-
-// Metrics contains all collected IOKit metrics
-type Metrics struct {
-	GPUs         []GPUMetrics
-	ThermalLevel string
-	CPUThrottled bool
-	GPUThrottled bool
-}
-
-// Collector collects metrics via IOKit
+// Collector collects metrics via IOKit.
 type Collector struct {
 	logger *zap.Logger
 }
 
-// NewCollector creates a new IOKit collector
+// NewCollector creates a new IOKit collector.
 func NewCollector(logger *zap.Logger) (*Collector, error) {
-	return &Collector{
-		logger: logger,
-	}, nil
+	return &Collector{logger: logger}, nil
 }
 
-// Collect gathers metrics from IOKit
+// Collect gathers metrics from IOKit.
 func (c *Collector) Collect() (*Metrics, error) {
 	metrics := &Metrics{
 		GPUs:         make([]GPUMetrics, 0, 1),
@@ -201,16 +185,19 @@ func (c *Collector) Collect() (*Metrics, error) {
 	// Collect GPU metrics
 	var gpuMetrics C.GPUMetrics
 	if result := C.get_gpu_metrics(&gpuMetrics); result == 0 {
+		temp := float64(C.get_gpu_temperature())
 		gpu := GPUMetrics{
-			Utilization: float64(gpuMetrics.utilization),
-			MemoryUsed:  uint64(gpuMetrics.memory_used),
-			MemoryTotal: uint64(gpuMetrics.memory_total),
-			Temperature: float64(C.get_gpu_temperature()),
+			Utilization:    float64(gpuMetrics.utilization),
+			MemoryUsed:     uint64(gpuMetrics.memory_used),
+			MemoryTotal:    uint64(gpuMetrics.memory_total),
+			Temperature:    temp,
+			HasUtilization: true,
+			HasMemory:      true,
+			HasTemperature: temp >= 0,
 		}
 		metrics.GPUs = append(metrics.GPUs, gpu)
 	} else {
 		c.logger.Debug("Failed to get GPU metrics from IOKit, trying fallback")
-		// Fallback: try to get basic GPU info from system_profiler
 		if err := c.collectGPUFallback(metrics); err != nil {
 			c.logger.Debug("GPU fallback also failed", zap.Error(err))
 		}
@@ -231,10 +218,10 @@ func (c *Collector) Collect() (*Metrics, error) {
 		default:
 			metrics.ThermalLevel = "unknown"
 		}
+		metrics.HasThermal = true
 		metrics.CPUThrottled = thermalMetrics.cpu_throttled != 0
 		metrics.GPUThrottled = thermalMetrics.gpu_throttled != 0
 	} else {
-		// Fallback: use sysctl for thermal pressure
 		if err := c.collectThermalFallback(metrics); err != nil {
 			c.logger.Debug("Thermal fallback also failed", zap.Error(err))
 		}
@@ -243,64 +230,55 @@ func (c *Collector) Collect() (*Metrics, error) {
 	return metrics, nil
 }
 
-// collectGPUFallback tries alternative methods to get GPU data
+// collectGPUFallback tries alternative methods to get GPU data.
 func (c *Collector) collectGPUFallback(metrics *Metrics) error {
-	// Try system_profiler for basic GPU info
 	cmd := exec.Command("system_profiler", "SPDisplaysDataType", "-json")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("system_profiler failed: %w", err)
 	}
 
-	// Parse output to get VRAM info
-	// This is a simplified parser - real implementation would use encoding/json
 	outputStr := string(output)
 	if strings.Contains(outputStr, "Chipset Model") {
-		// Found GPU info, create placeholder entry
-		gpu := GPUMetrics{
-			Utilization: 0, // Not available via system_profiler
-			MemoryUsed:  0,
-			MemoryTotal: 0,
-			Temperature: 0,
-		}
-		
-		// Try to parse VRAM if available
+		gpu := GPUMetrics{}
+
 		if idx := strings.Index(outputStr, "VRAM"); idx != -1 {
-			// Extract VRAM value
-			vramLine := outputStr[idx : idx+100]
+			end := idx + 100
+			if end > len(outputStr) {
+				end = len(outputStr)
+			}
+			vramLine := outputStr[idx:end]
 			parts := strings.Fields(vramLine)
 			for i, p := range parts {
 				if p == "GB" && i > 0 {
 					if val, err := strconv.ParseFloat(parts[i-1], 64); err == nil {
 						gpu.MemoryTotal = uint64(val * 1024 * 1024 * 1024)
+						gpu.HasMemory = true
 					}
 				}
 			}
 		}
-		
+
 		metrics.GPUs = append(metrics.GPUs, gpu)
 	}
 	return nil
 }
 
-// collectThermalFallback uses sysctl to get thermal pressure
+// collectThermalFallback uses sysctl/pmset to get thermal pressure.
 func (c *Collector) collectThermalFallback(metrics *Metrics) error {
-	// Use sysctl to get thermal pressure
 	cmd := exec.Command("sysctl", "-n", "kern.sched_rt_avoid_cpu0")
-	output, err := cmd.Output()
-	if err == nil {
-		val := strings.TrimSpace(string(output))
-		if val == "1" {
+	if output, err := cmd.Output(); err == nil {
+		if strings.TrimSpace(string(output)) == "1" {
 			metrics.ThermalLevel = "moderate"
+			metrics.HasThermal = true
 		}
 	}
 
-	// Try to get more specific thermal info
 	cmd = exec.Command("pmset", "-g", "therm")
-	output, err = cmd.Output()
-	if err == nil {
+	if output, err := cmd.Output(); err == nil {
 		outputStr := string(output)
 		if strings.Contains(outputStr, "CPU_Speed_Limit") {
+			metrics.HasThermal = true
 			if strings.Contains(outputStr, "100") {
 				metrics.ThermalLevel = "nominal"
 			} else {
@@ -313,5 +291,5 @@ func (c *Collector) collectThermalFallback(metrics *Metrics) error {
 	return nil
 }
 
-// Ensure unsafe is used (for C interop)
+// Ensure unsafe is used (for C interop).
 var _ = unsafe.Sizeof(0)

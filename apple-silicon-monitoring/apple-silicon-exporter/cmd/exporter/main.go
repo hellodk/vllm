@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
@@ -27,15 +28,15 @@ var (
 )
 
 type Config struct {
-	ListenAddress       string
-	MetricsPath         string
-	PowermetricsPath    string
-	PowermetricsSamples int
+	ListenAddress        string
+	MetricsPath          string
+	PowermetricsPath     string
+	PowermetricsSamples  int
 	PowermetricsInterval time.Duration
-	LogLevel            string
-	EnableIOKit         bool
-	EnablePowermetrics  bool
-	EnableMetal         bool
+	LogLevel             string
+	EnableIOKit          bool
+	EnablePowermetrics   bool
+	EnableMetal          bool
 }
 
 func main() {
@@ -61,7 +62,7 @@ func main() {
 
 	// Initialize logger
 	logger := initLogger(cfg.LogLevel)
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	logger.Info("Starting apple-silicon-exporter",
 		zap.String("version", version),
@@ -72,8 +73,8 @@ func main() {
 	registry := prometheus.NewRegistry()
 
 	// Add standard Go metrics
-	registry.MustRegister(prometheus.NewGoCollector())
-	registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	registry.MustRegister(collectors.NewGoCollector())
+	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	// Create the Apple Silicon collector
 	appleCollector, err := collector.NewAppleSiliconCollector(
@@ -104,19 +105,19 @@ func main() {
 	// Health endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	// Ready endpoint
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Ready"))
+		_, _ = w.Write([]byte("Ready"))
 	})
 
 	// Root endpoint with info
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(fmt.Sprintf(`<!DOCTYPE html>
+		_, _ = w.Write([]byte(fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head><title>Apple Silicon Exporter</title></head>
 <body>
@@ -148,7 +149,7 @@ func main() {
 		logger.Info("Shutting down server...")
 		shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer shutdownCancel()
-		server.Shutdown(shutdownCtx)
+		_ = server.Shutdown(shutdownCtx)
 	}()
 
 	logger.Info("Server listening", zap.String("address", cfg.ListenAddress))

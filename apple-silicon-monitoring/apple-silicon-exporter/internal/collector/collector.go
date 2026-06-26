@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 
+	"github.com/company/apple-silicon-exporter/internal/chip"
 	"github.com/company/apple-silicon-exporter/internal/iokit"
 	"github.com/company/apple-silicon-exporter/internal/metal"
 	"github.com/company/apple-silicon-exporter/internal/powermetrics"
@@ -23,33 +24,37 @@ type AppleSiliconCollector struct {
 	mu     sync.Mutex
 
 	// Sub-collectors
-	iokitCollector       *iokit.Collector
+	iokitCollector        *iokit.Collector
 	powermetricsCollector *powermetrics.Collector
-	metalCollector       *metal.Collector
-	systemCollector      *system.Collector
+	metalCollector        *metal.Collector
+	systemCollector       *system.Collector
+
+	// Detected host chip
+	chipInfo chip.Info
 
 	// Configuration
-	enableIOKit       bool
+	enableIOKit        bool
 	enablePowermetrics bool
-	enableMetal       bool
+	enableMetal        bool
 
 	// Metrics descriptors
-	gpuUtilization    *prometheus.Desc
-	gpuMemoryUsed     *prometheus.Desc
-	gpuMemoryTotal    *prometheus.Desc
-	gpuTemperature    *prometheus.Desc
-	gpuPower          *prometheus.Desc
-	cpuPower          *prometheus.Desc
-	anePower          *prometheus.Desc
-	aneUtilization    *prometheus.Desc
-	systemPower       *prometheus.Desc
-	thermalPressure   *prometheus.Desc
-	thermalThrottle   *prometheus.Desc
-	cpuUsage          *prometheus.Desc
-	memoryUsed        *prometheus.Desc
-	memoryTotal       *prometheus.Desc
-	scrapeSuccess     *prometheus.Desc
-	scrapeDuration    *prometheus.Desc
+	chipInfoDesc    *prometheus.Desc
+	gpuUtilization  *prometheus.Desc
+	gpuMemoryUsed   *prometheus.Desc
+	gpuMemoryTotal  *prometheus.Desc
+	gpuTemperature  *prometheus.Desc
+	gpuPower        *prometheus.Desc
+	cpuPower        *prometheus.Desc
+	anePower        *prometheus.Desc
+	aneUtilization  *prometheus.Desc
+	systemPower     *prometheus.Desc
+	thermalPressure *prometheus.Desc
+	thermalThrottle *prometheus.Desc
+	cpuUsage        *prometheus.Desc
+	memoryUsed      *prometheus.Desc
+	memoryTotal     *prometheus.Desc
+	scrapeSuccess   *prometheus.Desc
+	scrapeDuration  *prometheus.Desc
 }
 
 // Option configures the collector
@@ -82,10 +87,10 @@ func WithMetal(enabled bool) Option {
 // NewAppleSiliconCollector creates a new collector
 func NewAppleSiliconCollector(logger *zap.Logger, opts ...Option) (*AppleSiliconCollector, error) {
 	c := &AppleSiliconCollector{
-		logger:            logger,
-		enableIOKit:       true,
+		logger:             logger,
+		enableIOKit:        true,
 		enablePowermetrics: true,
-		enableMetal:       true,
+		enableMetal:        true,
 	}
 
 	// Apply options
@@ -114,6 +119,16 @@ func NewAppleSiliconCollector(logger *zap.Logger, opts ...Option) (*AppleSilicon
 
 	c.systemCollector = system.NewCollector(logger)
 
+	// Detect host chip family/variant (M1–M5 and beyond, generically).
+	c.chipInfo = chip.Detect()
+	logger.Info("Detected host chip",
+		zap.String("chip", c.chipInfo.Name),
+		zap.String("family", c.chipInfo.Family),
+		zap.String("variant", c.chipInfo.Variant),
+		zap.String("model", c.chipInfo.Model),
+		zap.String("source", c.chipInfo.Source),
+	)
+
 	// Initialize metric descriptors
 	c.initDescriptors()
 
@@ -121,6 +136,11 @@ func NewAppleSiliconCollector(logger *zap.Logger, opts ...Option) (*AppleSilicon
 }
 
 func (c *AppleSiliconCollector) initDescriptors() {
+	c.chipInfoDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "chip", "info"),
+		"Apple Silicon chip information (constant 1; details in labels)",
+		[]string{"chip", "family", "variant", "model"}, nil,
+	)
 	c.gpuUtilization = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "gpu", "utilization_percent"),
 		"GPU utilization percentage",
@@ -205,6 +225,7 @@ func (c *AppleSiliconCollector) initDescriptors() {
 
 // Describe implements prometheus.Collector
 func (c *AppleSiliconCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.chipInfoDesc
 	ch <- c.gpuUtilization
 	ch <- c.gpuMemoryUsed
 	ch <- c.gpuMemoryTotal
@@ -227,6 +248,12 @@ func (c *AppleSiliconCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *AppleSiliconCollector) Collect(ch chan<- prometheus.Metric) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Chip info is a constant info-metric carrying details in its labels.
+	ch <- prometheus.MustNewConstMetric(
+		c.chipInfoDesc, prometheus.GaugeValue, 1,
+		c.chipInfo.Name, c.chipInfo.Family, c.chipInfo.Variant, c.chipInfo.Model,
+	)
 
 	var wg sync.WaitGroup
 
@@ -276,19 +303,27 @@ func (c *AppleSiliconCollector) collectIOKit(ch chan<- prometheus.Metric) {
 		c.logger.Error("IOKit collection failed", zap.Error(err))
 		success = 0.0
 	} else {
-		// GPU metrics
+		// GPU metrics — only emit fields with real data on this platform.
 		for i, gpu := range metrics.GPUs {
 			gpuLabel := fmt.Sprintf("%d", i)
-			ch <- prometheus.MustNewConstMetric(c.gpuUtilization, prometheus.GaugeValue, gpu.Utilization, gpuLabel)
-			ch <- prometheus.MustNewConstMetric(c.gpuMemoryUsed, prometheus.GaugeValue, float64(gpu.MemoryUsed), gpuLabel)
-			ch <- prometheus.MustNewConstMetric(c.gpuMemoryTotal, prometheus.GaugeValue, float64(gpu.MemoryTotal), gpuLabel)
-			ch <- prometheus.MustNewConstMetric(c.gpuTemperature, prometheus.GaugeValue, gpu.Temperature, gpuLabel)
+			if gpu.HasUtilization {
+				ch <- prometheus.MustNewConstMetric(c.gpuUtilization, prometheus.GaugeValue, gpu.Utilization, gpuLabel)
+			}
+			if gpu.HasMemory {
+				ch <- prometheus.MustNewConstMetric(c.gpuMemoryUsed, prometheus.GaugeValue, float64(gpu.MemoryUsed), gpuLabel)
+				ch <- prometheus.MustNewConstMetric(c.gpuMemoryTotal, prometheus.GaugeValue, float64(gpu.MemoryTotal), gpuLabel)
+			}
+			if gpu.HasTemperature {
+				ch <- prometheus.MustNewConstMetric(c.gpuTemperature, prometheus.GaugeValue, gpu.Temperature, gpuLabel)
+			}
 		}
 
-		// Thermal metrics
-		ch <- prometheus.MustNewConstMetric(c.thermalPressure, prometheus.GaugeValue, 1, metrics.ThermalLevel)
-		ch <- prometheus.MustNewConstMetric(c.thermalThrottle, prometheus.GaugeValue, boolToFloat(metrics.CPUThrottled), "cpu")
-		ch <- prometheus.MustNewConstMetric(c.thermalThrottle, prometheus.GaugeValue, boolToFloat(metrics.GPUThrottled), "gpu")
+		// Thermal metrics — unavailable on generic Linux, so emit only when present.
+		if metrics.HasThermal {
+			ch <- prometheus.MustNewConstMetric(c.thermalPressure, prometheus.GaugeValue, 1, metrics.ThermalLevel)
+			ch <- prometheus.MustNewConstMetric(c.thermalThrottle, prometheus.GaugeValue, boolToFloat(metrics.CPUThrottled), "cpu")
+			ch <- prometheus.MustNewConstMetric(c.thermalThrottle, prometheus.GaugeValue, boolToFloat(metrics.GPUThrottled), "gpu")
+		}
 	}
 
 	ch <- prometheus.MustNewConstMetric(c.scrapeSuccess, prometheus.GaugeValue, success, "iokit")
@@ -304,15 +339,23 @@ func (c *AppleSiliconCollector) collectPowermetrics(ch chan<- prometheus.Metric)
 		c.logger.Error("Powermetrics collection failed", zap.Error(err))
 		success = 0.0
 	} else {
-		// Power metrics
-		ch <- prometheus.MustNewConstMetric(c.systemPower, prometheus.GaugeValue, metrics.SystemPower)
-		ch <- prometheus.MustNewConstMetric(c.gpuPower, prometheus.GaugeValue, metrics.GPUPower, "0")
-		ch <- prometheus.MustNewConstMetric(c.anePower, prometheus.GaugeValue, metrics.ANEPower)
-		ch <- prometheus.MustNewConstMetric(c.aneUtilization, prometheus.GaugeValue, metrics.ANEUtilization)
-
-		// CPU cluster power
-		ch <- prometheus.MustNewConstMetric(c.cpuPower, prometheus.GaugeValue, metrics.ECPUPower, "efficiency")
-		ch <- prometheus.MustNewConstMetric(c.cpuPower, prometheus.GaugeValue, metrics.PCPUPower, "performance")
+		// Power metrics — only emit fields with real data on this platform.
+		if metrics.HasSystemPower {
+			ch <- prometheus.MustNewConstMetric(c.systemPower, prometheus.GaugeValue, metrics.SystemPower)
+		}
+		if metrics.HasGPUPower {
+			ch <- prometheus.MustNewConstMetric(c.gpuPower, prometheus.GaugeValue, metrics.GPUPower, "0")
+		}
+		if metrics.HasANEPower {
+			ch <- prometheus.MustNewConstMetric(c.anePower, prometheus.GaugeValue, metrics.ANEPower)
+		}
+		if metrics.HasANEUtilization {
+			ch <- prometheus.MustNewConstMetric(c.aneUtilization, prometheus.GaugeValue, metrics.ANEUtilization)
+		}
+		if metrics.HasCPUPower {
+			ch <- prometheus.MustNewConstMetric(c.cpuPower, prometheus.GaugeValue, metrics.ECPUPower, "efficiency")
+			ch <- prometheus.MustNewConstMetric(c.cpuPower, prometheus.GaugeValue, metrics.PCPUPower, "performance")
+		}
 	}
 
 	ch <- prometheus.MustNewConstMetric(c.scrapeSuccess, prometheus.GaugeValue, success, "powermetrics")

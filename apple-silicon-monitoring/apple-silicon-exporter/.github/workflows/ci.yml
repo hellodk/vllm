@@ -1,0 +1,84 @@
+# CI for apple-silicon-exporter.
+#
+# This workflow is written to be self-contained, i.e. it assumes the exporter
+# is the repository root. While the exporter lives inside the `hydra` monorepo
+# (under apple-silicon-monitoring/apple-silicon-exporter), GitHub Actions only
+# evaluates workflows found in the repository-root `.github/workflows/`
+# directory. To run it from the monorepo, move/copy this file to the repo-root
+# `.github/workflows/` and set `defaults.run.working-directory` to the exporter
+# path (plus `paths:` filters), or split the exporter into its own repository.
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.x"
+
+jobs:
+  linux:
+    name: linux (build/vet/test/fmt/lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Not gofmt-clean:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: Build (linux/amd64)
+        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./...
+
+      - name: Build (linux/arm64)
+        run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  darwin:
+    name: darwin (build/vet/test/fmt)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Not gofmt-clean:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: Build (darwin/arm64, CGO)
+        run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
