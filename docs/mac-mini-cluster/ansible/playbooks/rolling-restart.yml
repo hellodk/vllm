@@ -1,96 +1,188 @@
 ---
-# ============================================================
-# Hydra Pilot — Rolling Restart
+# docs/mac-mini-cluster/ansible/playbooks/rolling-restart.yml
+#
+# Rolling Restart — Hydra Mac Mini Cluster
+#
+# REWRITE RATIONALE (ANS-8):
+#   The previous version targeted ~/Library/LaunchAgents (user agents) and used
+#   stale group names ("inference", "gateway") and variables (vllm_port,
+#   litellm_port, prometheus_port, hydra_docker_dir) that no longer exist in the
+#   current fleet.  All services are now system LaunchDaemons under
+#   com.hydra.* and are managed via `launchctl bootout/bootstrap system/…`.
+#   Inventory groups come from inventory_plugin.py pool_{name} keys.
+#   Variable names are sourced from the role vars files.
 #
 # Usage:
-#   make restart              # Restart everything
-#   make restart-vllm         # Restart vLLM-MLX only
-#   make restart-litellm      # Restart gateway only
-#   make restart-monitoring   # Restart monitoring only
-# ============================================================
+#   cd ansible
+#   ansible-playbook ../docs/mac-mini-cluster/ansible/playbooks/rolling-restart.yml
+#   ansible-playbook … --tags mlx          # MLX inference nodes only
+#   ansible-playbook … --tags vllm         # vLLM inference nodes only
+#   ansible-playbook … --tags litellm      # LiteLLM gateway only
+#   ansible-playbook … --tags monitoring   # otel-agent + apple-exporter only
+#
+# Prerequisites:
+#   - Run from the ansible/ directory (or pass -i explicitly)
+#   - Requires become (sudo) on targets
+#   - cluster.yml must be present (used by inventory_plugin.py)
 
-- name: "Rolling restart: vLLM-MLX"
-  hosts: inference
-  gather_facts: no
+# ── MLX inference nodes ───────────────────────────────────────────────────────
+- name: "Rolling restart: MLX inference servers"
+  hosts: pool_fast:pool_reason:pool_largepool:pool_vision
+  gather_facts: false
+  serial: 1
+  tags: [mlx]
+  tasks:
+    - name: Bootout MLX server
+      shell: launchctl bootout system/com.hydra.mlx-server 2>/dev/null || true
+      become: true
+      changed_when: false
+
+    - name: Wait for process to exit
+      pause:
+        seconds: 5
+
+    - name: Bootstrap MLX server
+      shell: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-server.plist
+      become: true
+      changed_when: false
+
+    - name: Health-check MLX server
+      uri:
+        url: "http://localhost:{{ mlx_port }}/v1/models"
+        method: GET
+        status_code: 200
+        timeout: 10
+      retries: 40
+      delay: 15
+      register: mlx_health
+      until: mlx_health.status == 200
+
+    - name: Report
+      debug:
+        msg: "{{ inventory_hostname }}: com.hydra.mlx-server restarted and serving on :{{ mlx_port }}"
+
+# ── vLLM inference nodes ──────────────────────────────────────────────────────
+- name: "Rolling restart: vLLM inference servers"
+  hosts: hw_apple
+  gather_facts: false
   serial: 1
   tags: [vllm]
   tasks:
-    - name: Restart vLLM-MLX
-      block:
-        - name: Unload vLLM-MLX
-          command: launchctl unload {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.inference.plist
-          failed_when: false
+    - name: Bootout vLLM server
+      shell: launchctl bootout system/com.hydra.vllm-server 2>/dev/null || true
+      become: true
+      changed_when: false
 
-        - name: Wait for shutdown
-          pause:
-            seconds: 5
+    - name: Wait for process to exit
+      pause:
+        seconds: 5
 
-        - name: Reload vLLM-MLX
-          command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.inference.plist
+    - name: Bootstrap vLLM server
+      shell: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.vllm-server.plist
+      become: true
+      changed_when: false
 
-        - name: Wait for vLLM-MLX ready
-          uri:
-            url: "http://localhost:{{ vllm_port }}/v1/models"
-            method: GET
-            status_code: 200
-          retries: 40
-          delay: 15
-          register: health
-          until: health.status == 200
-
-    - name: Report
-      debug:
-        msg: "{{ inventory_hostname }}: vLLM-MLX restarted and serving"
-
-- name: "Rolling restart: LiteLLM"
-  hosts: gateway
-  gather_facts: no
-  tags: [litellm]
-  tasks:
-    - name: Restart LiteLLM
-      block:
-        - name: Unload LiteLLM
-          command: launchctl unload {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.gateway.plist
-          failed_when: false
-
-        - name: Reload LiteLLM
-          command: launchctl load {{ ansible_env.HOME }}/Library/LaunchAgents/ai.hydra.gateway.plist
-
-        - name: Wait for ready
-          uri:
-            url: "http://localhost:{{ litellm_port }}/health"
-            method: GET
-            status_code: 200
-          retries: 15
-          delay: 5
-          register: health
-          until: health.status == 200
-
-    - name: Report
-      debug:
-        msg: "LiteLLM restarted and healthy"
-
-- name: "Rolling restart: Monitoring"
-  hosts: gateway
-  gather_facts: no
-  tags: [monitoring]
-  tasks:
-    - name: Restart Docker Compose monitoring stack
-      community.docker.docker_compose_v2:
-        project_src: "{{ hydra_docker_dir }}"
-        state: present
-        recreate: always
-
-    - name: Wait for Prometheus
+    - name: Health-check vLLM server
       uri:
-        url: "http://localhost:{{ prometheus_port }}/-/ready"
+        url: "http://localhost:{{ vllm_port }}/v1/models"
         method: GET
         status_code: 200
-      retries: 10
-      delay: 5
-      register: prom
-      until: prom.status == 200
+        timeout: 10
+      retries: 40
+      delay: 15
+      register: vllm_health
+      until: vllm_health.status == 200
 
     - name: Report
       debug:
-        msg: "Monitoring stack restarted"
+        msg: "{{ inventory_hostname }}: com.hydra.vllm-server restarted and serving on :{{ vllm_port }}"
+
+# ── LiteLLM gateway ───────────────────────────────────────────────────────────
+- name: "Rolling restart: LiteLLM gateway"
+  hosts: pool_gateway
+  gather_facts: false
+  tags: [litellm]
+  tasks:
+    - name: Bootout LiteLLM
+      shell: launchctl bootout system/com.hydra.litellm 2>/dev/null || true
+      become: true
+      changed_when: false
+
+    - name: Wait for process to exit
+      pause:
+        seconds: 3
+
+    - name: Bootstrap LiteLLM
+      shell: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.litellm.plist
+      become: true
+      changed_when: false
+
+    - name: Health-check LiteLLM
+      uri:
+        url: "http://localhost:{{ litellm_port }}/health"
+        method: GET
+        status_code: 200
+        timeout: 10
+      retries: 15
+      delay: 5
+      register: litellm_health
+      until: litellm_health.status == 200
+
+    - name: Report
+      debug:
+        msg: "{{ inventory_hostname }}: com.hydra.litellm restarted and healthy on :{{ litellm_port }}"
+
+# ── Monitoring agents (otel-agent + apple-exporter) ───────────────────────────
+- name: "Rolling restart: monitoring agents"
+  hosts: os_macos
+  gather_facts: false
+  serial: 1
+  tags: [monitoring]
+  tasks:
+    - name: Bootout OTEL agent
+      shell: launchctl bootout system/{{ otel_agent_label }} 2>/dev/null || true
+      become: true
+      changed_when: false
+
+    - name: Bootstrap OTEL agent
+      shell: launchctl bootstrap system /Library/LaunchDaemons/{{ otel_agent_label }}.plist
+      become: true
+      changed_when: false
+
+    - name: Health-check OTEL agent
+      uri:
+        url: "http://localhost:{{ otel_health_port }}/health"
+        method: GET
+        status_code: 200
+        timeout: 5
+      retries: 12
+      delay: 5
+      register: otel_health
+      until: otel_health.status == 200
+
+    - name: Bootout Apple Silicon exporter
+      shell: launchctl bootout system/{{ apple_exporter_label }} 2>/dev/null || true
+      become: true
+      changed_when: false
+
+    - name: Bootstrap Apple Silicon exporter
+      shell: launchctl bootstrap system /Library/LaunchDaemons/{{ apple_exporter_label }}.plist
+      become: true
+      changed_when: false
+
+    - name: Health-check Apple Silicon exporter
+      uri:
+        url: "http://localhost:{{ apple_exporter_port }}/metrics"
+        method: GET
+        status_code: 200
+        timeout: 5
+      retries: 6
+      delay: 3
+      register: exporter_health
+      until: exporter_health.status == 200
+
+    - name: Report
+      debug:
+        msg: >-
+          {{ inventory_hostname }}: otel-agent and apple-exporter restarted
+          (otel :{{ otel_health_port }}, exporter :{{ apple_exporter_port }})
