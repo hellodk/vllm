@@ -1,0 +1,376 @@
+# apple-silicon-monitoring/deploy/kubernetes/llm-d-collector.yaml
+#
+# In-cluster OpenTelemetry Collector for llm-d / vLLM-on-Kubernetes (LLM-9).
+# Runs as a Deployment (cluster-wide kubernetes_sd_configs scrape), collects
+# Prometheus metrics from llm-d EPP, prefill, and decode pods, then forwards
+# via OTLP gRPC to the existing hydra OTEL gateway.
+#
+# Gateway endpoint is parameterised via GATEWAY_OTLP_ENDPOINT env var (see
+# ConfigMap llm-d-collector-env) so it can be overridden without rebuilding
+# the image.  Default: otel-gateway.observability.svc.cluster.local:4317
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: llm-d-collector
+  namespace: observability
+  labels:
+    app: llm-d-collector
+    app.kubernetes.io/name: llm-d-collector
+    app.kubernetes.io/part-of: hydra-observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: llm-d-collector
+  labels:
+    app: llm-d-collector
+    app.kubernetes.io/name: llm-d-collector
+    app.kubernetes.io/part-of: hydra-observability
+rules:
+  # prometheus receiver: kubernetes_sd_configs pod role needs pods + endpoints
+  - apiGroups: [""]
+    resources: ["pods", "endpoints", "services", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  # k8sattributes processor: needs pod/replicaset/deployment metadata
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  # k8sattributes: node-level attribute enrichment
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: llm-d-collector
+  labels:
+    app: llm-d-collector
+    app.kubernetes.io/name: llm-d-collector
+    app.kubernetes.io/part-of: hydra-observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: llm-d-collector
+subjects:
+  - kind: ServiceAccount
+    name: llm-d-collector
+    namespace: observability
+---
+# Gateway endpoint and other tunables.  Override this ConfigMap to point the
+# collector at a different gateway without touching the collector config.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-d-collector-env
+  namespace: observability
+  labels:
+    app: llm-d-collector
+    app.kubernetes.io/name: llm-d-collector
+    app.kubernetes.io/part-of: hydra-observability
+data:
+  # Internal ClusterIP service exposed by otel-gateway.yaml.
+  # Change to the LoadBalancer IP/hostname if the gateway lives outside this
+  # cluster.
+  GATEWAY_OTLP_ENDPOINT: "otel-gateway.observability.svc.cluster.local:4317"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-d-collector-config
+  namespace: observability
+  labels:
+    app: llm-d-collector
+    app.kubernetes.io/name: llm-d-collector
+    app.kubernetes.io/part-of: hydra-observability
+data:
+  collector-config.yaml: |
+    receivers:
+      prometheus:
+        config:
+          global:
+            scrape_interval: 30s
+            scrape_timeout: 10s
+          scrape_configs:
+            # Scrape any pod annotated with prometheus.io/scrape=true.
+            # A relabel filter below narrows this to llm-d / vLLM pods via
+            # the app.kubernetes.io/component label.  Remove that filter if
+            # you want the collector to cover all annotated pods in the cluster.
+            - job_name: llm-d-pods
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                # Honour the standard Prometheus scrape opt-in annotation.
+                - source_labels:
+                    - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+                  action: keep
+                  regex: "true"
+
+                # Use the annotated metrics path if present, default /metrics.
+                - source_labels:
+                    - __meta_kubernetes_pod_annotation_prometheus_io_path
+                  action: replace
+                  target_label: __metrics_path__
+                  regex: (.+)
+
+                # Rewrite the scrape address with the annotated port.
+                - source_labels:
+                    - __address__
+                    - __meta_kubernetes_pod_annotation_prometheus_io_port
+                  action: replace
+                  regex: "([^:]+)(?::\\d+)?;(\\d+)"
+                  replacement: "$1:$2"
+                  target_label: __address__
+
+                # Narrow to llm-d component roles: epp, prefill, decode,
+                # gateway, and generic vllm/llm-d pods.
+                - source_labels:
+                    - __meta_kubernetes_pod_label_app_kubernetes_io_component
+                  action: keep
+                  regex: (epp|prefill|decode|gateway|vllm|llm-d|llmd|inference)
+
+                # ── Label mapping → consistent with hydra:llm:* normalization ──
+
+                # Stamp the Kubernetes namespace so multi-tenant clusters can
+                # be filtered in dashboards.
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: namespace
+
+                # Pod name for per-pod drill-down.
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
+
+                # Node the pod runs on (correlates with RDMA/network fabric).
+                - source_labels: [__meta_kubernetes_pod_node_name]
+                  target_label: node
+
+                # engine label: derived from pod component role so the
+                # hydra:llm:* recording rules can route by engine.
+                # Pods should carry app.kubernetes.io/component=epp|prefill|decode
+                - source_labels:
+                    - __meta_kubernetes_pod_label_app_kubernetes_io_component
+                  target_label: engine
+
+                # model label: pods should carry label `model` with the
+                # model identifier (e.g. meta-llama--Llama-3-8B-Instruct).
+                - source_labels:
+                    - __meta_kubernetes_pod_label_model
+                  target_label: model
+
+                # pool label: inference pool name for EPP routing-aware grouping.
+                - source_labels:
+                    - __meta_kubernetes_pod_label_pool
+                  target_label: pool
+
+                # llm_d_role: epp | prefill | decode for P/D disaggregation
+                # visibility (separate from generic engine to avoid collision
+                # with vllm label already on the time-series).
+                - source_labels:
+                    - __meta_kubernetes_pod_label_llm_d_role
+                  target_label: llm_d_role
+
+                # Drop scraped labels that would bloat cardinality.
+                - regex: "__meta_kubernetes_pod_label_(.+)"
+                  action: labeldrop
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 400
+        spike_limit_mib: 80
+
+      # Stamp cluster-wide attributes on every metric so the existing
+      # hydra:llm:* normalization recording rules match k8s-sourced vLLM
+      # metrics the same way they match Mac-fleet metrics.
+      resource:
+        attributes:
+          - key: cluster
+            value: hydra
+            action: upsert
+          - key: environment
+            value: production
+            action: upsert
+          # llm-d runs on GPU nodes (NVIDIA on x86 pods).
+          - key: gpu_provider
+            value: nvidia
+            action: upsert
+
+      # Enrich resource attributes with Kubernetes pod/deployment metadata.
+      # These become resource attributes that prometheusremotewrite on the
+      # gateway converts to labels via resource_to_telemetry_conversion.
+      k8sattributes:
+        auth_type: serviceAccount
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.namespace.name
+            - k8s.node.name
+            - k8s.pod.start_time
+          labels:
+            # Map well-known pod labels to resource attributes so downstream
+            # recording rules can filter on engine / model / pool uniformly.
+            - tag_name: engine
+              key: app.kubernetes.io/component
+              from: pod
+            - tag_name: model
+              key: model
+              from: pod
+            - tag_name: pool
+              key: pool
+              from: pod
+            - tag_name: llm_d_role
+              key: llm_d_role
+              from: pod
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: connection
+
+      batch:
+        send_batch_size: 1000
+        timeout: 10s
+
+    exporters:
+      otlp:
+        # GATEWAY_OTLP_ENDPOINT is injected from the llm-d-collector-env
+        # ConfigMap.  Default: otel-gateway.observability.svc.cluster.local:4317
+        endpoint: "${GATEWAY_OTLP_ENDPOINT}"
+        tls:
+          insecure: true
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 120s
+        sending_queue:
+          enabled: true
+          num_consumers: 4
+          queue_size: 100
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, k8sattributes, resource, batch]
+          exporters: [otlp]
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: 0.0.0.0:8888
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-d-collector
+  namespace: observability
+  labels:
+    app: llm-d-collector
+    app.kubernetes.io/name: llm-d-collector
+    app.kubernetes.io/part-of: hydra-observability
+spec:
+  # Single replica is sufficient for cluster-wide prometheus SD scrape.
+  # Increase to 2 for HA; use hash-mod sharding if pod count grows large.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-d-collector
+  template:
+    metadata:
+      labels:
+        app: llm-d-collector
+        app.kubernetes.io/name: llm-d-collector
+        app.kubernetes.io/part-of: hydra-observability
+      annotations:
+        # Let the gateway's own prometheus receiver scrape this collector's
+        # self-telemetry if the gateway is also running in this cluster.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8888"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: llm-d-collector
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: otelcol
+          image: otel/opentelemetry-collector-contrib:0.96.0
+          args:
+            - --config=/etc/otel/collector-config.yaml
+          ports:
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+            - name: metrics
+              containerPort: 8888
+              protocol: TCP
+          env:
+            - name: GATEWAY_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: llm-d-collector-env
+                  key: GATEWAY_OTLP_ENDPOINT
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.cpu
+            - name: GOMEMLIMIT
+              value: "400MiB"
+            # k8sattributes: pod IP is needed for pod_association via connection
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: llm-d-collector-config
+      # Prefer a non-GPU node so inference nodes stay uncontested.
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 80
+              preference:
+                matchExpressions:
+                  - key: nvidia.com/gpu
+                    operator: DoesNotExist
