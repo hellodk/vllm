@@ -6,7 +6,7 @@
 
 | Architect | Area | Tickets | 🍩 Donuts |
 |---|---|---|---|
-| **Priya Nair** — Principal LLM Inference Architect | LLM engine telemetry, KV/cache, parallelism, tracing | 9 | 🍩×9 |
+| **Priya Nair** — Principal LLM Inference Architect | LLM engine telemetry, KV/cache, parallelism, tracing, evaluation/Opik | 10 | 🍩×10 |
 | **Marcus Chen** — Principal SRE / Observability Architect | Alerting correctness, RDMA/network fabric, SLOs, pipeline reliability | 8 | 🍩×8 |
 | **Diego Ramirez** — Principal Platform / Ansible Architect | Provisioning, air-gap, supply-chain, discovery, CI | 9 | 🍩×9 |
 
@@ -62,6 +62,19 @@
 - **Problem:** llm-d entirely absent. EPP routing, KV-cache-aware routing, P/D disaggregation, NIXL KV-transfer over RDMA all invisible; pull-vs-push architecture mismatch.
 - **Fix:** In-cluster OTEL collector (prometheus receiver) scraping EPP/gateway/prefill/decode pods → OTLP to hydra gateway with consistent labels; llm-d dashboard + alerts; ADR documenting the bridge.
 - **Files:** new `deploy/kubernetes/llm-d-collector.yaml`, gateway config, dashboard/alerts, ADR.
+
+### LLM-10 · Activate Opik for LLM tracing + online/offline evaluation · **P2** · L 🍩
+- **Problem:** The full Opik stack is **deployed but idle**. `monitoring/docker-compose.yml` runs `opik-backend/frontend/mysql/clickhouse/redis` and `otel-gateway-config.yaml` has an `otlphttp/opik` exporter, but nothing drives it: traces are not shaped with GenAI/Opik conventions (so the trace UI is thin — no input/output, tokens, cost, thread/session), there are **no Opik projects/datasets/experiments**, **no online-evaluation rules** despite an air-gapped LiteLLM "judge LLM" already wired in compose, no prompt versioning, and no Grafana↔Opik linking. The perf-proxy now emits generic OTLP spans (LLM-6) but without Opik-native attributes Opik shows latency-only spans and zero scores. Net: the heuristic hallucination signals (proxy `--quality`) are the *only* quality source; the real judge-backed eval platform is dark.
+- **Fix:**
+  - **Span shaping:** enrich perf-proxy + engine spans with OTel-GenAI / OpenInference + Opik attributes (`gen_ai.prompt`/`completion`, usage tokens, model, `opik.project`/tags, `thread_id` from the request) so Opik renders full traces; optional opik-SDK middleware where capturing input/output payloads is acceptable, gated by a **privacy flag** (default off, mirrors the proxy's no-raw-text default).
+  - **Online evaluation:** Opik automation rules scoring sampled traces via the air-gapped LiteLLM judge (hallucination, moderation, answer-relevance, RAG context-groundedness); export scores back as `opik:*` Prometheus metrics and fold into `hydra:llm:*` so `LLMHallucinationRisk*` alerts can be backed by **real judge scores**, not just entropy/repetition heuristics.
+  - **Offline eval / regression:** Opik datasets of golden prompts + experiments run in CI and on model bumps; gate model promotion on score thresholds (ties into the golden-prompt canary idea).
+  - **Prompt management:** register prompts/versions in the Opik prompt library; stamp deployed model+prompt version onto traces.
+  - **Ansible + Salt:** air-gapped staging of `comet/opik-*` images; render Opik client config (`OPIK_URL_OVERRIDE`, `OPIK_PROJECT_NAME`, workspace, API key via vault) on nodes/gateway; wire perf-proxy `--opik`/privacy flags; mTLS + secrets per ANS-5; mirror the whole thing in the `salt/` tree (dual-tool parity).
+  - **UX:** Grafana data-link from latency/quality panels to the matching Opik trace; project tile on the MLX/exo dashboard.
+- **Acceptance:** a request to the `192.168.1.23` MLX node yields a full trace in the Opik UI (input/output/tokens/model/latency); ≥1 online-eval rule scores sampled traces via the judge and surfaces as `opik:*` feeding `hydra:llm:hallucination_risk`; a golden-prompt dataset+experiment runs with a pass/fail CI gate; everything air-gapped, secrets vaulted, TLS not `insecure`; Salt mirror at parity.
+- **Files:** `monitoring/docker-compose.yml`, `monitoring/otel-collector/otel-gateway-config.yaml`, `ansible/roles/llm-common/files/llm_perf_proxy.py`, `llm-mlx`/`llm-exo` plists + vars, new `roles/opik-client` (or `monitoring-common`), `group_vars/all/{main,vault}.yml`, `monitoring/prometheus/rules/llm-quality.yml` (`opik:*` rules), Grafana dashboards, `monitoring/opik/init.sql` + `.env`, new CI eval workflow, `salt/` mirror.
+- **Depends on:** LLM-6 (OTLP traces wired ✅), LLM-3 normalization ✅, the perf-proxy `--quality` layer ✅; **pairs with** the air-gapped judge gateway already in `docker-compose.yml`.
 
 ---
 
@@ -163,7 +176,7 @@
 |---|---|
 | **P0** | LLM-1 / SRE-1 (joint), SRE-2, ANS-1, ANS-2 |
 | **P1** | LLM-2, LLM-3, LLM-4, LLM-5, SRE-3, SRE-4, SRE-5, SRE-6, ANS-3, ANS-4, ANS-5 |
-| **P2** | LLM-6, LLM-7, SRE-7, SRE-8, ANS-6, ANS-7, ANS-8 |
+| **P2** | LLM-6, LLM-7, LLM-10, SRE-7, SRE-8, ANS-6, ANS-7, ANS-8 |
 | **P3** | LLM-8, LLM-9, ANS-9 |
 
 **Recommended sequence:** (1) `hydra:llm:*` normalization (LLM-3) → unblocks LLM-1/SRE-1 alert rebind; (2) backbone self-monitoring + PagerDuty (SRE-2); (3) fix broken/duplicated Ansible provisioning (ANS-1, ANS-2); then P1 fabric/network/coverage work.
@@ -172,7 +185,7 @@
 
 | Person | Donuts |
 |---|---|
-| Priya Nair (LLM) | 🍩🍩🍩🍩🍩🍩🍩🍩🍩 (9) |
+| Priya Nair (LLM) | 🍩🍩🍩🍩🍩🍩🍩🍩🍩🍩 (10) |
 | Marcus Chen (SRE) | 🍩🍩🍩🍩🍩🍩🍩🍩 (8) |
 | Diego Ramirez (Ansible) | 🍩🍩🍩🍩🍩🍩🍩🍩🍩 (9) |
-| **Total** | **26 🍩** |
+| **Total** | **27 🍩** |
