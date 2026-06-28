@@ -12,3 +12,4 @@ results/
 
 # IDE / tool config
 .continue/
+.worktrees/
