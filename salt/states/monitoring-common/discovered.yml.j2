@@ -1,0 +1,67 @@
+# Written by Salt (monitoring-common state) on {{ None | strftime('%Y-%m-%dT%H:%M:%S') }}
+# Re-run: salt-ssh -c salt/ <minion> state.apply monitoring-common
+# Consumed by the unified OTEL agent config. Mirror of Ansible discovered.yml.j2.
+{%- set node_id       = pillar.get('hydra_node_id', '') or grains.get('id', 'unknown') %}
+{%- set hostname      = pillar.get('hydra_hostname', '') or grains.get('fqdn', grains.get('id', 'unknown')) %}
+{%- set gpu_provider  = pillar.get('hydra_gpu_provider', 'apple') %}
+{%- set os_val        = pillar.get('hydra_os', 'macos') %}
+{%- set pools         = pillar.get('hydra_pools', ['fast']) %}
+{%- set mlx_backend   = pillar.get('hydra_mlx_backend', 'vllm_mlx') %}
+{%- set mlx_sidecar   = mlx_backend != 'vllm_mlx' %}
+{%- set frameworks    = pillar.get('llm_frameworks', []) %}
+{%- set mlx_on_node   = 'mlx' in frameworks or 'vllm-mlx' in frameworks %}
+{%- set exo_on_node   = 'exo' in frameworks %}
+{%- set allreduce_en  = pillar.get('mlx_allreduce_enabled', False) %}
+{%- set mlx_port      = pillar.get('mlx_scrape_port', pillar.get('mlx_port', 11500)) %}
+{%- set mlx_perf_port = pillar.get('mlx_perf_scrape_port', 11501) %}
+{%- set mlx_log_port  = pillar.get('mlx_logexporter_scrape_port', 11502) %}
+{%- set fabric_port   = pillar.get('mlx_allreduce_fabric_scrape_port', 11503) %}
+{%- set exo_perf_port = pillar.get('exo_perf_scrape_port', 52417) %}
+
+{# Build providers list using list mutation (no 'do' extension needed) #}
+{%- set providers = [] %}
+
+{# mlx — vllm_mlx serves native vllm:* metrics on mlx_port #}
+{%- if mlx_on_node and not mlx_sidecar %}
+{%-   set _ = providers.append({'name': 'mlx', 'url': 'http://127.0.0.1:' ~ mlx_port ~ '/v1', 'port': mlx_port | string, 'metrics_path': '/metrics', 'scheme': 'http', 'status': 'up'}) %}
+{%- endif %}
+
+{# mlx_perf — pure-MLX sidecar emits mlx:* metrics on mlx_perf_port #}
+{%- if mlx_on_node and mlx_sidecar %}
+{%-   set _ = providers.append({'name': 'mlx_perf', 'url': 'http://127.0.0.1:' ~ mlx_perf_port ~ '/metrics', 'port': mlx_perf_port | string, 'metrics_path': '/metrics', 'scheme': 'http', 'status': 'up'}) %}
+{%- endif %}
+
+{# mlx_errors — log-exporter (always present when MLX is on this node) #}
+{%- if mlx_on_node %}
+{%-   set _ = providers.append({'name': 'mlx_errors', 'url': 'http://127.0.0.1:' ~ mlx_log_port ~ '/metrics', 'port': mlx_log_port | string, 'metrics_path': '/metrics', 'scheme': 'http', 'status': 'up'}) %}
+{%- endif %}
+
+{# exo — perf-proxy sidecar (exo has no native Prometheus metrics) #}
+{%- if exo_on_node %}
+{%-   set _ = providers.append({'name': 'exo', 'url': 'http://127.0.0.1:' ~ exo_perf_port ~ '/metrics', 'port': exo_perf_port | string, 'metrics_path': '/metrics', 'scheme': 'http', 'status': 'up'}) %}
+{%- endif %}
+
+{# mlx_fabric — AllReduce fabric exporter on tensor-parallel nodes #}
+{%- if allreduce_en %}
+{%-   set _ = providers.append({'name': 'mlx_fabric', 'url': 'http://127.0.0.1:' ~ fabric_port ~ '/metrics', 'port': fabric_port | string, 'metrics_path': '/metrics', 'scheme': 'http', 'status': 'up'}) %}
+{%- endif %}
+
+node_id: {{ node_id }}
+hostname: {{ hostname }}
+gpu_provider: {{ gpu_provider }}
+os: {{ os_val }}
+pools: {{ pools | tojson }}
+
+{% if providers | length > 0 %}
+providers:
+{% for ep in providers %}
+  - name: {{ ep.name }}
+    url: {{ ep.url }}
+    port: "{{ ep.port }}"
+    metrics_path: {{ ep.metrics_path }}
+    scheme: {{ ep.scheme }}
+    status: {{ ep.status }}
+{% endfor %}
+{% else %}
+providers: []
+{% endif %}

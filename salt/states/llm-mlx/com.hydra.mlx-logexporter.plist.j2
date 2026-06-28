@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- /Library/LaunchDaemons/com.hydra.mlx-logexporter.plist — Managed by Salt (llm-mlx state). -->
+{%- set llm_base_dir          = pillar.get('llm_base_dir', '/opt/hydra/llm') %}
+{%- set mlx_dir               = pillar.get('mlx_dir',  llm_base_dir ~ '/mlx') %}
+{%- set mlx_venv              = pillar.get('mlx_venv', mlx_dir ~ '/venv') %}
+{%- set llm_log_dir           = pillar.get('llm_log_dir', '/var/log/hydra') %}
+{%- set mlx_logexporter_port  = pillar.get('mlx_logexporter_scrape_port', 11502) %}
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.mlx-logexporter</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ mlx_venv }}/bin/python</string>
+    <string>{{ mlx_dir }}/mlx_log_exporter.py</string>
+    <string>--log</string><string>{{ llm_log_dir }}/mlx-server-error.log</string>
+    <string>--port</string><string>{{ mlx_logexporter_port }}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardErrorPath</key><string>{{ llm_log_dir }}/mlx-logexporter-error.log</string>
+</dict>
+</plist>

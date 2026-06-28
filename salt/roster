@@ -1,0 +1,26 @@
+# salt/roster — salt-ssh target inventory
+# Parallel of ansible/inventories/llm/hosts.yml
+
+# ── Experiment node (single MLX node, mlx_lm backend) ────────────────────────
+hydra-exp-01:
+  host: 192.168.1.23
+  user: dk
+  sudo: True
+  tty: True
+  priv: ~/.ssh/id_ed25519
+
+# ── Large-pool tensor-parallel pair — Group A ─────────────────────────────────
+# 2-node exo P2P: hydra-large-01 ↔ hydra-large-02 (10 GbE RDMA, Qwen2.5-32B)
+hydra-large-01:
+  host: 192.168.10.40
+  user: dk
+  sudo: True
+  tty: True
+  priv: ~/.ssh/id_ed25519
+
+hydra-large-02:
+  host: 192.168.10.41
+  user: dk
+  sudo: True
+  tty: True
+  priv: ~/.ssh/id_ed25519

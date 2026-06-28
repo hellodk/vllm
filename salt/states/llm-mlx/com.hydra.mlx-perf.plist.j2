@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.mlx-perf.plist
+  Managed by Salt (llm-mlx state) — do not edit manually.
+  Perf-proxy sidecar: fronts pure-MLX engine, emits mlx:* metrics on port 11501.
+  Installed only when hydra_mlx_backend != vllm_mlx.
+-->
+{%- set llm_base_dir     = pillar.get('llm_base_dir', '/opt/hydra/llm') %}
+{%- set mlx_dir          = pillar.get('mlx_dir',  llm_base_dir ~ '/mlx') %}
+{%- set mlx_venv         = pillar.get('mlx_venv', mlx_dir ~ '/venv') %}
+{%- set llm_log_dir      = pillar.get('llm_log_dir', '/var/log/hydra') %}
+{%- set perf_proxy       = pillar.get('llm_perf_proxy_path', llm_base_dir ~ '/bin/llm_perf_proxy.py') %}
+{%- set mlx_port         = pillar.get('mlx_port', 11500) %}
+{%- set mlx_internal_port = pillar.get('mlx_internal_port', 11510) %}
+{%- set mlx_metrics_port = pillar.get('mlx_perf_scrape_port', 11501) %}
+{%- set mlx_model        = pillar.get('mlx_default_model', '/opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit') %}
+{%- set mlx_max_kv       = pillar.get('mlx_max_kv_size', 4096) %}
+{%- set mlx_max_conc     = pillar.get('mlx_max_concurrency', 8) %}
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.mlx-perf</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ mlx_venv }}/bin/python</string>
+    <string>{{ perf_proxy }}</string>
+    <string>--listen-host</string><string>0.0.0.0</string>
+    <string>--listen-port</string><string>{{ mlx_port }}</string>
+    <string>--upstream-host</string><string>127.0.0.1</string>
+    <string>--upstream-port</string><string>{{ mlx_internal_port }}</string>
+    <string>--metrics-port</string><string>{{ mlx_metrics_port }}</string>
+    <string>--engine-name</string><string>mlx_lm</string>
+    <string>--metric-prefix</string><string>mlx</string>
+    <string>--model</string><string>{{ mlx_model | basename }}</string>
+    <string>--max-kv</string><string>{{ mlx_max_kv }}</string>
+    <string>--max-concurrency</string><string>{{ mlx_max_conc }}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardOutPath</key><string>{{ llm_log_dir }}/mlx-perf.log</string>
+  <key>StandardErrorPath</key><string>{{ llm_log_dir }}/mlx-perf-error.log</string>
+</dict>
+</plist>
