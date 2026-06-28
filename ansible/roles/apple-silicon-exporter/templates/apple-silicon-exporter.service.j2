@@ -1,0 +1,18 @@
+[Unit]
+# managed-by: apple-silicon-exporter (ANS-7)
+Description=Hydra Apple Silicon Exporter
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart={{ apple_silicon_exporter_bin }} --listen {{ apple_silicon_exporter_listen_host }}:{{ apple_silicon_exporter_port }}{% for flag in apple_silicon_exporter_flags %} {{ flag }}{% endfor %}
+
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=apple-silicon-exporter
+
+[Install]
+WantedBy=multi-user.target

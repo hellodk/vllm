@@ -1,0 +1,128 @@
+# ansible/roles/apple-silicon-exporter/tasks/main.yml
+# Per-arch staged binary → sha256 verify → install → --version assert → unit →
+# healthcheck. M1–M5 (darwin_arm64) + Linux (linux_arm64 / linux_amd64).
+---
+- name: Resolve per-arch artifact name (darwin arm64)
+  ansible.builtin.set_fact:
+    _ase_arch: "darwin_arm64"
+  when: ansible_system == "Darwin"
+
+- name: Resolve per-arch artifact name (linux arm64)
+  ansible.builtin.set_fact:
+    _ase_arch: "linux_arm64"
+  when: ansible_system == "Linux" and ansible_architecture in ["aarch64", "arm64"]
+
+- name: Resolve per-arch artifact name (linux amd64)
+  ansible.builtin.set_fact:
+    _ase_arch: "linux_amd64"
+  when: ansible_system == "Linux" and ansible_architecture == "x86_64"
+
+- name: Assert a supported architecture was resolved
+  ansible.builtin.assert:
+    that: _ase_arch is defined
+    fail_msg: >-
+      Unsupported platform for apple-silicon-exporter:
+      {{ ansible_system }}/{{ ansible_architecture }}.
+
+- name: Set artifact path facts
+  ansible.builtin.set_fact:
+    _ase_artifact: "apple-silicon-exporter_{{ apple_silicon_exporter_version }}_{{ _ase_arch }}"
+
+- name: Assert pre-staged binary exists in files/ (air-gap)
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/{{ _ase_artifact }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  register: _ase_local
+
+- name: Fail with staging instructions when binary is missing
+  ansible.builtin.fail:
+    msg: |
+      Missing pre-staged binary: {{ role_path }}/files/{{ _ase_artifact }}
+      Stage the prebuilt artifact for this arch (built on
+      feat/silicon-exporter-m1-m5-linux) into ansible/roles/apple-silicon-exporter/files/.
+      See files/README.md.
+  when: not _ase_local.stat.exists
+
+- name: Verify staged binary sha256 against hydra_artifact_checksums (ANS-4)
+  ansible.builtin.assert:
+    that:
+      - hydra_artifact_checksums['apple_silicon_exporter'][_ase_arch] is defined
+      - _ase_local.stat.checksum == hydra_artifact_checksums['apple_silicon_exporter'][_ase_arch]
+    fail_msg: >-
+      sha256 mismatch for {{ _ase_artifact }}:
+      staged={{ _ase_local.stat.checksum }}
+      expected={{ hydra_artifact_checksums['apple_silicon_exporter'][_ase_arch] | default('<unpinned>') }}
+    success_msg: "apple-silicon-exporter {{ _ase_arch }} sha256 verified"
+
+- name: Install apple-silicon-exporter binary
+  ansible.builtin.copy:
+    src: "{{ _ase_artifact }}"
+    dest: "{{ apple_silicon_exporter_bin }}"
+    mode: "0755"
+    owner: root
+    group: "{{ 'wheel' if ansible_system == 'Darwin' else 'root' }}"
+  become: true
+  notify: restart apple exporter
+
+- name: Assert installed binary version matches the pin (ANS-4)
+  ansible.builtin.command: "{{ apple_silicon_exporter_bin }} --version"
+  become: true
+  register: _ase_ver
+  changed_when: false
+
+- name: Verify reported version contains the pinned version
+  ansible.builtin.assert:
+    that: apple_silicon_exporter_version in _ase_ver.stdout
+    fail_msg: >-
+      apple-silicon-exporter reports '{{ _ase_ver.stdout | trim }}',
+      expected pin {{ apple_silicon_exporter_version }}.
+
+- name: Ensure log directory exists
+  ansible.builtin.file:
+    path: "{{ apple_silicon_exporter_log_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+# ── macOS: LaunchDaemon ────────────────────────────────────────────────────────
+- name: Install apple-silicon-exporter LaunchDaemon (macOS)
+  ansible.builtin.template:
+    src: com.hydra.apple-exporter.plist.j2
+    dest: /Library/LaunchDaemons/{{ apple_silicon_exporter_label }}.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  when: ansible_system == "Darwin"
+  notify: restart apple exporter
+
+# ── Linux: systemd unit ─────────────────────────────────────────────────────────
+- name: Install apple-silicon-exporter systemd unit (Linux)
+  ansible.builtin.template:
+    src: apple-silicon-exporter.service.j2
+    dest: /etc/systemd/system/apple-silicon-exporter.service
+    mode: "0644"
+  become: true
+  when: ansible_system == "Linux"
+  notify: restart apple exporter
+
+- name: Flush handlers (ensure exporter is up before consumers scrape it)
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for apple-silicon-exporter to respond
+  ansible.builtin.uri:
+    url: "http://{{ apple_silicon_exporter_listen_host }}:{{ apple_silicon_exporter_port }}/metrics"
+    status_code: 200
+    timeout: 5
+  register: _ase_health
+  until: _ase_health.status == 200
+  retries: 6
+  delay: 5
+
+- name: Assert GPU metric is present
+  ansible.builtin.assert:
+    that: "'apple_gpu_utilization_percent' in _ase_health.content"
+    fail_msg: "apple_gpu_utilization_percent missing from :{{ apple_silicon_exporter_port }}/metrics"

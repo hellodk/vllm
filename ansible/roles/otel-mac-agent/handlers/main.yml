@@ -19,9 +19,3 @@
       shell: launchctl bootstrap system /Library/LaunchDaemons/{{ otel_agent_label }}.plist
       become: true
       changed_when: false
-
-- name: restart apple exporter
-  shell: |
-    launchctl bootout system/{{ apple_exporter_label }} 2>/dev/null || true
-    launchctl bootstrap system /Library/LaunchDaemons/{{ apple_exporter_label }}.plist
-  become: true
