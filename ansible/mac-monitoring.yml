@@ -30,4 +30,19 @@
     hydra_monitoring_fleet_otlp: "{{ hostvars[inventory_hostname].hydra_monitoring_fleet_otlp | default('') }}"
     hydra_monitoring_interval: "{{ hostvars[inventory_hostname].hydra_monitoring_interval | default('30s') }}"
   roles:
-    - otel-mac-agent
+    # Discovery first so /etc/hydra/discovered.yml exists before otel-mac-agent
+    # renders the unified config — this closes the macOS LLM-scrape gap (ANS-3).
+    - role: llm-discovery
+      tags: [llm-discovery]
+    # Dedicated owner of com.hydra.apple-exporter.plist (ANS-7) — sha256-pinned,
+    # air-gapped binary. Must come up before otel-mac-agent scrapes :9101.
+    - role: apple-silicon-exporter
+      tags: [apple-exporter, exporter]
+    # Stage mTLS material before otel-mac-agent renders its config (ANS-5).
+    - role: otel-tls
+      tags: [otel-tls, tls]
+    - role: otel-mac-agent
+      tags: [otel-mac-agent]
+    # AllReduce probe — self-skips hosts not in a tensor_parallel_group (SRE-4).
+    - role: nccl-probe
+      tags: [nccl-probe]
