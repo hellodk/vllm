@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Hydra Observability — Architect Review &amp; Tickets</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <style>
+  body{max-width:980px;margin:40px auto;padding:0 24px;font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2328;background:#fff}
+  h1,h2,h3{font-weight:600;line-height:1.25;margin-top:1.6em;border-bottom:1px solid #d8dee4;padding-bottom:.3em}
+  h3{border-bottom:none}
+  table{border-collapse:collapse;width:100%;margin:1em 0;display:block;overflow:auto}
+  th,td{border:1px solid #d0d7de;padding:6px 13px}
+  tr:nth-child(2n){background:#f6f8fa}
+  code{background:#eff1f3;padding:.2em .4em;border-radius:6px;font-size:85%}
+  blockquote{border-left:.25em solid #d0d7de;padding:0 1em;color:#59636e;margin:0}
+  a{color:#0969da}
+  hr{border:none;border-top:1px solid #d8dee4;margin:2em 0}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Hydra Observability — Architect Review &amp;
+Tickets</h1>
+</header>
+<h1 id="hydra-observability--principal-architect-review--tickets">Hydra
+Observability — Principal Architect Review &amp; Tickets</h1>
+<p><strong>Date:</strong> 2026-06-26 <strong>Scope:</strong>
+Multi-engine inference observability (vLLM, vLLM-MLX, Apple MLX, SGLang,
+llm-d) across the hydra fleet. <strong>Review panel:</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Architect</th>
+<th>Area</th>
+<th>Tickets</th>
+<th>🍩 Donuts</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Priya Nair</strong> — Principal LLM Inference Architect</td>
+<td>LLM engine telemetry, KV/cache, parallelism, tracing</td>
+<td>9</td>
+<td>🍩×9</td>
+</tr>
+<tr class="even">
+<td><strong>Marcus Chen</strong> — Principal SRE / Observability
+Architect</td>
+<td>Alerting correctness, RDMA/network fabric, SLOs, pipeline
+reliability</td>
+<td>8</td>
+<td>🍩×8</td>
+</tr>
+<tr class="odd">
+<td><strong>Diego Ramirez</strong> — Principal Platform / Ansible
+Architect</td>
+<td>Provisioning, air-gap, supply-chain, discovery, CI</td>
+<td>9</td>
+<td>🍩×9</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Donut rule:</strong> one 🍩 awarded per ticket raised.
+Running tally at the bottom.</p>
+</blockquote>
+<blockquote>
+<p><strong>Cross-cutting P0 (joint ownership — Priya + Marcus):</strong>
+both the LLM and SRE reviews independently found that the entire
+<code>llm_*</code> SDK-based alert set is <strong>dead</strong> against
+the engines actually deployed (which emit <code>vllm:*</code> /
+<code>sglang:*</code>). This is the single most important fix and is
+captured as <strong>LLM-1 / SRE-1</strong> below — treat them as one
+workstream anchored by the <code>hydra:llm:*</code> normalization layer
+(<strong>LLM-3</strong>).</p>
+</blockquote>
+<hr />
+<h2 id="a-llm-inference-architect--priya-nair-9">A. LLM Inference
+Architect — Priya Nair 🍩×9</h2>
+<h3
+id="llm-1--reconcile-dead-llm_-alert-rules-with-metrics-engines-actually-emit--p0--m-">LLM-1
+· Reconcile dead <code>llm_*</code> alert rules with metrics engines
+actually emit · <strong>P0</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong>
+<code>apple-silicon-monitoring/alerts/llm-inference.yaml</code> +
+<code>hallucination-detection.yaml</code> key 100% on <code>llm_*</code>
+SDK metrics, produced only by the manually-wrapped
+<code>llm_telemetry</code> SDK or the mock server. Real engines emit
+<code>vllm:*</code>/<code>sglang:*</code>. Inference alerting is
+silently non-functional.</li>
+<li><strong>Fix:</strong> Make engine-native metrics the source of
+truth; rebind operational alerts onto the <code>hydra:llm:*</code>
+normalization layer (LLM-3). Add meta-alert
+<code>LLMMetricsMissing = absent(hydra:llm:up{provider=~"vllm.*|sglang|mlx"})</code>.</li>
+<li><strong>Files:</strong>
+<code>apple-silicon-monitoring/alerts/{llm-inference,hallucination-detection}.yaml</code>,
+<code>monitoring/prometheus/rules/</code>,
+<code>deploy/kubernetes/prometheus-rules.yaml</code>.</li>
+</ul>
+<h3
+id="llm-2--fix-vllm-mlx-dashboard-metric-names-vllm-vs-vllm_mlx_--p1--s-">LLM-2
+· Fix vLLM-MLX dashboard metric names (<code>vllm:</code> vs
+<code>vllm_mlx_</code>) · <strong>P1</strong> · S 🍩</h3>
+<ul>
+<li><strong>Problem:</strong>
+<code>monitoring/grafana/dashboards/mlx-inference.json</code> queries
+<code>vllm:*</code>, but docs/alerts reference <code>vllm_mlx_*</code>.
+Primary MLX dashboard likely renders empty on
+<code>vllm-mlx==0.4.0rc1</code>.</li>
+<li><strong>Fix:</strong> Capture authoritative
+<code>:11500/metrics</code> from a live node; pick canonical names (or
+relabel at gateway); add CI lint comparing dashboard <code>expr</code>
+to a known-metrics allowlist.</li>
+<li><strong>Files:</strong> <code>mlx-inference.json</code>,
+<code>monitoring/otel-collector/otel-gateway-config.yaml</code>,
+docs.</li>
+</ul>
+<h3
+id="llm-3--cross-engine-normalization-layer-hydrallm-recording-rules--p1--m-">LLM-3
+· Cross-engine normalization layer (<code>hydra:llm:*</code> recording
+rules) · <strong>P1</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> No recording rules exist anywhere
+(<code>rg "record:"</code> empty). Each engine uses different names →
+per-engine dashboards/alerts, no fleet rollups.</li>
+<li><strong>Fix:</strong> Recording-rule group mapping
+vLLM/SGLang/MLX/SDK → unified <code>hydra:llm:*</code> (aligned to OTel
+GenAI semconv): TTFT p50/p95/p99, tokens/s, requests_running/waiting,
+kv_cache_usage, error_rate. Commit the mapping table.</li>
+<li><strong>Files:</strong> new
+<code>monitoring/prometheus/rules/hydra-llm-normalization.yml</code>,
+fleet dashboards.</li>
+</ul>
+<h3
+id="llm-4--vllm-scheduler--cache-observability-kv-usage-prefix-hit-preemptions-runningwaiting--p1--m-">LLM-4
+· vLLM scheduler &amp; cache observability (KV usage, prefix-hit,
+preemptions, running/waiting) · <strong>P1</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> <code>vllm:gpu_cache_usage_perc</code>
+scraped but undashboarded; prefix/radix hit-rate,
+<code>vllm:num_preemptions_total</code>, running-vs-waiting all
+uncollected — the leading indicators of paged-attention thrashing on 16
+GB M4 nodes.</li>
+<li><strong>Fix:</strong> Recording rules for prefix-hit ratio,
+preemption rate, running/waiting ratio; "KV &amp; Scheduler" dashboard
+row; alerts <code>KVCacheSaturation</code>,
+<code>PagedAttentionThrashing</code>,
+<code>PrefixCacheColdspot</code>.</li>
+<li><strong>Files:</strong> <code>mlx-inference.json</code>,
+normalization rules,
+<code>monitoring/prometheus/rules/mlx-alerts.yml</code>.</li>
+</ul>
+<h3
+id="llm-5--instrument-pure-apple-mlx-mlx_lm-backend-with-perf-metrics--p1--l-">LLM-5
+· Instrument pure Apple MLX (<code>mlx_lm</code>) backend with perf
+metrics · <strong>P1</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> When <code>mlx_server_backend</code> ∈
+{mlx_lm, mlx_lm_sidecar}, the only telemetry is crash counters — zero
+throughput/TTFT/tokens/active-requests/KV.</li>
+<li><strong>Fix:</strong> Metrics sidecar (extend
+<code>mlx_logexporter</code> pattern) or SDK middleware emitting
+tokens/s, TTFT, TPOT, active requests, KV occupancy vs
+<code>mlx_max_kv_size</code>, wired-mem vs
+<code>mlx_memory_limit_mb</code>; register endpoint in discovery;
+normalize via LLM-3.</li>
+<li><strong>Files:</strong>
+<code>ansible/roles/llm-mlx/{files,templates,vars}</code>,
+<code>ansible/roles/llm-discovery/*</code>.</li>
+</ul>
+<h3
+id="llm-6--wire-engine-otlp-traces-prefilldecodequeue-spans-into-tempoopik--p2--m-">LLM-6
+· Wire engine OTLP traces (prefill/decode/queue spans) into Tempo/Opik ·
+<strong>P2</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> Tempo + Opik exporters configured and
+idle; no engine emits spans (plists lack
+<code>--otlp-traces-endpoint</code>). No per-request latency
+decomposition.</li>
+<li><strong>Fix:</strong> Add <code>--otlp-traces-endpoint</code> to
+vLLM/MLX plists; SDK spans where engine-native tracing unavailable;
+sampling policy; Tempo exemplar links from latency panels.</li>
+<li><strong>Files:</strong> <code>com.hydra.vllm-server.plist.j2</code>,
+<code>com.hydra.mlx-server.plist.j2</code>, agent + gateway
+configs.</li>
+</ul>
+<h3
+id="llm-7--integrate-sglang-into-discovery-dashboards-alerts--p2--m-">LLM-7
+· Integrate SGLang into discovery, dashboards, alerts ·
+<strong>P2</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> No <code>llm-sglang</code> role; absent
+from <code>valid_llm_providers</code>/<code>llm_probe_ports</code> →
+never auto-discovered; <code>sglang:*</code> metrics unused even if
+scraped.</li>
+<li><strong>Fix:</strong> Add SGLang to discovery + catalog; source
+recording rules → <code>hydra:llm:*</code> (<code>cache_hit_rate</code>,
+<code>num_running_reqs</code>, <code>gen_throughput</code>); SGLang
+dashboard + alerts.</li>
+<li><strong>Files:</strong> <code>ansible/group_vars/all.yml</code>,
+<code>llm-discovery</code>, new dashboard, rules.</li>
+</ul>
+<h3
+id="llm-8--advanced-engine-internals-tpppep-topology-moe-expert-load-spec-decode-lora--p3--l-">LLM-8
+· Advanced engine internals: TP/PP/EP topology, MoE expert load,
+spec-decode, LoRA · <strong>P3</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> <code>tensor_parallel_groups</code>
+defined (2×2 TP via RoCE) but no per-rank correlation, no MoE expert
+load, no <code>vllm:spec_decode_*</code>, no
+<code>vllm:lora_requests_info</code>.</li>
+<li><strong>Fix:</strong> <code>tp_group</code>/<code>rank</code>
+relabel; spec-decode acceptance rate + regression alert; LoRA
+per-adapter volume; correlate with RDMA fabric (SRE-3/4).</li>
+<li><strong>Files:</strong> agent template relabel,
+<code>group_vars/all.yml</code>, rules, dashboards.</li>
+</ul>
+<h3
+id="llm-9--integrate-llm-d-k8s-pull-into-push-based-hydra--p3--l-">LLM-9
+· Integrate llm-d (K8s pull) into push-based hydra · <strong>P3</strong>
+· L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> llm-d entirely absent. EPP routing,
+KV-cache-aware routing, P/D disaggregation, NIXL KV-transfer over RDMA
+all invisible; pull-vs-push architecture mismatch.</li>
+<li><strong>Fix:</strong> In-cluster OTEL collector (prometheus
+receiver) scraping EPP/gateway/prefill/decode pods → OTLP to hydra
+gateway with consistent labels; llm-d dashboard + alerts; ADR
+documenting the bridge.</li>
+<li><strong>Files:</strong> new
+<code>deploy/kubernetes/llm-d-collector.yaml</code>, gateway config,
+dashboard/alerts, ADR.</li>
+</ul>
+<hr />
+<h2 id="b-sre--observability-architect--marcus-chen-8">B. SRE /
+Observability Architect — Marcus Chen 🍩×8</h2>
+<h3
+id="sre-1--llm-inference-alerts-dead-against-natively-scraped-engines--p0--m-">SRE-1
+· LLM inference alerts DEAD against natively-scraped engines ·
+<strong>P0</strong> · M 🍩</h3>
+<ul>
+<li><strong>Joint with LLM-1.</strong> Default
+<code>mlx_server_backend=vllm_mlx</code> serves native
+<code>vllm:*</code>; alerts query SDK <code>llm_*</code> →
+model-down/stall/OOM/queue/latency never fire. Also label-space mismatch
+(<code>model</code> vs <code>model_name</code>). Fix via normalization +
+<code>absent()</code> guard + <code>promtool check rules</code> in
+CI.</li>
+<li><strong>Files:</strong> <code>llm-inference.yaml</code>, new
+<code>llm-normalization.rules.yml</code>, agent template, docs.</li>
+</ul>
+<h3
+id="sre-2--no-alerting-on-observability-backends--ingest-pipeline--orphaned-pagerduty--p0--m-">SRE-2
+· No alerting on observability backends / ingest pipeline (+ orphaned
+PagerDuty) · <strong>P0</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> If VictoriaMetrics/Loki/Tempo/OTEL-gateway
+fail, platform goes blind with no alert (Prometheus is self-monitoring
+only; no Tempo scrape; no <code>up</code>-based rules). Multiple alerts
+set <code>pagerduty: trigger</code> but the <strong>active</strong>
+Alertmanager has <strong>no PagerDuty receiver</strong> → critical pages
+degrade to Slack silently.</li>
+<li><strong>Fix:</strong> <code>platform-backends.rules.yml</code>
+(<code>up==0</code> for VM/Loki/Tempo/gateway/AM); OTEL self-metrics
+alerts (<code>otelcol_exporter_send_failed_*</code>, queue saturation,
+refused points); remote_write failure/lag alerts; add
+<code>pagerduty-critical</code> receiver + route
+(<code>continue: true</code>); "Backbone health" dashboard.</li>
+<li><strong>Files:</strong>
+<code>monitoring/prometheus/prometheus.yml</code>, new rules,
+<code>monitoring/alertmanager/alertmanager.yml</code>, dashboard.</li>
+</ul>
+<h3
+id="sre-3--rdmaroce-fabric-completely-unmonitored-silent-throughput-collapse--p1--l-">SRE-3
+· RDMA/RoCE fabric completely unmonitored (silent throughput collapse) ·
+<strong>P1</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> RDMA is load-bearing for LargePool TP
+(AllReduce ~2 µs RDMA vs ~320 ms TCP). A PFC pause storm / ECN misconfig
+degrades ~100–600× with zero signal. No PFC/ECN/CNP/RoCE telemetry
+exists.</li>
+<li><strong>Fix:</strong> Linux: node-exporter
+<code>--collector.infiniband</code> or sysfs counters
+(<code>rx/tx_pause</code>, <code>np_cnp_sent</code>,
+<code>out_of_buffer</code>, <code>rnr_nak_retry_err</code>). macOS
+Thunderbolt ConnectX: sidecar collector or
+<code>roce_hardware_present=0</code> gauge. Switch:
+<code>snmp_exporter</code> for per-priority pause/ECN/queue-3 drops.
+Alerts on pause storms/CNP/buffers; "RDMA Fabric" dashboard.</li>
+<li><strong>Files:</strong> agent templates, new
+<code>roles/snmp-exporter</code>, apple-silicon-exporter, rules,
+dashboard.</li>
+</ul>
+<h3
+id="sre-4--collective-comms-ncclrccl--dcgm-nvlink-profiling-not-collected--p1--l-">SRE-4
+· Collective-comms (NCCL/RCCL) + DCGM NVLink profiling not collected ·
+<strong>P1</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> Explicit AllReduce targets (~8 ms RDMA vs
+~1,280 ms TCP for 32B) but no collective metric; DCGM runs default
+counter set (no <code>DCGM_FI_PROF_NVLINK_*</code>).</li>
+<li><strong>Fix:</strong> Custom DCGM counters CSV (NVLink/PCIe/SM/DRAM
+active) mounted + <code>-f</code>; NCCL profiler or periodic
+<code>nccl-tests</code> AllReduce probe →
+<code>nccl_allreduce_latency_seconds</code>/<code>busbw_gbps</code> per
+<code>tp_group</code>; SLO + regression alert; NVLink/AllReduce
+dashboard.</li>
+<li><strong>Files:</strong> <code>dcgm-exporter.service.j2</code>,
+<code>hw-exporter/tasks/nvidia.yml</code>, new probe role, rules,
+dashboard.</li>
+</ul>
+<h3
+id="sre-5--no-network-bandwidth-telemetry-mac-agent-has-no-hostmetrics--p1--m-">SRE-5
+· No network bandwidth telemetry; Mac agent has no hostmetrics ·
+<strong>P1</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> No network dashboard anywhere; the
+rendered Mac agent (<code>monitoring-cfg</code> template) emits no
+host/network metrics; Linux agent lacks parity; MinIO model-pull BW
+untracked.</li>
+<li><strong>Fix:</strong> Add <code>hostmetrics</code>
+(network/load/mem/fs/paging) to Mac agent; MinIO scrape
+(<code>minio_s3_traffic_*</code>); "Network &amp; Throughput" dashboard
+(per-node RX/TX, uplink, model-pull duration); link-saturation
+alert.</li>
+<li><strong>Files:</strong> agent template, MinIO scrape, rules,
+dashboard.</li>
+</ul>
+<h3
+id="sre-6--apple_thermal_pressure-modeled-two-contradictory-ways--duplicatedead-am-configs--p1--sm-">SRE-6
+· <code>apple_thermal_pressure</code> modeled two contradictory ways +
+duplicate/dead AM configs · <strong>P1</strong> · S–M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> <code>apple-silicon-alerts.yml</code>
+treats it as numeric level (<code>&gt;=2</code>);
+<code>apple-silicon-hardware.yaml</code> treats it as value-1 with
+<code>{level=...}</code> label — one is broken. Only
+<code>/etc/prometheus/rules/*.yml</code> is loaded, so the entire
+<code>apple-silicon-monitoring/alerts/*</code> tree (incl. a second
+Alertmanager config) is <strong>not deployed</strong> but still
+drifting.</li>
+<li><strong>Fix:</strong> Pin one thermal encoding (recommend numeric
+0–3) and align exporter + rules; delete/archive unloaded alert tree; CI
+<code>promtool</code>/<code>amtool</code> gates.</li>
+<li><strong>Files:</strong> <code>apple-silicon-alerts.yml</code>,
+<code>apple-silicon-monitoring/alerts/*</code>, exporter thermal emit,
+CI.</li>
+</ul>
+<h3
+id="sre-7--alerting-maturity-no-burn-rate-slos-weak-routinginhibition-placeholder-runbooks--p2--ml-">SRE-7
+· Alerting maturity: no burn-rate SLOs, weak routing/inhibition,
+placeholder runbooks · <strong>P2</strong> · M–L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> All alerts static single-threshold
+(over/under-pages); AM routes by severity only; inhibition
+<code>equal: instance</code> won't match hw alerts labeled
+<code>node_id</code>; runbook URLs are placeholders.</li>
+<li><strong>Fix:</strong> Multi-window multi-burn-rate SLO alerts (e.g.
+<a href="mailto:1h@14.4">1h@14.4</a> + 6h@6) over
+<code>hydra:llm:*</code>; normalize
+<code>node_id</code>/<code>instance</code> labels so inhibition matches;
+team/category routing in active config; CI asserts every critical alert
+has a <code>runbook_url</code>.</li>
+<li><strong>Files:</strong> new <code>slo-burnrate.rules.yml</code>,
+<code>alertmanager.yml</code>, all rule files, CI.</li>
+</ul>
+<h3
+id="sre-8--exporter--pipeline-reliability-powermetrics-overhead-limiter-drops-tls-cardinality-retention--p2--l-">SRE-8
+· Exporter &amp; pipeline reliability (powermetrics overhead, limiter
+drops, TLS, cardinality, retention) · <strong>P2</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> powermetrics spawned per scrape (~1s root
+subprocess every 15s); agent <code>memory_limiter: 100MiB</code>
+silently drops under burst; <code>tls.insecure: true</code> everywhere;
+unbounded <code>quantization</code> label risk +
+<code>resource_to_telemetry_conversion</code> promotes all attrs; no VM
+retention/cardinality budget.</li>
+<li><strong>Fix:</strong> Single long-lived powermetrics sampler with
+cached gauges; raise/right-size limiter; plan internal TLS (Salt PKI);
+bound cardinality (regex allowlist, prune per-core); precompute hot
+quantiles as recording rules; set VM retention + cardinality
+dashboard.</li>
+<li><strong>Files:</strong> exporter
+<code>main.go</code>/<code>powermetrics.go</code>, agent template,
+gateway config, <code>docker-compose.yml</code>, rules.</li>
+</ul>
+<hr />
+<h2 id="c-platform--ansible-architect--diego-ramirez-9">C. Platform /
+Ansible Architect — Diego Ramirez 🍩×9</h2>
+<h3
+id="ans-1--two-divergent-conflicting-provisioning-paths-for-the-same-macos-nodes--p0--l-">ANS-1
+· Two divergent, conflicting provisioning paths for the same macOS nodes
+· <strong>P0</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> <code>site.yml</code>
+(base+hw-exporter+monitoring-cfg on <code>all</code>) and
+<code>mac-monitoring.yml</code> (otel-mac-agent on
+<code>os_macos</code>) both render
+<code>/etc/hydra/otel-agent-config.yaml</code> from <strong>different
+templates</strong> and both install the same LaunchDaemons from
+different templates → last-run-wins, nondeterministic drift.</li>
+<li><strong>Fix:</strong> Single source of truth for macOS (recommend
+<code>otel-mac-agent</code>); scope <code>site.yml</code> to Linux or
+import the mac playbook; make <code>hw-exporter</code> Linux-only; add
+managed-by assert guards.</li>
+<li><strong>Files:</strong> <code>site.yml</code>,
+<code>mac-monitoring.yml</code>, roles
+<code>base</code>/<code>hw-exporter</code>/<code>monitoring-cfg</code>/<code>otel-mac-agent</code>.</li>
+</ul>
+<h3
+id="ans-2--siteymlbasehw-exporter-path-broken--violates-air-gap--p0--m-">ANS-2
+· <code>site.yml</code>/base+hw-exporter path broken + violates air-gap
+· <strong>P0</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> Undefined
+<code>otel_agent_download_base</code>/<code>node_exporter_download_base</code>;
+missing <code>hydra_versions.{node_exporter,dcgm_exporter}</code> keys;
+internet/Homebrew/<code>docker pull</code> on hosts documented as
+air-gapped → play fails / breaks air-gap.</li>
+<li><strong>Fix:</strong> Add missing version keys via
+<code>inventory_plugin.py</code>; convert fetches to air-gapped staging
+(<code>files/</code> → copy → extract); gate any online behavior behind
+<code>hydra_airgapped: false</code>.</li>
+<li><strong>Files:</strong> <code>roles/base/tasks/main.yml</code>,
+<code>hw-exporter/tasks/{cpu,nvidia,apple}.yml</code>,
+<code>cluster.yml</code>, <code>group_vars/all.yml</code>.</li>
+</ul>
+<h3
+id="ans-3--unify-the-two-otel-agent-templates-close-macos-llm-gap--linux-hostmetrics-gap--p1--l-">ANS-3
+· Unify the two OTEL agent templates; close macOS LLM gap + Linux
+hostmetrics gap · <strong>P1</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> Mac agent never reads
+<code>discovered.yml</code> → MLX/vLLM-MLX <code>/metrics</code>
+uncollected on Macs; Linux agent has no <code>hostmetrics</code> (no
+host network parity). Two hand-maintained templates drift.</li>
+<li><strong>Fix:</strong> One canonical template
+(<code>roles/monitoring-common</code>) with Jinja toggles
+(<code>enable_hostmetrics</code>, <code>enable_llm_scrape</code>, …);
+both roles consume it; Mac path gains LLM scrape, Linux path gains host
+network.</li>
+<li><strong>Files:</strong> both <code>otel-agent-config.yaml.j2</code>,
+<code>discovered.yml.j2</code>,
+<code>otel-mac-agent/tasks/configure.yml</code>.</li>
+</ul>
+<h3
+id="ans-4--supply-chain-integrity-enforce-checksums--consumed-version-pins--p1--m-">ANS-4
+· Supply-chain integrity: enforce checksums + consumed version pins ·
+<strong>P1</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> No <code>checksum:</code> on any binary
+install in an air-gapped fleet;
+<code>apple_silicon_exporter: 1.0.0</code> pin defined but never
+consumed; <code>otel_version</code> printed not enforced.</li>
+<li><strong>Fix:</strong> <code>hydra_artifact_checksums</code> (sha256
+by artifact+arch) verified before install; assert <code>--version</code>
+== pin; add
+<code>node_exporter</code>/<code>dcgm_exporter</code>/<code>apple_silicon_exporter</code>
+to <code>versions:</code> and consume everywhere.</li>
+<li><strong>Files:</strong> <code>base</code>, <code>hw-exporter</code>,
+<code>otel-mac-agent/tasks/install.yml</code>,
+<code>group_vars/all.yml</code>, <code>cluster.yml</code>.</li>
+</ul>
+<h3
+id="ans-5--tlssecrets-hardening-eliminate-insecure-true-mtls--ansible-vault--p1--m-">ANS-5
+· TLS/secrets hardening: eliminate <code>insecure: true</code>, mTLS +
+ansible-vault · <strong>P1</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> <code>insecure: true</code> on every
+OTLP/remote-write exporter; plaintext secrets committed
+(<code>minio_secret_key: changeme-v2</code>,
+<code>fleet_admin_password: changeme123</code>,
+<code>litellm_master_key: sk-hydra-master-changeme</code>); engine API
+keys hardcoded <code>none</code>.</li>
+<li><strong>Fix:</strong> TLS block (ca/cert/key) default
+<code>insecure: false</code> with staged certs; move secrets to
+<code>ansible-vault</code>; CI secret-scan gate; per-engine auth in
+discovery schema.</li>
+<li><strong>Files:</strong> both agent templates,
+<code>cluster.yml</code>, <code>inventories/llm/hosts.yml</code>, new
+<code>group_vars/all/vault.yml</code>.</li>
+</ul>
+<h3
+id="ans-6--make-llm-discovery-engine-aware--resilient-registry-driven--p2--l-">ANS-6
+· Make LLM discovery engine-aware &amp; resilient (registry-driven) ·
+<strong>P2</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> Fixed 4-port probe map,
+<code>/health</code>-only, no SGLang/llm-d, no per-engine
+<code>metrics_path</code>/auth; MLX special-cased;
+<code>mlx_metrics_port</code>/<code>mlx_effective_metrics_port</code>
+defined but unused; no re-discovery on restart.</li>
+<li><strong>Fix:</strong> <code>llm_engine_catalog</code>
+(port/health_path/metrics_path/auth/scheme) driving probe + scrape; add
+SGLang/llm-d; carry metrics_path/auth into <code>discovered.yml</code>;
+remove dead MLX port vars; optional launchd/salt re-discovery.</li>
+<li><strong>Files:</strong> <code>llm-discovery/*</code>,
+<code>group_vars/all.yml</code>, <code>inventory_plugin.py</code>, both
+OTEL templates, <code>llm-mlx/vars/main.yml</code>.</li>
+</ul>
+<h3
+id="ans-7--dedicated-apple-silicon-exporter-role-per-arch-staging-pin-checksum-m1m5--linux--p2--l-">ANS-7
+· Dedicated <code>apple-silicon-exporter</code> role: per-arch staging,
+pin, checksum (M1–M5 + Linux) · <strong>P2</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> Two install paths (build-from-source
+needing internet vs binary copy), two plist templates, hardcoded
+<code>:9101</code>, unused version pin, placeholder module path. No role
+to install the new cross-platform (M1–M5 + Linux) artifacts.</li>
+<li><strong>Fix:</strong> New <code>roles/apple-silicon-exporter</code>
+owning per-arch staged binaries (<code>darwin_arm64</code>,
+<code>linux_arm64</code>, <code>linux_amd64</code>), pin from
+<code>hydra_versions</code>, sha256 verify, <code>--version</code>
+assert, single unit template, healthcheck; remove build/copy logic from
+other roles. <em>(Pairs with the new exporter delivered on branch
+<code>feat/silicon-exporter-m1-m5-linux</code>.)</em></li>
+<li><strong>Files:</strong> new
+<code>roles/apple-silicon-exporter/</code>,
+<code>hw-exporter/tasks/apple.yml</code>,
+<code>otel-mac-agent/tasks/apple_exporter.yml</code>, exporter
+repo.</li>
+</ul>
+<h3
+id="ans-8--add-ci-ansible-lint--molecule--idempotencycheck-mode-fix-stale-rolling-restartyml--p2--l-">ANS-8
+· Add CI: ansible-lint + molecule + idempotency/check-mode; fix stale
+<code>rolling-restart.yml</code> · <strong>P2</strong> · L 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> No <code>.github/workflows</code>,
+<code>.ansible-lint</code>, or <code>molecule/</code>.
+<code>rolling-restart.yml</code> references <code>ai.hydra.*</code>
+LaunchAgents + vars that no longer exist (current units are
+<code>com.hydra.*</code> system daemons) → would fail. Mac restart
+handler swallows errors and never validates config.</li>
+<li><strong>Fix:</strong> <code>.ansible-lint</code> (production) + CI
+(yamllint, ansible-lint, syntax-check, pytest, molecule
+idempotency/check-mode for critical roles); rewrite/delete
+<code>rolling-restart.yml</code>; add <code>otelcol validate</code> to
+mac handler.</li>
+<li><strong>Files:</strong> new
+<code>.github/workflows/ansible.yml</code>, <code>.ansible-lint</code>,
+<code>roles/*/molecule/</code>, <code>rolling-restart.yml</code>,
+<code>otel-mac-agent/handlers/main.yml</code>.</li>
+</ul>
+<h3
+id="ans-9--resolve-multi-inventory-drift-static-hostsyml-vs-dynamic-clusteryml--p3--m-">ANS-9
+· Resolve multi-inventory drift (static <code>hosts.yml</code> vs
+dynamic <code>cluster.yml</code>) · <strong>P3</strong> · M 🍩</h3>
+<ul>
+<li><strong>Problem:</strong> <code>inventories/llm/hosts.yml</code>
+(<code>llm_frameworks</code>) and <code>cluster.yml</code>
+(<code>llm_endpoints</code>) independently define overlapping facts and
+already disagree (mlx/vllm vs ollama/llamacpp); LiteLLM port
+inconsistent across three places.</li>
+<li><strong>Fix:</strong> One source of truth (recommend
+<code>cluster.yml</code>/<code>inventory_plugin.py</code>); derive the
+other or add a CI parity check; reconcile LiteLLM port.</li>
+<li><strong>Files:</strong> <code>inventories/llm/hosts.yml</code>,
+<code>cluster.yml</code>, <code>inventory_plugin.py</code>,
+<code>group_vars/all.yml</code>.</li>
+</ul>
+<hr />
+<h2 id="priority-rollup">Priority rollup</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Priority</th>
+<th>Tickets</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>P0</strong></td>
+<td>LLM-1 / SRE-1 (joint), SRE-2, ANS-1, ANS-2</td>
+</tr>
+<tr class="even">
+<td><strong>P1</strong></td>
+<td>LLM-2, LLM-3, LLM-4, LLM-5, SRE-3, SRE-4, SRE-5, SRE-6, ANS-3,
+ANS-4, ANS-5</td>
+</tr>
+<tr class="odd">
+<td><strong>P2</strong></td>
+<td>LLM-6, LLM-7, SRE-7, SRE-8, ANS-6, ANS-7, ANS-8</td>
+</tr>
+<tr class="even">
+<td><strong>P3</strong></td>
+<td>LLM-8, LLM-9, ANS-9</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended sequence:</strong> (1) <code>hydra:llm:*</code>
+normalization (LLM-3) → unblocks LLM-1/SRE-1 alert rebind; (2) backbone
+self-monitoring + PagerDuty (SRE-2); (3) fix broken/duplicated Ansible
+provisioning (ANS-1, ANS-2); then P1 fabric/network/coverage work.</p>
+<h2 id="-donut-tally">🍩 Donut tally</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Person</th>
+<th>Donuts</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Priya Nair (LLM)</td>
+<td>🍩🍩🍩🍩🍩🍩🍩🍩🍩 (9)</td>
+</tr>
+<tr class="even">
+<td>Marcus Chen (SRE)</td>
+<td>🍩🍩🍩🍩🍩🍩🍩🍩 (8)</td>
+</tr>
+<tr class="odd">
+<td>Diego Ramirez (Ansible)</td>
+<td>🍩🍩🍩🍩🍩🍩🍩🍩🍩 (9)</td>
+</tr>
+<tr class="even">
+<td><strong>Total</strong></td>
+<td><strong>26 🍩</strong></td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>

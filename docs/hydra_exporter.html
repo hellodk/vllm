@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Apple Silicon Exporter (M1–M5 + Linux)</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <style>
+  body{max-width:980px;margin:40px auto;padding:0 24px;font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2328;background:#fff}
+  h1,h2,h3{font-weight:600;line-height:1.25;margin-top:1.6em;border-bottom:1px solid #d8dee4;padding-bottom:.3em}
+  h3{border-bottom:none}
+  table{border-collapse:collapse;width:100%;margin:1em 0;display:block;overflow:auto}
+  th,td{border:1px solid #d0d7de;padding:6px 13px}
+  tr:nth-child(2n){background:#f6f8fa}
+  code{background:#eff1f3;padding:.2em .4em;border-radius:6px;font-size:85%}
+  pre{background:#f6f8fa;padding:16px;border-radius:6px;overflow:auto}
+  pre code{background:none;padding:0}
+  blockquote{border-left:.25em solid #d0d7de;padding:0 1em;color:#59636e;margin:0}
+  a{color:#0969da}
+  hr{border:none;border-top:1px solid #d8dee4;margin:2em 0}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Apple Silicon Exporter (M1–M5 + Linux)</h1>
+</header>
+<h1 id="apple-silicon-exporter">Apple Silicon Exporter</h1>
+<p>Cross-platform Prometheus exporter for Apple Silicon (M1/M2/M3/M4/M5)
+hardware metrics including GPU utilization, power consumption, thermal
+state, and system metrics.</p>
+<p>On <strong>macOS</strong> it uses native APIs (IOKit, Metal,
+<code>powermetrics</code>) for direct hardware access. On
+<strong>Linux</strong> — including <strong>Asahi Linux</strong> running
+on Apple Silicon, as well as generic x86-64 and ARM64 hosts — it reads
+metrics from <code>/proc</code> and <code>/sys</code> (hwmon, DRM, RAPL
+powercap) and <strong>degrades gracefully</strong>: metrics with no
+Linux data source are simply omitted rather than reported as misleading
+zeros.</p>
+<blockquote>
+<p><strong>Chip detection is generic.</strong> The exporter recognises
+<code>M1</code>–<code>M5</code> (and any future M-series part) plus the
+<code>Pro</code>/<code>Max</code>/<code>Ultra</code> variants where
+detectable, and falls back to the raw model string for hardware it does
+not recognise. See <code>apple_chip_info</code> below.</p>
+<p>For NVIDIA GPUs on Linux, use <a
+href="https://github.com/NVIDIA/dcgm-exporter">dcgm-exporter</a>; for
+AMD GPUs, use <a
+href="https://github.com/amdgpu-exporter/amdgpu_exporter">amdgpu_exporter</a>.
+The rest of this monitoring platform (LLM telemetry SDK, OTEL pipeline,
+dashboards, alerts) is hardware-agnostic.</p>
+</blockquote>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>GPU Metrics</strong>: Utilization, memory usage,
+temperature, power (macOS: IOKit + Metal; Linux: hwmon temperature where
+available)</li>
+<li><strong>Power Metrics</strong>: System, CPU cluster, GPU, and Neural
+Engine power (macOS: <code>powermetrics</code>; Linux: hwmon
+<code>power*_input</code> or RAPL powercap for total system power)</li>
+<li><strong>Thermal Metrics</strong>: Thermal pressure level, throttling
+state (macOS: IOKit; not exposed by the kernel on Linux today)</li>
+<li><strong>System Metrics</strong>: CPU usage, memory, load average
+(macOS: sysctl/vm_stat; Linux: <code>/proc/stat</code>,
+<code>/proc/meminfo</code>, <code>/proc/loadavg</code>)</li>
+<li><strong>Chip Identification</strong>: <code>apple_chip_info</code>
+info-metric carrying the detected chip family/variant</li>
+</ul>
+<h2 id="requirements">Requirements</h2>
+<h3 id="macos">macOS</h3>
+<ul>
+<li>macOS 12+ (Monterey or later)</li>
+<li>Apple Silicon Mac (M1, M2, M3, M4, or M5 series)</li>
+<li>Root privileges (for <code>powermetrics</code> and IOKit
+access)</li>
+</ul>
+<h3 id="linux">Linux</h3>
+<ul>
+<li>Linux ARM64 (Asahi Linux on Apple Silicon) or x86-64/ARM64 generic
+hosts</li>
+<li>No CGO required — the Linux build is pure Go</li>
+<li>Read access to <code>/proc</code> and <code>/sys</code> (RAPL energy
+counters may require root)</li>
+</ul>
+<h2 id="installation">Installation</h2>
+<h3 id="from-source">From Source</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Clone the repository</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/company/apple-silicon-exporter.git</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> apple-silicon-exporter</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Build</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> build</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Install (requires sudo)</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> make install</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Start service</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> make start</span></code></pre></div>
+<h3 id="manual-installation">Manual Installation</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> apple-silicon-exporter ./cmd/exporter</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Install binary</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp apple-silicon-exporter /usr/local/bin/</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chmod 755 /usr/local/bin/apple-silicon-exporter</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Create directories</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> mkdir <span class="at">-p</span> /var/log/apple-silicon-exporter</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> mkdir <span class="at">-p</span> /var/lib/apple-silicon-exporter</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Install LaunchDaemon</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp deploy/launchdaemons/com.company.apple-silicon-exporter.plist /Library/LaunchDaemons/</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chown root:wheel /Library/LaunchDaemons/com.company.apple-silicon-exporter.plist</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chmod 644 /Library/LaunchDaemons/com.company.apple-silicon-exporter.plist</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="co"># Load and start</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> launchctl load /Library/LaunchDaemons/com.company.apple-silicon-exporter.plist</span></code></pre></div>
+<h2 id="usage">Usage</h2>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run with default settings</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apple-silicon-exporter</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Custom listen address</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apple-silicon-exporter <span class="at">--listen</span><span class="op">=</span>0.0.0.0:9101</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable/disable collectors</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apple-silicon-exporter <span class="at">--enable-iokit</span><span class="op">=</span>true <span class="at">--enable-powermetrics</span><span class="op">=</span>true <span class="at">--enable-metal</span><span class="op">=</span>true</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Debug logging</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apple-silicon-exporter <span class="at">--log-level</span><span class="op">=</span>debug</span></code></pre></div>
+<h3 id="linux-1">Linux</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build for the host (pure Go, no CGO/root needed to build)</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> build            <span class="co"># or: make build-linux-amd64 / make build-linux-arm64</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run (root only needed for RAPL system-power on some hosts)</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="ex">./build/apple-silicon-exporter</span> <span class="at">--listen</span><span class="op">=</span>0.0.0.0:9101</span></code></pre></div>
+<p>On Linux the macOS-specific flags (<code>--enable-metal</code>,
+<code>--enable-powermetrics</code>, <code>--powermetrics-path</code>)
+are accepted for compatibility but unavailable collectors disable
+themselves and report
+<code>apple_scrape_success{collector="..."} 0</code>.</p>
+<h2 id="metrics">Metrics</h2>
+<h3 id="chip-information">Chip Information</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>apple_chip_info</code></td>
+<td>Gauge</td>
+<td>Constant <code>1</code>; chip details carried in labels</td>
+</tr>
+</tbody>
+</table>
+<p>Labels: <code>chip</code> (e.g. <code>M4 Max</code>),
+<code>family</code> (e.g. <code>M4</code>), <code>variant</code>
+(<code>Pro</code>/<code>Max</code>/<code>Ultra</code>/empty),
+<code>model</code> (raw <code>hw.model</code> / device-tree model). On
+unrecognised hardware <code>family</code>/<code>variant</code> are empty
+and <code>chip</code>/<code>model</code> carry the raw identifier.</p>
+<pre><code>apple_chip_info{chip=&quot;M4 Max&quot;,family=&quot;M4&quot;,variant=&quot;Max&quot;,model=&quot;Mac15,9&quot;} 1</code></pre>
+<h3 id="gpu-metrics">GPU Metrics</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>apple_gpu_utilization_percent</code></td>
+<td>Gauge</td>
+<td>GPU utilization percentage</td>
+</tr>
+<tr class="even">
+<td><code>apple_gpu_memory_used_bytes</code></td>
+<td>Gauge</td>
+<td>GPU memory in use</td>
+</tr>
+<tr class="odd">
+<td><code>apple_gpu_memory_total_bytes</code></td>
+<td>Gauge</td>
+<td>Total GPU memory available</td>
+</tr>
+<tr class="even">
+<td><code>apple_gpu_temperature_celsius</code></td>
+<td>Gauge</td>
+<td>GPU temperature</td>
+</tr>
+<tr class="odd">
+<td><code>apple_gpu_power_watts</code></td>
+<td>Gauge</td>
+<td>GPU power consumption</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cpu-metrics">CPU Metrics</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>apple_cpu_power_watts</code></td>
+<td>Gauge</td>
+<td>CPU cluster power (efficiency/performance)</td>
+</tr>
+<tr class="even">
+<td><code>apple_cpu_usage_percent</code></td>
+<td>Gauge</td>
+<td>CPU usage by mode (user/system/idle)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="neural-engine-metrics">Neural Engine Metrics</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>apple_ane_power_watts</code></td>
+<td>Gauge</td>
+<td>Neural Engine power consumption</td>
+</tr>
+<tr class="even">
+<td><code>apple_ane_utilization_percent</code></td>
+<td>Gauge</td>
+<td>Neural Engine utilization</td>
+</tr>
+</tbody>
+</table>
+<h3 id="thermal-metrics">Thermal Metrics</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>apple_thermal_pressure</code></td>
+<td>Gauge</td>
+<td>Thermal pressure level (nominal/moderate/heavy/critical)</td>
+</tr>
+<tr class="even">
+<td><code>apple_thermal_throttle_active</code></td>
+<td>Gauge</td>
+<td>Whether throttling is active (cpu/gpu)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="system-metrics">System Metrics</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>apple_system_power_watts</code></td>
+<td>Gauge</td>
+<td>Total system power consumption</td>
+</tr>
+<tr class="even">
+<td><code>apple_memory_used_bytes</code></td>
+<td>Gauge</td>
+<td>System memory in use</td>
+</tr>
+<tr class="odd">
+<td><code>apple_memory_total_bytes</code></td>
+<td>Gauge</td>
+<td>Total system memory</td>
+</tr>
+</tbody>
+</table>
+<h2 id="platform-metric-availability">Platform Metric Availability</h2>
+<p>Where a metric has no data source on a platform it is omitted from
+<code>/metrics</code> and the corresponding
+<code>apple_scrape_success{collector="..."}</code> reflects whether that
+collector produced data.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th style="text-align: center;">macOS (Apple Silicon)</th>
+<th style="text-align: center;">Asahi Linux (Apple Silicon)</th>
+<th style="text-align: center;">Generic Linux (x86-64)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>apple_chip_info</code></td>
+<td style="text-align: center;">✅ (sysctl)</td>
+<td style="text-align: center;">✅ (device-tree)</td>
+<td style="text-align: center;">✅ (raw model fallback)</td>
+</tr>
+<tr class="even">
+<td><code>apple_cpu_usage_percent</code></td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅ (<code>/proc/stat</code>)</td>
+<td style="text-align: center;">✅ (<code>/proc/stat</code>)</td>
+</tr>
+<tr class="odd">
+<td><code>apple_memory_used_bytes</code> /
+<code>apple_memory_total_bytes</code></td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅ (<code>/proc/meminfo</code>)</td>
+<td style="text-align: center;">✅ (<code>/proc/meminfo</code>)</td>
+</tr>
+<tr class="even">
+<td><code>apple_gpu_temperature_celsius</code></td>
+<td style="text-align: center;">✅ (IOKit/SMC)</td>
+<td style="text-align: center;">⚠️ if a GPU hwmon sensor is present</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr class="odd">
+<td><code>apple_gpu_utilization_percent</code></td>
+<td style="text-align: center;">✅ (IOKit/Metal)</td>
+<td style="text-align: center;">❌ (not exposed by kernel)</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr class="even">
+<td><code>apple_gpu_memory_used_bytes</code> /
+<code>_total_bytes</code></td>
+<td style="text-align: center;">✅ (IOKit)</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr class="odd">
+<td><code>apple_gpu_power_watts</code></td>
+<td style="text-align: center;">✅ (<code>powermetrics</code>)</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr class="even">
+<td><code>apple_cpu_power_watts</code> (per cluster)</td>
+<td style="text-align: center;">✅ (<code>powermetrics</code>)</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr class="odd">
+<td><code>apple_ane_power_watts</code> /
+<code>apple_ane_utilization_percent</code></td>
+<td style="text-align: center;">✅ (<code>powermetrics</code>)</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr class="even">
+<td><code>apple_system_power_watts</code></td>
+<td style="text-align: center;">✅ (<code>powermetrics</code>)</td>
+<td style="text-align: center;">⚠️ hwmon <code>power*_input</code> if
+present</td>
+<td style="text-align: center;">⚠️ RAPL powercap if present</td>
+</tr>
+<tr class="odd">
+<td><code>apple_thermal_pressure</code> /
+<code>apple_thermal_throttle_active</code></td>
+<td style="text-align: center;">✅ (IOKit)</td>
+<td style="text-align: center;">❌ (not exposed by kernel)</td>
+<td style="text-align: center;">❌</td>
+</tr>
+</tbody>
+</table>
+<p>Legend: ✅ available · ⚠️ available when the hardware/kernel exposes
+the underlying sensor · ❌ not available (omitted).</p>
+<blockquote>
+<p><strong>Note on <code>apple_system_power_watts</code> via
+RAPL:</strong> RAPL reports cumulative energy, so power is computed from
+the delta between two scrapes. The first scrape after start primes the
+counter and reports no value; subsequent scrapes report watts.</p>
+</blockquote>
+<h2 id="configuration">Configuration</h2>
+<h3 id="command-line-options">Command Line Options</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--listen</code></td>
+<td><code>127.0.0.1:9101</code></td>
+<td>Address to listen on</td>
+</tr>
+<tr class="even">
+<td><code>--metrics-path</code></td>
+<td><code>/metrics</code></td>
+<td>Metrics endpoint path</td>
+</tr>
+<tr class="odd">
+<td><code>--log-level</code></td>
+<td><code>info</code></td>
+<td>Log level (debug/info/warn/error)</td>
+</tr>
+<tr class="even">
+<td><code>--enable-iokit</code></td>
+<td><code>true</code></td>
+<td>Enable IOKit collector</td>
+</tr>
+<tr class="odd">
+<td><code>--enable-powermetrics</code></td>
+<td><code>true</code></td>
+<td>Enable powermetrics collector</td>
+</tr>
+<tr class="even">
+<td><code>--enable-metal</code></td>
+<td><code>true</code></td>
+<td>Enable Metal collector</td>
+</tr>
+<tr class="odd">
+<td><code>--powermetrics-path</code></td>
+<td><code>/usr/bin/powermetrics</code></td>
+<td>Path to powermetrics</td>
+</tr>
+<tr class="even">
+<td><code>--powermetrics-interval</code></td>
+<td><code>1s</code></td>
+<td>Powermetrics sample interval</td>
+</tr>
+</tbody>
+</table>
+<h2 id="prometheus-configuration">Prometheus Configuration</h2>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">scrape_configs</span><span class="kw">:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> </span><span class="fu">job_name</span><span class="kw">:</span><span class="at"> </span><span class="st">&#39;apple-silicon&#39;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">static_configs</span><span class="kw">:</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">targets</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="st">&#39;localhost:9101&#39;</span><span class="kw">]</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">scrape_interval</span><span class="kw">:</span><span class="at"> 15s</span></span></code></pre></div>
+<h2 id="grafana-dashboards">Grafana Dashboards</h2>
+<p>Import the dashboards from the project root <code>dashboards/</code>
+directory:</p>
+<ul>
+<li><code>fleet-overview.json</code> — cluster-wide GPU heatmap,
+throughput, and thermal status</li>
+<li><code>node-deep-dive.json</code> — per-node GPU, CPU, thermal, and
+LLM performance</li>
+<li><code>quality-monitor.json</code> — hallucination risk scoring and
+quality signals</li>
+</ul>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="permission-denied">Permission Denied</h3>
+<p>The exporter requires root privileges to access hardware metrics:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run as root</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apple-silicon-exporter</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or use LaunchDaemon (recommended for production)</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> launchctl load /Library/LaunchDaemons/com.company.apple-silicon-exporter.plist</span></code></pre></div>
+<h3 id="missing-metrics">Missing Metrics</h3>
+<p>Some metrics require specific conditions:</p>
+<ul>
+<li>GPU metrics require active GPU workload for meaningful values</li>
+<li>Power metrics require powermetrics access (root)</li>
+<li>Metal counters may not be available on all macOS versions</li>
+</ul>
+<h3 id="service-not-starting">Service Not Starting</h3>
+<p>Check logs:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># View logs</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">tail</span> <span class="at">-f</span> /var/log/apple-silicon-exporter/exporter.log</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="fu">tail</span> <span class="at">-f</span> /var/log/apple-silicon-exporter/exporter.err</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Check LaunchDaemon status</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> launchctl list <span class="kw">|</span> <span class="fu">grep</span> apple-silicon</span></code></pre></div>
+<h2 id="development">Development</h2>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> test</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run with coverage</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> test-coverage</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Lint</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> lint</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Format</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> fmt</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Run in dev mode</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> run</span></code></pre></div>
+<h2 id="architecture">Architecture</h2>
+<p>Each sub-collector package exposes a common set of types and a
+<code>Collect()</code> method. Platform-specific implementations are
+selected at compile time via build tags (<code>//go:build darwin</code>
+/ <code>//go:build linux</code>), so <code>collector.go</code> is
+platform-agnostic and only emits metrics that the active platform
+reports as available.</p>
+<pre><code>apple-silicon-exporter/
+├── cmd/exporter/             # Main entry point (pflag CLI, HTTP server)
+├── internal/
+│   ├── collector/            # Platform-agnostic Prometheus collector
+│   ├── chip/                 # Chip family/variant detection
+│   │   ├── chip.go           #   generic brand-string parser (shared)
+│   │   ├── chip_darwin.go    #   sysctl machdep.cpu.brand_string / hw.model
+│   │   └── chip_linux.go     #   /proc/device-tree, /proc/cpuinfo
+│   ├── iokit/                # GPU + thermal
+│   │   ├── types.go          #   shared metric types
+│   │   ├── iokit_darwin.go   #   IOKit/CoreFoundation bindings (CGO)
+│   │   └── iokit_linux.go    #   /sys/class/hwmon, /sys/class/drm
+│   ├── metal/                # GPU (macOS only)
+│   │   ├── types.go
+│   │   ├── metal_darwin.go   #   Metal framework bindings (CGO)
+│   │   └── metal_linux.go    #   no-op (returns unsupported)
+│   ├── powermetrics/         # Power
+│   │   ├── types.go
+│   │   ├── powermetrics_darwin.go  # parses `powermetrics` JSON
+│   │   └── powermetrics_linux.go   # hwmon power*_input / RAPL powercap
+│   └── system/               # CPU + memory
+│       ├── types.go
+│       ├── system_darwin.go  #   sysctl / vm_stat
+│       └── system_linux.go   #   /proc/stat, /proc/meminfo, /proc/loadavg
+├── .github/workflows/ci.yml  # CI: build/vet/test/gofmt/golangci-lint (linux + macos)
+├── Makefile                  # Cross-compile, test, lint, fmt targets
+└── go.mod / go.sum           # Go 1.23+ module</code></pre>
+<h3 id="build-targets">Build Targets</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Target</th>
+<th>GOOS/GOARCH</th>
+<th>CGO</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>make build</code></td>
+<td>host</td>
+<td>auto</td>
+<td>CGO on macOS, off on Linux</td>
+</tr>
+<tr class="even">
+<td><code>make build-darwin-arm64</code></td>
+<td>darwin/arm64</td>
+<td>1</td>
+<td>Requires macOS SDK (build on a Mac)</td>
+</tr>
+<tr class="odd">
+<td><code>make build-linux-arm64</code></td>
+<td>linux/arm64</td>
+<td>0</td>
+<td>Asahi Linux / ARM64</td>
+</tr>
+<tr class="even">
+<td><code>make build-linux-amd64</code></td>
+<td>linux/amd64</td>
+<td>0</td>
+<td>Generic x86-64</td>
+</tr>
+<tr class="odd">
+<td><code>make build-all</code></td>
+<td>all of the above</td>
+<td>—</td>
+<td>darwin target only succeeds on a Mac</td>
+</tr>
+<tr class="even">
+<td><code>make release</code></td>
+<td>all</td>
+<td>—</td>
+<td>Packages tarballs into <code>dist/</code></td>
+</tr>
+</tbody>
+</table>
+<p>Quality targets: <code>make check</code> runs <code>fmt-check</code>
++ <code>vet</code> + <code>test</code>; <code>make lint</code> runs
+<code>golangci-lint</code>.</p>
+<h3 id="data-collection-methods">Data Collection Methods</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Data</th>
+<th>macOS source</th>
+<th>Linux source</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Chip family/variant</td>
+<td><code>sysctl machdep.cpu.brand_string</code></td>
+<td><code>/proc/device-tree/{model,compatible}</code>,
+<code>/proc/cpuinfo</code></td>
+</tr>
+<tr class="even">
+<td>GPU utilization</td>
+<td>IOKit / Metal</td>
+<td>— (not exposed)</td>
+</tr>
+<tr class="odd">
+<td>GPU memory</td>
+<td>IOKit</td>
+<td>—</td>
+</tr>
+<tr class="even">
+<td>GPU temperature</td>
+<td>IOKit / SMC</td>
+<td><code>/sys/class/hwmon</code> (GPU sensor)</td>
+</tr>
+<tr class="odd">
+<td>GPU/CPU/ANE power</td>
+<td><code>powermetrics</code></td>
+<td>— (per-domain power not exposed)</td>
+</tr>
+<tr class="even">
+<td>System power</td>
+<td><code>powermetrics</code></td>
+<td>hwmon <code>power*_input</code> or RAPL powercap</td>
+</tr>
+<tr class="odd">
+<td>Thermal pressure</td>
+<td>IOKit</td>
+<td>— (not exposed)</td>
+</tr>
+<tr class="even">
+<td>CPU/memory</td>
+<td>sysctl, vm_stat</td>
+<td><code>/proc/stat</code>, <code>/proc/meminfo</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="license">License</h2>
+<p>Apache 2.0</p>
+</body>
+</html>
