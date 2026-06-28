@@ -1,0 +1,142 @@
+groups:
+
+  - name: platform_backend_uptime
+    rules:
+
+      - alert: VictoriaMetricsDown
+        expr: up{job="victoria-metrics"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          pagerduty: trigger
+        annotations:
+          summary: "VictoriaMetrics is unreachable"
+          description: "Prometheus scrape of victoria-metrics has been failing for >2 minutes. Metrics storage is unavailable — dashboards and alerting rules relying on remote_write data will be stale."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/victoria-metrics.md"
+
+      - alert: LokiDown
+        expr: up{job="loki"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          pagerduty: trigger
+        annotations:
+          summary: "Loki is unreachable"
+          description: "Prometheus scrape of loki has been failing for >2 minutes. Log ingestion and querying are unavailable."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/loki.md"
+
+      - alert: OtelCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          pagerduty: trigger
+        annotations:
+          summary: "OTEL Collector gateway is unreachable"
+          description: "Prometheus scrape of otel-collector has been failing for >2 minutes. All node telemetry (metrics, logs, traces) is no longer flowing through the gateway."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/otel-collector.md"
+
+      - alert: AlertmanagerDown
+        expr: up{job="alertmanager"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          pagerduty: trigger
+        annotations:
+          summary: "Alertmanager is unreachable"
+          description: "Prometheus scrape of alertmanager has been failing for >2 minutes. Alert notifications will not fire while this is down."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/alertmanager.md"
+
+      - alert: TempoDown
+        expr: up{job="tempo"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          pagerduty: trigger
+        annotations:
+          summary: "Tempo trace backend is unreachable"
+          description: "Prometheus scrape of tempo has been failing for >2 minutes. Distributed tracing ingestion and querying are unavailable."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/tempo.md"
+
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          pagerduty: trigger
+        annotations:
+          summary: "Prometheus is unreachable"
+          description: "Prometheus self-scrape has been failing for >2 minutes. Rule evaluation and alerting are degraded."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/prometheus.md"
+
+  - name: otel_gateway_pipeline_health
+    rules:
+
+      - alert: OtelExporterSendFailures
+        expr: rate(otelcol_exporter_send_failed_metric_points[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          pagerduty: trigger
+        annotations:
+          summary: "OTEL Collector exporter is dropping metric points"
+          description: "otelcol_exporter_send_failed_metric_points has a non-zero rate over the last 5 minutes on exporter={{ $labels.exporter }}. Metrics are being lost in transit to the remote write destination."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/otel-collector.md"
+
+      - alert: OtelExporterQueueNearFull
+        expr: otelcol_exporter_queue_size / otelcol_exporter_queue_capacity > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTEL Collector exporter queue is >80% full"
+          description: "Exporter {{ $labels.exporter }} queue fill ratio is {{ $value | humanizePercentage }}. If the queue fills completely, metric points will be dropped."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/otel-collector.md"
+
+      - alert: OtelProcessorRefusingMetrics
+        expr: rate(otelcol_processor_refused_metric_points[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTEL Collector processor is refusing metric points"
+          description: "Processor {{ $labels.processor }} is refusing metric points (rate > 0 over 5 min). This indicates back-pressure or a configuration issue in the pipeline."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/otel-collector.md"
+
+      - alert: OtelReceiverRefusingMetrics
+        expr: rate(otelcol_receiver_refused_metric_points[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTEL Collector receiver is refusing metric points"
+          description: "Receiver {{ $labels.receiver }} is refusing incoming metric points (rate > 0 over 5 min). Node exporters may be silently losing telemetry."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/otel-collector.md"
+
+  - name: prometheus_remote_write_health
+    rules:
+
+      - alert: PrometheusRemoteWriteFailures
+        expr: rate(prometheus_remote_storage_failed_samples_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          pagerduty: trigger
+        annotations:
+          summary: "Prometheus remote_write is failing"
+          description: "prometheus_remote_storage_failed_samples_total has a non-zero rate to remote {{ $labels.remote_name }} ({{ $labels.url }}). Samples are being dropped and will not reach VictoriaMetrics."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/prometheus.md"
+
+      - alert: PrometheusRemoteWriteLag
+        expr: >
+          prometheus_remote_storage_highest_timestamp_in_seconds
+            - ignoring(remote_name, url)
+          prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+          > 120
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus remote_write queue is lagging"
+          description: "Remote write queue for {{ $labels.remote_name }} ({{ $labels.url }}) is {{ $value | humanizeDuration }} behind the current scrape head. Alerting rules evaluated against VictoriaMetrics data may be stale."
+          runbook_url: "https://github.com/hellodk/hydra/blob/master/docs/runbooks/prometheus.md"
