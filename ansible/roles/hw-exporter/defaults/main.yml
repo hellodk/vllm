@@ -1,0 +1,4 @@
+# ansible/roles/hw-exporter/defaults/main.yml
+---
+# Host path for the custom DCGM counter CSV mounted into dcgm-exporter (SRE-4).
+dcgm_custom_csv_host_path: /etc/dcgm-exporter/hydra-custom.csv

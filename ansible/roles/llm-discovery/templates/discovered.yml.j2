@@ -1,18 +1,24 @@
 # Written by llm-discovery role on {{ ansible_date_time.iso8601 }}
 # Re-run: ansible-playbook site.yml --tags llm-discovery,monitoring-cfg
+# (or mac-monitoring.yml on macOS). Consumed by the unified OTEL template.
 node_id: {{ hydra_node_id }}
 hostname: {{ hydra_hostname }}
 gpu_provider: {{ hydra_gpu_provider }}
 os: {{ hydra_os }}
 pools: {{ hydra_pools | to_yaml | trim }}
 
-{% if _endpoints_to_probe | default([]) | length > 0 %}
+{% if (_discovered_providers | default([])) | length > 0 %}
 providers:
-{% for ep in _endpoints_to_probe %}
-  - name: {{ ep.provider }}
+{% for ep in _discovered_providers %}
+  - name: {{ ep.name }}
     url: {{ ep.url }}
-    port: "{{ ep.port | default(ep.url | regex_replace('.*:(\\d+).*', '\\1')) }}"
-    status: up
+    port: "{{ ep.port }}"
+    metrics_path: {{ ep.metrics_path | default('/metrics') }}
+    scheme: {{ ep.scheme | default('http') }}
+    status: {{ ep.status | default('up') }}
+{% if ep.api_key is defined and ep.api_key %}
+    api_key: {{ ep.api_key }}
+{% endif %}
 {% endfor %}
 {% else %}
 providers: []

@@ -30,20 +30,35 @@
   set_fact:
     otel_tarball: "otelcol-contrib_{{ hydra_versions.otel_agent }}_linux_arm64.tar.gz"
     otel_binary_path: /usr/local/bin/otelcol-contrib
+    otel_arch_key: linux_arm64
   when: hydra_os == "linux" and ansible_architecture in ["aarch64", "arm64"]
 
 - name: Set OTEL agent tarball name (Linux x86_64)
   set_fact:
     otel_tarball: "otelcol-contrib_{{ hydra_versions.otel_agent }}_linux_amd64.tar.gz"
     otel_binary_path: /usr/local/bin/otelcol-contrib
+    otel_arch_key: linux_amd64
   when: hydra_os == "linux" and ansible_architecture == "x86_64"
 
 - name: Assert OTEL agent tarball is pre-staged (Linux)
   local_action:
     module: stat
     path: "{{ role_path }}/files/{{ otel_tarball }}"
+    checksum_algorithm: sha256
+    get_checksum: true
   register: _otel_tarball_stat
   when: hydra_os == "linux"
+
+- name: Verify OTEL agent tarball sha256 against hydra_artifact_checksums (Linux, ANS-4)
+  assert:
+    that:
+      - hydra_artifact_checksums['otel_agent'][otel_arch_key] is defined
+      - _otel_tarball_stat.stat.checksum == hydra_artifact_checksums['otel_agent'][otel_arch_key]
+    fail_msg: >-
+      sha256 mismatch for {{ otel_tarball }}:
+      staged={{ _otel_tarball_stat.stat.checksum | default('<missing>') }}
+      expected={{ hydra_artifact_checksums['otel_agent'][otel_arch_key] | default('<unpinned>') }}
+  when: hydra_os == "linux" and _otel_tarball_stat.stat.exists
 
 - name: Fail if OTEL agent tarball is missing (Linux)
   fail:
@@ -86,9 +101,10 @@
     otel_download_url: >-
       {{ otel_agent_download_base }}/v{{ hydra_versions.otel_agent }}/otelcol-contrib_{{ hydra_versions.otel_agent }}_darwin_arm64.tar.gz
     otel_binary_path: /usr/local/bin/otelcol-contrib
+    otel_arch_key: darwin_arm64
   when: hydra_os == "macos"
 
-- name: Download and extract OTEL agent (macOS)
+- name: Download and extract OTEL agent (macOS, sha256-checked — ANS-4)
   unarchive:
     src: "{{ otel_download_url }}"
     dest: /usr/local/bin
@@ -105,6 +121,19 @@
     path: "{{ otel_binary_path }}"
     mode: "0755"
   become: true
+
+- name: Assert OTEL binary version matches the pin (ANS-4)
+  command: "{{ otel_binary_path }} --version"
+  become: true
+  register: _otel_installed_ver
+  changed_when: false
+
+- name: Verify reported OTEL version contains hydra_versions.otel_agent
+  assert:
+    that: hydra_versions.otel_agent in _otel_installed_ver.stdout
+    fail_msg: >-
+      otelcol-contrib reports '{{ _otel_installed_ver.stdout | trim }}',
+      expected pin {{ hydra_versions.otel_agent }}.
 
 - name: Install systemd service unit (Linux)
   template:

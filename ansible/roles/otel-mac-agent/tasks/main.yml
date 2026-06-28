@@ -45,9 +45,10 @@
   import_tasks: install.yml
   tags: [install]
 
-- name: Install apple-silicon-exporter (offline)
-  import_tasks: apple_exporter.yml
-  tags: [install, exporter]
+# NOTE: apple-silicon-exporter is now owned by the dedicated
+# `apple-silicon-exporter` role (ANS-7), invoked from mac-monitoring.yml before
+# this role. otel-mac-agent no longer installs the exporter or its plist; it only
+# verifies the daemon is reachable (see service.yml).
 
 - name: Render OTEL config and environment
   import_tasks: configure.yml

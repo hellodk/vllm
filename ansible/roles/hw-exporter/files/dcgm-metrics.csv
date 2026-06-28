@@ -1,0 +1,20 @@
+# Hydra custom DCGM counter set (SRE-4)
+# Mounted into dcgm-exporter and selected with `-f`. Extends the default counters
+# with NVLink / PCIe / SM / DRAM profiling fields needed to see collective-comms
+# and paged-attention pressure on tensor-parallel nodes.
+# Format: DCGM FIELD, Prometheus metric type, help string
+DCGM_FI_DEV_GPU_UTIL,                gauge,   GPU utilization (%).
+DCGM_FI_DEV_MEM_COPY_UTIL,           gauge,   Memory copy utilization (%).
+DCGM_FI_DEV_FB_USED,                 gauge,   Framebuffer memory used (MiB).
+DCGM_FI_DEV_FB_FREE,                 gauge,   Framebuffer memory free (MiB).
+DCGM_FI_DEV_GPU_TEMP,                gauge,   GPU temperature (C).
+DCGM_FI_DEV_POWER_USAGE,             gauge,   Power draw (W).
+DCGM_FI_PROF_GR_ENGINE_ACTIVE,       gauge,   Graphics engine active ratio.
+DCGM_FI_PROF_SM_ACTIVE,              gauge,   SM active ratio.
+DCGM_FI_PROF_SM_OCCUPANCY,           gauge,   SM occupancy ratio.
+DCGM_FI_PROF_DRAM_ACTIVE,            gauge,   Device memory (DRAM) active ratio.
+DCGM_FI_PROF_PIPE_TENSOR_ACTIVE,     gauge,   Tensor pipe active ratio.
+DCGM_FI_PROF_PCIE_TX_BYTES,          counter, PCIe TX bytes.
+DCGM_FI_PROF_PCIE_RX_BYTES,          counter, PCIe RX bytes.
+DCGM_FI_PROF_NVLINK_TX_BYTES,        counter, NVLink TX bytes.
+DCGM_FI_PROF_NVLINK_RX_BYTES,        counter, NVLink RX bytes.

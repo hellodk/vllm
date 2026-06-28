@@ -1,0 +1,23 @@
+# ansible/roles/apple-silicon-exporter/defaults/main.yml
+# Dedicated role for the cross-platform Apple Silicon exporter (ANS-7).
+# Installs a PRE-BUILT, sha256-verified binary from air-gapped files/ — never
+# builds from source and never reaches the internet. Owns its LaunchDaemon /
+# systemd unit. Pairs with the exporter delivered on
+# feat/silicon-exporter-m1-m5-linux. Do NOT modify the exporter Go here.
+---
+apple_silicon_exporter_version: "{{ hydra_versions.apple_silicon_exporter | default('1.0.0') }}"
+
+# Listen address — keep the port in sync with hw_exporter_ports.apple (9101) so
+# the unified OTEL template's prometheus/apple_hw receiver finds it.
+apple_silicon_exporter_listen_host: "127.0.0.1"
+apple_silicon_exporter_port: "{{ apple_exporter_port | default(hw_exporter_ports['apple'] | default(9101)) }}"
+
+apple_silicon_exporter_bin: /usr/local/bin/apple-silicon-exporter
+apple_silicon_exporter_label: com.hydra.apple-exporter
+apple_silicon_exporter_log_dir: /var/log/hydra
+
+# Feature flags passed to the exporter binary.
+apple_silicon_exporter_flags:
+  - "--enable-iokit"
+  - "--enable-powermetrics"
+  - "--enable-metal"

@@ -1,0 +1,20 @@
+# ansible/roles/apple-silicon-exporter/handlers/main.yml
+---
+- name: restart apple exporter
+  block:
+    - name: Reload + restart apple-silicon-exporter (Linux)
+      ansible.builtin.systemd:
+        name: apple-silicon-exporter
+        state: restarted
+        enabled: true
+        daemon_reload: true
+      become: true
+      when: ansible_system == "Linux"
+
+    - name: Bootout + bootstrap apple-silicon-exporter LaunchDaemon (macOS)
+      ansible.builtin.shell: |
+        launchctl bootout system/{{ apple_silicon_exporter_label }} 2>/dev/null || true
+        launchctl bootstrap system /Library/LaunchDaemons/{{ apple_silicon_exporter_label }}.plist
+      become: true
+      changed_when: false
+      when: ansible_system == "Darwin"

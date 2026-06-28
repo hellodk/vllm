@@ -1,0 +1,6 @@
+# TLS key material is staged locally, never committed.
+*.crt
+*.key
+*.pem
+!README.md
+!.gitignore

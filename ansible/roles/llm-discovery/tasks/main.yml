@@ -1,74 +1,118 @@
 # ansible/roles/llm-discovery/tasks/main.yml
+# Registry-driven discovery (ANS-6). The llm_engine_catalog (group_vars) supplies
+# port/scheme/health_path/metrics_path/auth per engine. Discovery either enriches
+# the explicitly-configured hydra_llm_endpoints or auto-probes the catalog, then
+# writes /etc/hydra/discovered.yml carrying metrics_path + scheme + bearer auth so
+# the unified OTEL template can scrape each engine correctly (incl. SGLang — LLM-7).
 ---
-# Step A: Build endpoint list — use cluster.yml config or auto-probe
-- name: Use explicitly configured endpoints from cluster.yml
-  set_fact:
-    _endpoints_to_probe: "{{ hydra_llm_endpoints }}"
-  when: hydra_llm_endpoints | length > 0
+- name: Initialise discovered provider list
+  ansible.builtin.set_fact:
+    _discovered_providers: []
 
-- name: Initialise empty probe list (no endpoints configured)
-  set_fact:
-    _endpoints_to_probe: []
-    _probe_result: { results: [] }
-  when: hydra_llm_endpoints | length == 0
+# ── Path A: explicit endpoints from cluster.yml (enrich via catalog) ──────────
+- name: Enrich each configured endpoint with catalog metadata
+  vars:
+    _cat: "{{ llm_engine_catalog[item.provider] | default({}) }}"
+    _port: "{{ item.port | default(item.url | regex_search(':([0-9]+)', '\\1') | default(_cat.port | default('0'))) }}"
+    _auth: "{{ _cat.auth | default('none') }}"
+  ansible.builtin.set_fact:
+    _discovered_providers: >-
+      {{ _discovered_providers + [{
+        'name': item.provider,
+        'url': item.url | default((_cat.scheme | default('http')) ~ '://127.0.0.1:' ~ _port ~ '/v1'),
+        'port': _port | string,
+        'metrics_path': _cat.metrics_path | default('/metrics'),
+        'scheme': _cat.scheme | default('http'),
+        'api_key': (item.api_key if (item.api_key is defined and item.api_key) else
+                    (vault_llm_provider_api_keys[item.provider] | default('') if _auth == 'bearer' else '')),
+        'status': 'configured'
+      }] }}
+  loop: "{{ hydra_llm_endpoints | default([]) }}"
+  loop_control:
+    label: "{{ item.provider }}"
+  when: (hydra_llm_endpoints | default([])) | length > 0
 
-- name: Probe default port {{ item.key }} for provider {{ item.value }}
-  uri:
-    url: "http://127.0.0.1:{{ item.key }}/health"
+# ── Path B: no explicit endpoints → auto-probe the catalog ────────────────────
+- name: Auto-probe catalog engines (health check)
+  ansible.builtin.uri:
+    url: "{{ item.value.scheme | default('http') }}://127.0.0.1:{{ item.value.port }}{{ item.value.health_path | default('/health') }}"
     status_code: [200, 404, 405]
     timeout: 2
   register: _probe_result
   ignore_errors: true
-  loop: "{{ llm_probe_ports | dict2items }}"
-  when: hydra_llm_endpoints | length == 0
+  loop: "{{ llm_engine_catalog | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: (hydra_llm_endpoints | default([])) | length == 0
 
-- name: Build discovered endpoint list from successful probes
-  set_fact:
-    _endpoints_to_probe: >-
-      {{ _endpoints_to_probe + [{'provider': item.item.value,
-         'url': 'http://127.0.0.1:' + item.item.key | string + '/v1',
-         'port': item.item.key | string,
-         'api_key': none}] }}
+- name: Build discovered list from successful probes
+  vars:
+    _cat: "{{ item.item.value }}"
+    _prov: "{{ item.item.key }}"
+    _auth: "{{ _cat.auth | default('none') }}"
+  ansible.builtin.set_fact:
+    _discovered_providers: >-
+      {{ _discovered_providers + [{
+        'name': _prov,
+        'url': (_cat.scheme | default('http')) ~ '://127.0.0.1:' ~ _cat.port ~ '/v1',
+        'port': _cat.port | string,
+        'metrics_path': _cat.metrics_path | default('/metrics'),
+        'scheme': _cat.scheme | default('http'),
+        'api_key': (vault_llm_provider_api_keys[_prov] | default('') if _auth == 'bearer' else ''),
+        'status': 'up'
+      }] }}
   loop: "{{ _probe_result.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.key | default('?') }}"
   when:
-    - hydra_llm_endpoints | length == 0
-    - not item.failed | default(true)
-    - item.status | default(0) in [200, 404, 405]
+    - (hydra_llm_endpoints | default([])) | length == 0
+    - not (item.failed | default(true))
+    - (item.status | default(0)) in [200, 404, 405]
 
-# MLX-presence signal. Works under BOTH inventories:
-#   - static inventories/llm/hosts.yml sets `llm_frameworks` per pool (deployment view)
-#   - dynamic cluster.yml (inventory_plugin.py) sets `hydra_llm_endpoints` (runtime view);
-#     an MLX node is one declaring a `vllm-mlx` endpoint there.
-# Both source vars are guarded with default([]) since each only exists under one inventory.
+# ── MLX presence signal (works under both inventories) ────────────────────────
+# Static inventories/llm/hosts.yml sets `llm_frameworks` per pool; dynamic
+# cluster.yml sets hydra_llm_endpoints (an MLX node declares a vllm-mlx endpoint).
 - name: Determine whether MLX runs on this node
-  set_fact:
+  ansible.builtin.set_fact:
     _mlx_on_node: >-
       {{ ('mlx' in (llm_frameworks | default([])))
-         or (hydra_llm_endpoints | default([])
+         or ((hydra_llm_endpoints | default([]))
              | selectattr('provider', 'equalto', 'vllm-mlx') | list | length > 0) }}
 
-- name: Add MLX /metrics endpoint to discovery (when MLX deployed on this node)
-  set_fact:
-    _endpoints_to_probe: >-
-      {{ _endpoints_to_probe + [{'provider': 'mlx',
-         'url': 'http://127.0.0.1:' + mlx_scrape_port | string + '/v1',
-         'port': mlx_scrape_port | string,
-         'api_key': none}] }}
+- name: Add MLX /metrics endpoint (when MLX deployed on this node)
+  vars:
+    _cat: "{{ llm_engine_catalog['mlx'] | default({}) }}"
+  ansible.builtin.set_fact:
+    _discovered_providers: >-
+      {{ _discovered_providers + [{
+        'name': 'mlx',
+        'url': 'http://127.0.0.1:' ~ mlx_scrape_port ~ '/v1',
+        'port': mlx_scrape_port | string,
+        'metrics_path': _cat.metrics_path | default('/metrics'),
+        'scheme': _cat.scheme | default('http'),
+        'api_key': '',
+        'status': 'up'
+      }] }}
   when: _mlx_on_node | bool
 
-- name: Add MLX log-exporter /metrics endpoint to discovery (when MLX deployed on this node)
-  set_fact:
-    _endpoints_to_probe: >-
-      {{ _endpoints_to_probe + [{'provider': 'mlx_errors',
-         'url': 'http://127.0.0.1:' + mlx_logexporter_scrape_port | string + '/metrics',
-         'port': mlx_logexporter_scrape_port | string,
-         'api_key': none}] }}
+- name: Add MLX log-exporter /metrics endpoint (when MLX deployed on this node)
+  ansible.builtin.set_fact:
+    _discovered_providers: >-
+      {{ _discovered_providers + [{
+        'name': 'mlx_errors',
+        'url': 'http://127.0.0.1:' ~ mlx_logexporter_scrape_port ~ '/metrics',
+        'port': mlx_logexporter_scrape_port | string,
+        'metrics_path': '/metrics',
+        'scheme': 'http',
+        'api_key': '',
+        'status': 'up'
+      }] }}
   when: _mlx_on_node | bool
 
-# Step B: Write /etc/hydra/discovered.yml
+# ── Write /etc/hydra/discovered.yml (0640 — may carry bearer tokens) ──────────
 - name: Write /etc/hydra/discovered.yml
-  template:
+  ansible.builtin.template:
     src: discovered.yml.j2
     dest: /etc/hydra/discovered.yml
-    mode: "0644"
+    mode: "0640"
   become: true

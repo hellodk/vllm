@@ -1,0 +1,85 @@
+# ansible/roles/nccl-probe/tasks/main.yml
+# Installs the AllReduce probe on hosts that belong to a tensor_parallel_group,
+# deriving tp_group + rank from group_vars/all tensor_parallel_groups (SRE-4 / LLM-8).
+---
+- name: Compute this node's tensor-parallel group and rank
+  ansible.builtin.set_fact:
+    _tp_group: "{{ item.key }}"
+    _tp_rank: "{{ item.value.index(hydra_node_id) }}"
+  loop: "{{ (tensor_parallel_groups | default({})) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: hydra_node_id in item.value
+
+- name: Skip — node is not part of any tensor-parallel group
+  ansible.builtin.meta: end_host
+  when: _tp_group is not defined
+
+- name: Create nccl-probe directory
+  ansible.builtin.file:
+    path: "{{ nccl_probe_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Ensure textfile-collector directory exists
+  ansible.builtin.file:
+    path: "{{ nccl_probe_textfile_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Install nccl probe script
+  ansible.builtin.copy:
+    src: nccl_probe.sh
+    dest: "{{ nccl_probe_script }}"
+    mode: "0755"
+  become: true
+
+# ── Linux: systemd service + timer ────────────────────────────────────────────
+- name: Install nccl-probe systemd service (Linux)
+  ansible.builtin.template:
+    src: nccl-probe.service.j2
+    dest: /etc/systemd/system/nccl-probe.service
+    mode: "0644"
+  become: true
+  when: ansible_system == "Linux"
+
+- name: Install nccl-probe systemd timer (Linux)
+  ansible.builtin.template:
+    src: nccl-probe.timer.j2
+    dest: /etc/systemd/system/nccl-probe.timer
+    mode: "0644"
+  become: true
+  when: ansible_system == "Linux"
+
+- name: Enable nccl-probe timer (Linux)
+  ansible.builtin.systemd:
+    name: nccl-probe.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: ansible_system == "Linux"
+
+# ── macOS: launchd periodic job ───────────────────────────────────────────────
+- name: Install nccl-probe LaunchDaemon (macOS)
+  ansible.builtin.template:
+    src: com.hydra.nccl-probe.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.nccl-probe.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  when: ansible_system == "Darwin"
+
+- name: Bootstrap nccl-probe LaunchDaemon (macOS)
+  ansible.builtin.command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.nccl-probe.plist
+  become: true
+  changed_when: false
+  failed_when: false   # tolerate "service already bootstrapped" on re-run
+  when: ansible_system == "Darwin"
+
+# TODO(SRE-4): owned by monitoring agent — the busbw/latency recording rules,
+# the AllReduce SLO + regression alert, and the NVLink/AllReduce dashboard live
+# in monitoring/ and are out of scope for this ansible branch.

@@ -1,0 +1,20 @@
+# ansible/roles/mlx-rdma-exporter/handlers/main.yml
+---
+- name: restart mlx-rdma-exporter
+  block:
+    - name: Restart mlx-rdma-exporter (Linux)
+      ansible.builtin.systemd:
+        name: mlx-rdma-exporter
+        state: restarted
+        enabled: true
+        daemon_reload: true
+      become: true
+      when: ansible_system == "Linux"
+
+    - name: Bootout + bootstrap mlx-rdma-exporter (macOS)
+      ansible.builtin.shell: |
+        launchctl bootout system/{{ mlx_rdma_exporter_label }} 2>/dev/null || true
+        launchctl bootstrap system /Library/LaunchDaemons/{{ mlx_rdma_exporter_label }}.plist
+      become: true
+      changed_when: false
+      when: ansible_system == "Darwin"

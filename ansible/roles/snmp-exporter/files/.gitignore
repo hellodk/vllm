@@ -1,0 +1,4 @@
+# Air-gapped binaries are staged locally, never committed.
+snmp_exporter_*
+!README.md
+!.gitignore

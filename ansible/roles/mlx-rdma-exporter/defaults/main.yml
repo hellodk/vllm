@@ -1,0 +1,14 @@
+# ansible/roles/mlx-rdma-exporter/defaults/main.yml
+# Installs the RDMA/RoCE fabric exporter on largepool nodes (SRE-3). Emits
+# roce_hardware_present plus PFC/ECN/CNP/buffer counters for the Thunderbolt
+# ConnectX path on Apple Silicon (and ib* on Linux). Air-gapped prebuilt binary.
+#
+# NOTE: the exporter binary itself (Go) is owned by the monitoring agent; this
+# role only stages and runs the prebuilt artifact. See files/README.md.
+---
+mlx_rdma_exporter_version: "{{ hydra_versions.mlx_rdma_exporter | default('0.1.0') }}"
+mlx_rdma_exporter_listen_host: "127.0.0.1"
+mlx_rdma_exporter_port: 9105
+mlx_rdma_exporter_bin: /usr/local/bin/mlx-rdma-exporter
+mlx_rdma_exporter_label: com.hydra.mlx-rdma-exporter
+mlx_rdma_exporter_log_dir: /var/log/hydra

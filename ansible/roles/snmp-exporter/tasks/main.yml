@@ -1,0 +1,66 @@
+# ansible/roles/snmp-exporter/tasks/main.yml
+# Stage + run prometheus snmp_exporter for the fabric switch (SRE-3, Linux only).
+---
+- name: Assert snmp-exporter runs on Linux
+  ansible.builtin.assert:
+    that: ansible_system == "Linux"
+    fail_msg: "snmp-exporter is Linux-only (runs on a services node)."
+
+- name: Resolve per-arch artifact suffix
+  ansible.builtin.set_fact:
+    _snmp_arch: "{{ 'linux_arm64' if ansible_architecture in ['aarch64', 'arm64'] else 'linux_amd64' }}"
+
+- name: Set artifact name
+  ansible.builtin.set_fact:
+    _snmp_artifact: "snmp_exporter_{{ snmp_exporter_version }}_{{ _snmp_arch }}"
+
+- name: Assert prebuilt binary is staged in files/ (air-gap)
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/{{ _snmp_artifact }}"
+  register: _snmp_local
+
+- name: Fail with staging instructions when binary is missing
+  ansible.builtin.fail:
+    msg: |
+      Missing pre-staged binary: {{ role_path }}/files/{{ _snmp_artifact }}
+      Download prometheus snmp_exporter for this arch and stage it here.
+      See files/README.md.
+  when: not _snmp_local.stat.exists
+
+- name: Install snmp_exporter binary
+  ansible.builtin.copy:
+    src: "{{ _snmp_artifact }}"
+    dest: "{{ snmp_exporter_bin }}"
+    mode: "0755"
+  become: true
+  notify: restart snmp-exporter
+
+- name: Render snmp_exporter config (switch modules)
+  ansible.builtin.template:
+    src: snmp.yml.j2
+    dest: "{{ snmp_exporter_config }}"
+    mode: "0644"
+  become: true
+  notify: restart snmp-exporter
+
+- name: Install snmp-exporter systemd unit
+  ansible.builtin.template:
+    src: snmp-exporter.service.j2
+    dest: /etc/systemd/system/snmp-exporter.service
+    mode: "0644"
+  become: true
+  notify: restart snmp-exporter
+
+- name: Enable and start snmp-exporter
+  ansible.builtin.systemd:
+    name: snmp-exporter
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+# TODO(SRE-3 / SRE-5): owned by monitoring agent — the prometheus scrape job that
+# polls this snmp_exporter (and the MinIO scrape) live in monitoring/prometheus
+# and are explicitly OUT of scope for this ansible branch.

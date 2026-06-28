@@ -51,6 +51,15 @@
     <string>0</string>
     <key>HYDRA_MLX_MAX_KV_SIZE</key>
     <string>{{ mlx_max_kv_size }}</string>
+    <!-- LLM-6: OTLP trace export to the local OTEL agent → gateway -->
+    <key>OTEL_TRACES_EXPORTER</key>
+    <string>otlp</string>
+    <key>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</key>
+    <string>{{ otel_traces_http_endpoint | default('http://127.0.0.1:4318') }}/v1/traces</string>
+    <key>OTEL_SERVICE_NAME</key>
+    <string>mlx-server</string>
+    <key>OTEL_RESOURCE_ATTRIBUTES</key>
+    <string>node_id={{ hydra_node_id | default(inventory_hostname) }},component=mlx</string>
   </dict>
 
   <key>RunAtLoad</key><true/>

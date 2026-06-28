@@ -1,0 +1,11 @@
+[Unit]
+# managed-by: nccl-probe (SRE-4)
+Description=Run the Hydra AllReduce probe periodically
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec={{ nccl_probe_interval_seconds }}
+AccuracySec=15
+
+[Install]
+WantedBy=timers.target

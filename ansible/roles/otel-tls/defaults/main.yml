@@ -1,0 +1,16 @@
+# ansible/roles/otel-tls/defaults/main.yml
+# Distributes the mTLS material the unified OTEL agent uses to talk to the
+# gateway / VictoriaMetrics / Fleet OTLP (ANS-5). Air-gapped: PEM files are staged
+# in this role's files/ and copied to the node — nothing is generated on target.
+---
+otel_tls_insecure: false
+otel_tls_dir: /etc/hydra/tls
+otel_tls_ca_file: "{{ otel_tls_dir }}/ca.crt"
+otel_tls_cert_file: "{{ otel_tls_dir }}/agent.crt"
+otel_tls_key_file: "{{ otel_tls_dir }}/agent.key"
+
+# Staged source filenames under files/. The agent cert/key are per-node, named by
+# node_id; fall back to a shared agent cert if a per-node file is not staged.
+otel_tls_ca_src: "ca.crt"
+otel_tls_cert_src: "{{ hydra_node_id | default(inventory_hostname) }}.crt"
+otel_tls_key_src: "{{ hydra_node_id | default(inventory_hostname) }}.key"

@@ -1,0 +1,4 @@
+# Air-gapped binaries are staged locally, never committed.
+mlx-rdma-exporter_*
+!README.md
+!.gitignore

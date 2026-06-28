@@ -1,6 +1,9 @@
 # ansible/roles/hw-exporter/tasks/main.yml
+# Linux-only hardware exporters (ANS-1/-7). hw-exporter is gated to Linux in
+# site.yml; macOS Apple Silicon nodes are owned by the dedicated
+# `apple-silicon-exporter` role via mac-monitoring.yml.
 ---
-- name: Install apple-silicon-exporter
+- name: Deprecated Apple path — owned by apple-silicon-exporter role (ANS-7)
   include_tasks: apple.yml
   when: hydra_gpu_provider == "apple"
 

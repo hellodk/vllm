@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/{{ mlx_rdma_exporter_label }}.plist
+  managed-by: mlx-rdma-exporter (SRE-3) — RDMA/RoCE fabric metrics on Thunderbolt
+  ConnectX. Exposes roce_hardware_present + PFC/ECN/CNP counters at
+  {{ mlx_rdma_exporter_listen_host }}:{{ mlx_rdma_exporter_port }}/metrics.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{{ mlx_rdma_exporter_label }}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ mlx_rdma_exporter_bin }}</string>
+    <string>--listen</string>
+    <string>{{ mlx_rdma_exporter_listen_host }}:{{ mlx_rdma_exporter_port }}</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>{{ mlx_rdma_exporter_log_dir }}/mlx-rdma-exporter.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{ mlx_rdma_exporter_log_dir }}/mlx-rdma-exporter-error.log</string>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>

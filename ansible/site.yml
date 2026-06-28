@@ -1,11 +1,35 @@
 # ansible/site.yml
+# Linux-node provisioning (ANS-1). macOS Mac Mini nodes are owned EXCLUSIVELY by
+# ansible/mac-monitoring.yml (otel-mac-agent). base/hw-exporter/monitoring-cfg are
+# gated to Linux so the two paths never both render /etc/hydra/otel-agent-config.yaml
+# or install the same LaunchDaemons (no more last-run-wins drift).
+#
+# See docs/ansible-provisioning-strategy.md for the single-source-of-truth matrix.
 ---
-- name: Deploy Hydra monitoring stack
+- name: Deploy Hydra monitoring stack (Linux nodes)
   hosts: all
   gather_facts: true
   serial: 1
   roles:
-    - { role: base,           tags: [base, all] }
-    - { role: hw-exporter,    tags: [hw-exporter, all] }
-    - { role: llm-discovery,  tags: [llm-discovery, all] }
-    - { role: monitoring-cfg, tags: [monitoring-cfg, all] }
+    - role: base
+      tags: [base]
+      when: hydra_os == "linux"
+    - role: hw-exporter
+      tags: [hw-exporter]
+      when: hydra_os == "linux"
+    # Discovery writes /etc/hydra/discovered.yml; on macOS this runs inside
+    # mac-monitoring.yml instead, so gate it to Linux here to avoid dual ownership.
+    - role: llm-discovery
+      tags: [llm-discovery]
+      when: hydra_os == "linux"
+    # Stage mTLS material before the agent renders its config (ANS-5).
+    - role: otel-tls
+      tags: [otel-tls, tls]
+      when: hydra_os == "linux"
+    - role: monitoring-cfg
+      tags: [monitoring-cfg]
+      when: hydra_os == "linux"
+    # AllReduce probe — self-skips hosts not in a tensor_parallel_group (SRE-4).
+    - role: nccl-probe
+      tags: [nccl-probe]
+      when: hydra_os == "linux"

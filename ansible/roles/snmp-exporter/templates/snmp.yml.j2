@@ -1,0 +1,14 @@
+# {{ snmp_exporter_config }} — managed-by: snmp-exporter (SRE-3)
+# Minimal snmp_exporter module for the RoCE fabric switch ({{ snmp_switch_address }}).
+# Interface + ifXTable counters give per-port traffic; switch-specific PFC/ECN/
+# queue-3-drop OIDs must be added per the switch vendor MIB.
+modules:
+  hydra_fabric_switch:
+    walk:
+      - 1.3.6.1.2.1.2.2      # ifTable (ifInOctets/ifOutOctets/ifErrors)
+      - 1.3.6.1.2.1.31.1.1   # ifXTable (HC counters, ifName)
+      # TODO(SRE-3): owned by monitoring agent — add the vendor PFC/ECN/CNP and
+      # queue-3 drop OIDs (per-priority pause counters) for {{ snmp_switch_address }}.
+    version: 2
+    auth:
+      community: "{{ snmp_community }}"

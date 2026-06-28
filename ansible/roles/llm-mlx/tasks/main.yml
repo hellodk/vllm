@@ -112,6 +112,14 @@
   ignore_errors: true
 
 # ── Log exporter ──────────────────────────────────────────────────────────────
+# LLM-5: for the pure-MLX backends (mlx_lm / mlx_lm_sidecar) the engine emits no
+# throughput/TTFT/TPOT/KV metrics — only the crash counters from this log
+# exporter. The perf sidecar that would emit those on mlx_metrics_port
+# ({{ mlx_metrics_port }}) extends this exporter pattern; llm-discovery already
+# carries `mlx` into discovered.yml so the unified OTEL agent scrapes it.
+# TODO(LLM-5): owned by monitoring agent — the sidecar's metric emission logic
+# (tokens/s, TTFT, KV occupancy vs mlx_max_kv_size) is exporter code in
+# monitoring/ and out of scope for this ansible branch.
 
 - name: Install prometheus-client for log exporter (JFrog)
   pip:

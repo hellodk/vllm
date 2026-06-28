@@ -1,0 +1,59 @@
+# ansible/roles/otel-tls/tasks/main.yml
+# Stage CA + per-node agent cert/key into /etc/hydra/tls (ANS-5). Skipped entirely
+# when otel_tls_insecure is true (dev/lab only).
+---
+- name: TLS distribution skipped (otel_tls_insecure=true — dev/lab only)
+  ansible.builtin.debug:
+    msg: "otel_tls_insecure=true → not staging certs on {{ inventory_hostname }}"
+  when: otel_tls_insecure | bool
+
+- name: Stage mTLS material
+  when: not (otel_tls_insecure | bool)
+  block:
+    - name: Create TLS directory
+      ansible.builtin.file:
+        path: "{{ otel_tls_dir }}"
+        state: directory
+        owner: root
+        group: "{{ 'wheel' if ansible_system == 'Darwin' else 'root' }}"
+        mode: "0750"
+      become: true
+
+    - name: Assert CA + agent cert/key are staged in files/
+      delegate_to: localhost
+      become: false
+      ansible.builtin.stat:
+        path: "{{ role_path }}/files/{{ item }}"
+      register: _tls_src
+      failed_when: not _tls_src.stat.exists
+      loop:
+        - "{{ otel_tls_ca_src }}"
+        - "{{ otel_tls_cert_src }}"
+        - "{{ otel_tls_key_src }}"
+
+    - name: Copy CA certificate
+      ansible.builtin.copy:
+        src: "{{ otel_tls_ca_src }}"
+        dest: "{{ otel_tls_ca_file }}"
+        owner: root
+        mode: "0644"
+      become: true
+      notify: restart otel agent for tls
+
+    - name: Copy agent certificate
+      ansible.builtin.copy:
+        src: "{{ otel_tls_cert_src }}"
+        dest: "{{ otel_tls_cert_file }}"
+        owner: root
+        mode: "0644"
+      become: true
+      notify: restart otel agent for tls
+
+    - name: Copy agent private key (root-only)
+      ansible.builtin.copy:
+        src: "{{ otel_tls_key_src }}"
+        dest: "{{ otel_tls_key_file }}"
+        owner: root
+        mode: "0600"
+      become: true
+      notify: restart otel agent for tls

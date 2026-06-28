@@ -3,18 +3,18 @@
 - name: validate and restart otel agent
   block:
     - name: Validate OTEL config (dry-run)
-      command: /usr/local/bin/otelcol-contrib validate --config /etc/hydra/otel-agent-config.yaml
+      ansible.builtin.command: /usr/local/bin/otelcol-contrib validate --config /etc/hydra/otel-agent-config.yaml
       become: true
 
     - name: Restart OTEL agent (Linux)
-      systemd:
+      ansible.builtin.systemd:
         name: otel-agent
         state: restarted
       become: true
       when: hydra_os == "linux"
 
     - name: Unload and reload OTEL LaunchDaemon (macOS)
-      shell: |
+      ansible.builtin.shell: |
         launchctl bootout system/com.hydra.otel-agent 2>/dev/null || true
         launchctl bootstrap system /Library/LaunchDaemons/com.hydra.otel-agent.plist
       become: true

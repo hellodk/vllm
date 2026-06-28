@@ -1,35 +1,52 @@
 # ansible/roles/otel-mac-agent/tasks/configure.yml
-# Renders the OTEL agent config and env file, validates config, updates LaunchDaemon plist.
+# Renders the unified OTEL agent config (roles/monitoring-common), env file,
+# validates config, updates the LaunchDaemon plist.
 ---
 
+- name: Load discovered.yml from remote node (LLM scrape — ANS-3)
+  ansible.builtin.slurp:
+    src: /etc/hydra/discovered.yml
+  register: _discovered_raw
+  become: true
+  failed_when: false
+
+- name: Parse discovered.yml (empty providers when discovery has not run)
+  ansible.builtin.set_fact:
+    _discovered: >-
+      {{ (_discovered_raw.content | b64decode | from_yaml)
+         if (_discovered_raw.content is defined)
+         else {'providers': []} }}
+
 - name: Render otel-agent.env (shell-sourceable, for debugging)
-  template:
+  ansible.builtin.template:
     src: otel-agent.env.j2
     dest: "{{ otel_env_path }}"
     mode: "0640"
   become: true
 
-- name: Render otel-agent-config.yaml
-  template:
-    src: otel-agent-config.yaml.j2
+- name: Render unified otel-agent-config.yaml (managed-by monitoring-common)
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/roles/monitoring-common/templates/otel-agent-config.yaml.j2"
     dest: "{{ otel_config_path }}"
     mode: "0640"
+  vars:
+    discovered: "{{ _discovered }}"
   become: true
   notify: restart otel agent
 
 - name: Validate OTEL config syntax (dry-run before restart)
-  command: "{{ otel_binary_path }} validate --config {{ otel_config_path }}"
+  ansible.builtin.command: "{{ otel_binary_path }} validate --config {{ otel_config_path }}"
   become: true
   changed_when: false
   register: _config_valid
 
 - name: Assert config is valid
-  assert:
+  ansible.builtin.assert:
     that: _config_valid.rc == 0
     fail_msg: "OTEL config validation failed: {{ _config_valid.stderr | default('') }}"
 
 - name: Render OTEL agent LaunchDaemon plist
-  template:
+  ansible.builtin.template:
     src: com.hydra.otel-agent.plist.j2
     dest: /Library/LaunchDaemons/{{ otel_agent_label }}.plist
     owner: root
@@ -39,4 +56,4 @@
   notify: restart otel agent
 
 - name: Flush handlers (apply new config)
-  meta: flush_handlers
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/{{ apple_silicon_exporter_label }}.plist
+  managed-by: apple-silicon-exporter (ANS-7) — do not edit manually.
+  Runs apple-silicon-exporter as root (powermetrics requires it). Exposes
+  apple_* hardware metrics at {{ apple_silicon_exporter_listen_host }}:{{ apple_silicon_exporter_port }}/metrics,
+  scraped by the unified OTEL agent (prometheus/apple_hw).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{{ apple_silicon_exporter_label }}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ apple_silicon_exporter_bin }}</string>
+    <string>--listen</string>
+    <string>{{ apple_silicon_exporter_listen_host }}:{{ apple_silicon_exporter_port }}</string>
+{% for flag in apple_silicon_exporter_flags %}
+    <string>{{ flag }}</string>
+{% endfor %}
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>{{ apple_silicon_exporter_log_dir }}/apple-exporter.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{ apple_silicon_exporter_log_dir }}/apple-exporter-error.log</string>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
