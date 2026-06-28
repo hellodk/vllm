@@ -1,5 +1,14 @@
 # Prometheus/Mimir Alert Rules for LLM Hallucination Detection
 # These rules monitor output quality and potential hallucination signals
+#
+# IMPORTANT — SDK instrumentation required
+# All metrics in this file (llm_output_entropy_bucket, llm_repetition_score,
+# llm_confidence_mean, llm_confidence_std, llm_perplexity_bucket,
+# llm_refusal_rate) are emitted ONLY by the manually-wrapped Python SDK or
+# the mock server.  They are NOT produced by native vLLM, SGLang, or MLX
+# engines.  These alerts will be silent when running against deployed engines
+# unless the SDK wrapper layer is active or an equivalent instrumentation
+# adapter is deployed.
 
 groups:
   - name: hallucination-detection

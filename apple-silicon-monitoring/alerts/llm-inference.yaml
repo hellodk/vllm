@@ -1,33 +1,76 @@
 # Prometheus/Mimir Alert Rules for LLM Inference Metrics
-# These rules monitor the health and performance of LLM inference workloads
+#
+# These rules fire against the unified hydra:llm:* recording-rule layer defined in
+# monitoring/prometheus/rules/hydra-llm-normalization.yml, which normalises
+# vLLM (vllm:*), SGLang (sglang:*), and MLX engine metrics into a common
+# namespace labelled by provider, model, and node_id.
+#
+# Previously these alerts targeted llm_* SDK metrics emitted only by the
+# manually-wrapped Python SDK / mock server.  Those metrics are absent from
+# deployed engines, so the old alerts never fired.  All operational alerts
+# below are now bound to hydra:llm:* so they fire against real engines.
+#
+# SDK-only quality signals (health score) are isolated in the llm-quality
+# group at the bottom of this file.
 
 groups:
   - name: llm-inference
     interval: 15s
     rules:
-      #
-      # Model Availability Alerts
-      #
-      
+
+      # -----------------------------------------------------------------------
+      # Meta-alert: guard against metric-name regression
+      # -----------------------------------------------------------------------
+
+      - alert: LLMMetricsMissing
+        expr: absent(hydra:llm:up{provider=~"vllm.*|sglang|mlx"})
+        for: 10m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: availability
+          pagerduty: trigger
+        annotations:
+          summary: "hydra:llm:up absent — recording-rule pipeline may be broken"
+          description: |
+            No hydra:llm:up series with provider=~"vllm.*|sglang|mlx" has been
+            seen for 10 minutes.  The normalization recording rules in
+            hydra-llm-normalization.yml are either not loaded or the underlying
+            engine exporters have stopped scraping.
+
+            All LLM availability and performance alerts will be dark until this
+            is resolved.
+
+            Actions:
+            1. Verify promtool/mimirtool can load hydra-llm-normalization.yml
+            2. Check that vLLM / SGLang / MLX exporters are healthy
+            3. Confirm the Prometheus rule evaluation interval has not stalled
+          runbook_url: "https://wiki.company.internal/runbooks/llm-metrics-missing"
+
+      # -----------------------------------------------------------------------
+      # Model Availability
+      # -----------------------------------------------------------------------
+
       - alert: LLMModelNotLoaded
-        expr: llm_model_loaded == 0
+        expr: hydra:llm:up == 0
         for: 5m
         labels:
           severity: critical
           team: ml-platform
           category: availability
         annotations:
-          summary: "LLM model not loaded on {{ $labels.instance }}"
+          summary: "LLM engine down on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
           node_id: "{{ $labels.node_id }}"
           description: |
-            Model {{ $labels.model }} is not loaded on {{ $labels.instance }}.
-            Inference requests will fail until the model is loaded.
+            hydra:llm:up == 0 for provider={{ $labels.provider }},
+            model={{ $labels.model }}, node={{ $labels.node_id }}.
+            The inference engine is not responding; requests will fail.
           runbook_url: "https://wiki.company.internal/runbooks/model-not-loaded"
 
       - alert: LLMInferenceStalled
         expr: |
-          rate(llm_tokens_processed_total[2m]) == 0
-          AND llm_model_loaded == 1
+          hydra:llm:tokens_generated:rate1m == 0
+          AND hydra:llm:up == 1
         for: 2m
         labels:
           severity: critical
@@ -35,11 +78,12 @@ groups:
           category: inference
           pagerduty: trigger
         annotations:
-          summary: "LLM inference appears stalled on {{ $labels.instance }}"
+          summary: "LLM inference stalled on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
           node_id: "{{ $labels.node_id }}"
           description: |
-            Model {{ $labels.model }} is loaded but no tokens have been processed in 2 minutes.
-            The inference engine may be stuck or deadlocked.
+            The engine is up (hydra:llm:up == 1) but no tokens have been
+            generated for 2 minutes (hydra:llm:tokens_generated:rate1m == 0).
+            The inference process may be deadlocked or the request pipeline broken.
 
             Actions:
             1. Check process logs for errors
@@ -47,86 +91,80 @@ groups:
             3. Consider restarting the inference process
           runbook_url: "https://wiki.company.internal/runbooks/inference-stalled"
 
-      #
+      # -----------------------------------------------------------------------
       # Latency Alerts
-      #
-      
-      - alert: LLMHighLatencyP99
-        expr: |
-          histogram_quantile(0.99,
-            rate(llm_inference_duration_seconds_bucket{phase="total"}[5m])
-          ) > 30
+      # -----------------------------------------------------------------------
+
+      - alert: LLME2ELatencyHigh
+        expr: hydra:llm:request_e2e_seconds:p95 > 30
         for: 5m
         labels:
           severity: warning
           team: ml-platform
           category: latency
         annotations:
-          summary: "P99 inference latency exceeds 30s for {{ $labels.model }}"
+          summary: "P95 end-to-end latency exceeds 30 s for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
-            P99 total inference latency is {{ $value | printf "%.1f" }}s.
-            Users may experience timeouts.
+            P95 end-to-end request latency is {{ $value | printf "%.1f" }}s.
+            Users will experience timeouts for long requests.
 
             Check:
-            - GPU utilization and memory
-            - Batch queue depth
+            - GPU utilisation and memory
+            - Batch queue depth (hydra:llm:requests_waiting)
             - Context lengths being processed
           dashboard: "https://grafana.internal/d/llm-latency?var-model={{ $labels.model }}"
 
-      - alert: LLMHighLatencyP50
-        expr: |
-          histogram_quantile(0.50,
-            rate(llm_inference_duration_seconds_bucket{phase="total"}[5m])
-          ) > 10
+      - alert: LLME2ELatencyElevated
+        expr: hydra:llm:request_e2e_seconds:p95 > 10
         for: 10m
         labels:
           severity: warning
           team: ml-platform
           category: latency
         annotations:
-          summary: "Median inference latency exceeds 10s for {{ $labels.model }}"
+          summary: "P95 end-to-end latency elevated above 10 s for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
-            P50 inference latency is {{ $value | printf "%.1f" }}s, indicating overall slow performance.
+            P95 end-to-end latency is {{ $value | printf "%.1f" }}s, indicating
+            sustained general slowness across all requests.
 
-      - alert: LLMPromptLatencyHigh
-        expr: |
-          histogram_quantile(0.95,
-            rate(llm_inference_duration_seconds_bucket{phase="prompt"}[5m])
-          ) > 5
+      - alert: LLMTTFTHigh
+        expr: hydra:llm:ttft_seconds:p95 > 5
         for: 5m
         labels:
           severity: warning
           team: ml-platform
           category: latency
         annotations:
-          summary: "P95 prompt processing latency high for {{ $labels.model }}"
+          summary: "P95 time-to-first-token high for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
-            Prompt processing (prefill) P95 latency is {{ $value | printf "%.1f" }}s.
-            This may indicate long contexts or memory pressure.
+            P95 time-to-first-token (prefill/prompt phase) is
+            {{ $value | printf "%.1f" }}s.
+            This may indicate long context lengths or memory pressure on the
+            prefill stage.
 
-      #
+      # -----------------------------------------------------------------------
       # Throughput Alerts
-      #
-      
+      # -----------------------------------------------------------------------
+
       - alert: LLMThroughputDegraded
         expr: |
-          llm_tokens_per_second < 10
-          AND llm_model_loaded == 1
-          AND rate(llm_inference_requests_total[5m]) > 0
+          hydra:llm:tokens_generated:rate1m < 10
+          AND hydra:llm:up == 1
+          AND hydra:llm:requests_running > 0
         for: 5m
         labels:
           severity: warning
           team: ml-platform
           category: throughput
         annotations:
-          summary: "Token throughput below 10 tokens/sec for {{ $labels.model }}"
+          summary: "Token throughput below 10 tok/s for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
-            Current throughput is {{ $value | printf "%.1f" }} tokens/sec.
-            Expected minimum for this model is 10+ tokens/sec.
+            Current throughput is {{ $value | printf "%.1f" }} tokens/sec with
+            active requests in flight.  Expected minimum is 10+ tok/s.
 
             Possible causes:
             - GPU thermal throttling
@@ -136,155 +174,140 @@ groups:
 
       - alert: LLMThroughputDrop
         expr: |
-          llm_tokens_per_second
-          < (avg_over_time(llm_tokens_per_second[1h]) * 0.5)
-          AND llm_tokens_per_second > 0
+          hydra:llm:tokens_generated:rate1m
+          < (avg_over_time(hydra:llm:tokens_generated:rate1m[1h]) * 0.5)
+          AND hydra:llm:tokens_generated:rate1m > 0
         for: 10m
         labels:
           severity: warning
           team: ml-platform
           category: throughput
         annotations:
-          summary: "Throughput dropped 50% for {{ $labels.model }}"
+          summary: "Throughput dropped >50% for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
-            Current throughput ({{ $value | printf "%.1f" }} tok/s) is less than half the hourly average.
-            Investigate for performance regression.
+            Current throughput ({{ $value | printf "%.1f" }} tok/s) is less than
+            half the hourly average.  Investigate for performance regression.
 
-      #
-      # Queue and Capacity Alerts
-      #
-      
+      # -----------------------------------------------------------------------
+      # Queue and Capacity
+      # -----------------------------------------------------------------------
+
       - alert: LLMQueueBacklog
-        expr: llm_queue_depth > 100
+        expr: hydra:llm:requests_waiting > 100
         for: 5m
         labels:
           severity: warning
           team: ml-platform
           category: capacity
         annotations:
-          summary: "Request queue building up for {{ $labels.model }}"
+          summary: "Request queue building up for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
             {{ $value | printf "%.0f" }} requests are queued.
             Users will experience increased latency.
+
             Consider:
             - Scaling up inference capacity
             - Rate limiting requests
             - Load balancing to other nodes
 
       - alert: LLMQueueCritical
-        expr: llm_queue_depth > 500
+        expr: hydra:llm:requests_waiting > 500
         for: 2m
         labels:
           severity: critical
           team: ml-platform
           category: capacity
         annotations:
-          summary: "Critical request queue depth for {{ $labels.model }}"
+          summary: "Critical request queue depth for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
             Queue depth is {{ $value | printf "%.0f" }}.
             System is severely overloaded.
 
       - alert: LLMKVCacheFull
-        expr: llm_kv_cache_utilization > 0.95
+        expr: hydra:llm:kv_cache_usage_ratio > 0.95
         for: 2m
         labels:
           severity: warning
           team: ml-platform
           category: memory
         annotations:
-          summary: "KV cache nearly full for {{ $labels.model }}"
+          summary: "KV cache nearly full for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
-            KV cache is at {{ $value | humanizePercentage }} utilization.
-            New requests with long contexts may fail or be delayed.
+            KV cache utilisation is {{ $value | humanizePercentage }}.
+            New requests with long contexts may fail or be queued.
 
-      #
+      # -----------------------------------------------------------------------
       # Error Alerts
-      #
-      
+      # -----------------------------------------------------------------------
+
       - alert: LLMErrorRateHigh
-        expr: |
-          rate(llm_error_total[5m])
-          / rate(llm_inference_requests_total[5m]) > 0.05
+        expr: hydra:llm:errors:rate5m > 0.05
         for: 5m
         labels:
           severity: warning
           team: ml-platform
           category: errors
         annotations:
-          summary: "Error rate above 5% for {{ $labels.model }}"
+          summary: "Sustained error rate for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
-            Error rate is {{ $value | humanizePercentage }}.
-            Check error breakdown by type.
+            Error rate is {{ $value | printf "%.3f" }}/s over 5 minutes.
+            Check logs for error breakdown by type.
 
       - alert: LLMErrorSpike
-        expr: |
-          rate(llm_error_total[5m]) > 0.1
+        expr: hydra:llm:errors:rate5m > 0.5
         for: 2m
         labels:
-          severity: warning
-          team: ml-platform
-          category: errors
-        annotations:
-          summary: "Error spike detected for {{ $labels.model }}"
-          node_id: "{{ $labels.node_id }}"
-          description: |
-            Errors are occurring at {{ $value | printf "%.2f" }}/sec.
-
-      - alert: LLMOOMErrors
-        expr: |
-          increase(llm_error_total{error_type=~"out_of_memory|gpu_memory_exhausted"}[5m]) > 0
-        for: 1m
-        labels:
           severity: critical
           team: ml-platform
-          category: errors
-        annotations:
-          summary: "OOM errors occurring for {{ $labels.model }}"
-          node_id: "{{ $labels.node_id }}"
-          description: |
-            Out-of-memory errors detected.
-            Model may need to be reloaded or batch size reduced.
-
-      - alert: LLMMetalCrashes
-        expr: |
-          increase(llm_error_total{error_type="metal_crash"}[5m]) > 0
-        for: 0s
-        labels:
-          severity: critical
-          team: infrastructure
           category: errors
           pagerduty: trigger
         annotations:
-          summary: "Metal framework crash on {{ $labels.instance }}"
+          summary: "Error spike for {{ $labels.provider }}/{{ $labels.model }}"
           node_id: "{{ $labels.node_id }}"
           description: |
-            Metal GPU framework has crashed.
-            The system may need to be restarted.
-            Check system logs for details.
+            Errors occurring at {{ $value | printf "%.2f" }}/s over the last 5 minutes.
+            Includes OOM, Metal crashes, and all other engine errors.
 
-      #
-      # Health Score Alerts
-      #
-      
+            For per-type breakdown query raw vllm:* / sglang:* / mlx:* series
+            with error_type label (SDK instrumentation required for mlx).
+
+  # ---------------------------------------------------------------------------
+  # SDK-only quality alerts
+  #
+  # These alerts rely on llm_model_health_score, a composite metric emitted
+  # only by the manually-wrapped Python SDK / mock server.  They are grouped
+  # separately so they do NOT page as availability incidents.  They will be
+  # dark when running against native vLLM/SGLang/MLX engines until those
+  # engines expose an equivalent health-score metric via SDK instrumentation.
+  # ---------------------------------------------------------------------------
+
+  - name: llm-quality
+    interval: 60s
+    rules:
+
       - alert: LLMHealthScoreLow
         expr: llm_model_health_score < 70
         for: 10m
         labels:
           severity: warning
           team: ml-platform
-          category: health
+          category: quality
         annotations:
-          summary: "Model health score low for {{ $labels.model }}"
+          summary: "Model health score low for {{ $labels.model }} (SDK instrumentation required)"
           node_id: "{{ $labels.node_id }}"
           description: |
             Health score is {{ $value | printf "%.0f" }}/100.
             Multiple factors may be degrading model performance.
             Review individual metrics for root cause.
+
+            NOTE: llm_model_health_score is only emitted by the Python SDK
+            wrapper.  This alert is silent against native vLLM/SGLang/MLX
+            engines without SDK instrumentation.
 
       - alert: LLMHealthScoreCritical
         expr: llm_model_health_score < 50
@@ -292,10 +315,14 @@ groups:
         labels:
           severity: critical
           team: ml-platform
-          category: health
+          category: quality
         annotations:
-          summary: "Model health critically low for {{ $labels.model }}"
+          summary: "Model health critically low for {{ $labels.model }} (SDK instrumentation required)"
           node_id: "{{ $labels.node_id }}"
           description: |
             Health score is {{ $value | printf "%.0f" }}/100.
             Model may not be functioning correctly.
+
+            NOTE: llm_model_health_score is only emitted by the Python SDK
+            wrapper.  This alert is silent against native vLLM/SGLang/MLX
+            engines without SDK instrumentation.
