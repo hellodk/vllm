@@ -1,0 +1,5 @@
+salt-ssh:
+  config_dir: .
+  roster_file: roster
+  log_level: info
+  ssh_log_file: /tmp/salt-ssh.log

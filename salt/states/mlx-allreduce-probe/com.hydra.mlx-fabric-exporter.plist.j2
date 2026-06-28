@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.mlx-fabric-exporter.plist — Managed by Salt.
+  Always-on exporter serving the AllReduce probe textfile at /metrics.
+-->
+{%- set llm_base_dir      = pillar.get('llm_base_dir', '/opt/hydra/llm') %}
+{%- set llm_log_dir       = pillar.get('llm_log_dir', '/var/log/hydra') %}
+{%- set allreduce_dir     = pillar.get('allreduce_dir', llm_base_dir ~ '/allreduce') %}
+{%- set tf_dir            = pillar.get('allreduce_textfile_dir', '/var/lib/hydra/textfile') %}
+{%- set tf_file           = pillar.get('allreduce_textfile', tf_dir ~ '/mlx_allreduce.prom') %}
+{%- set fabric_port       = pillar.get('mlx_allreduce_fabric_scrape_port', 11503) %}
+{%- set interval          = pillar.get('mlx_allreduce_interval_sec', 60) %}
+{%- set allreduce_python  = pillar.get('allreduce_python', llm_base_dir ~ '/mlx/venv/bin/python') %}
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.mlx-fabric-exporter</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ allreduce_python }}</string>
+    <string>{{ allreduce_dir }}/mlx_fabric_exporter.py</string>
+    <string>--textfile</string><string>{{ tf_file }}</string>
+    <string>--port</string><string>{{ fabric_port }}</string>
+    <string>--max-age</string><string>{{ interval | int * 3 }}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardErrorPath</key><string>{{ llm_log_dir }}/mlx-fabric-exporter-error.log</string>
+</dict>
+</plist>

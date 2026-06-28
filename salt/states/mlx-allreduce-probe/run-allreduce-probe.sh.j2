@@ -1,0 +1,33 @@
+#!/bin/bash
+# Managed by Salt (mlx-allreduce-probe state) — do not edit manually.
+# Launches the distributed AllReduce benchmark across the tensor-parallel group
+# via mlx.launch. Runs from the group leader; rank 0 writes the textfile metrics.
+{%- set llm_base_dir      = pillar.get('llm_base_dir', '/opt/hydra/llm') %}
+{%- set allreduce_dir     = pillar.get('allreduce_dir', llm_base_dir ~ '/allreduce') %}
+{%- set tf_dir            = pillar.get('allreduce_textfile_dir', '/var/lib/hydra/textfile') %}
+{%- set tf_file           = pillar.get('allreduce_textfile', tf_dir ~ '/mlx_allreduce.prom') %}
+{%- set mlx_launch        = pillar.get('allreduce_mlx_launch', llm_base_dir ~ '/mlx/venv/bin/mlx.launch') %}
+{%- set size_mb           = pillar.get('mlx_allreduce_size_mb', 256) %}
+{%- set iters             = pillar.get('mlx_allreduce_iters', 20) %}
+
+# Resolve group membership from pillar
+{%- set minion_id   = grains.get('id', '') %}
+{%- set tp_groups   = pillar.get('tensor_parallel_groups', {}) %}
+{%- set my_group    = '' %}
+{%- set peer_hosts  = [] %}
+{%- for gname, members in tp_groups.items() %}
+{%-   if minion_id in members %}
+{%-     set my_group = gname %}
+{%-     set peer_hosts = pillar.get('allreduce_peer_hosts', members) %}
+{%-   endif %}
+{%- endfor %}
+set -euo pipefail
+
+HOSTS="{{ peer_hosts | join(',') }}"
+
+exec {{ mlx_launch }} --hosts "${HOSTS}" \
+  {{ allreduce_dir }}/mlx_allreduce_probe.py \
+  --size-mb {{ size_mb }} \
+  --iters {{ iters }} \
+  --tp-group {{ my_group }} \
+  --out {{ tf_file }}

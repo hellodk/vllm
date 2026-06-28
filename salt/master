@@ -1,0 +1,21 @@
+# salt/master — salt-ssh config (masterless push model).
+# Run from repo root: salt-ssh -c salt/ --roster-file salt/roster '*' state.highstate
+#
+# Update the two absolute paths below if the repo moves.
+# Quick one-liner to regenerate them from the repo root:
+#   sed -i "s|HYDRA_ROOT|$(pwd)|g" salt/master
+
+file_roots:
+  base:
+    - /home/dk/Documents/git/hydra/.worktrees/salt/salt/states
+
+pillar_roots:
+  base:
+    - /home/dk/Documents/git/hydra/.worktrees/salt/salt/pillar
+
+# Tune timeout for first-run package installs (venv + wheels can take 3-5 min).
+ssh_timeout: 600
+timeout: 600
+
+# Fail-fast: show full tracebacks for template errors.
+show_jid: True

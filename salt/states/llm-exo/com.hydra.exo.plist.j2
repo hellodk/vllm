@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.exo.plist
+  Managed by Salt (llm-exo state) — do not edit manually.
+  exo P2P distributed inference — large_pool tensor-parallel pairs.
+-->
+{%- set llm_base_dir        = pillar.get('llm_base_dir', '/opt/hydra/llm') %}
+{%- set exo_dir             = pillar.get('exo_dir',  llm_base_dir ~ '/exo') %}
+{%- set exo_venv            = pillar.get('exo_venv', exo_dir ~ '/venv') %}
+{%- set exo_p2p_port        = pillar.get('exo_p2p_port', 52415) %}
+{%- set exo_api_port        = pillar.get('exo_api_port', 52416) %}
+{%- set exo_internal_api    = pillar.get('exo_internal_api_port', 52426) %}
+{%- set sidecar             = pillar.get('exo_sidecar_enabled', True) %}
+{%- set effective_api_port  = exo_internal_api if sidecar else exo_api_port %}
+{%- set exo_model_path      = pillar.get('exo_model_local_path', '/opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit') %}
+{%- set exo_models_dir      = pillar.get('exo_models_dir', '/opt/hydra/models/mlx') %}
+{%- set exo_node_id         = pillar.get('exo_node_id', '') or grains.get('id', 'unknown') %}
+{%- set exo_peers           = pillar.get('exo_peers', []) %}
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.exo</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ exo_venv }}/bin/exo</string>
+    <string>--node-id</string>
+    <string>{{ exo_node_id }}</string>
+    <string>--port</string>
+    <string>{{ exo_p2p_port }}</string>
+    <string>--inference-engine</string>
+    <string>mlx</string>
+    <string>--chatgpt-api-port</string>
+    <string>{{ effective_api_port }}</string>
+    <string>--model</string>
+    <string>{{ exo_model_path }}</string>
+{% for peer in exo_peers %}
+    <string>--initial-peers</string>
+    <string>{{ peer }}:{{ exo_p2p_port }}</string>
+{% endfor %}
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ exo_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HF_DATASETS_OFFLINE</key><string>1</string>
+    <key>TRANSFORMERS_OFFLINE</key><string>1</string>
+    <key>HF_HUB_OFFLINE</key><string>1</string>
+    <key>HF_HOME</key><string>{{ exo_models_dir }}</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/exo.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/exo-error.log</string>
+</dict>
+</plist>

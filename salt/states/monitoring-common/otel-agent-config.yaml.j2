@@ -1,0 +1,268 @@
+# /etc/hydra/otel-agent-config.yaml
+# managed-by: monitoring-common (Salt)
+# LLM-scrape pipeline — mirrors the llm_scrape section of the Ansible unified
+# OTEL template (ansible/roles/monitoring-common/templates/otel-agent-config.yaml.j2).
+#
+# OMISSIONS vs the Ansible template (see salt/README.md §Omissions):
+#   - hostmetrics scraper           (deployed by otel-mac-agent Ansible role)
+#   - apple-silicon-exporter scrape (deployed by apple-silicon-exporter role)
+#   - RDMA/RoCE scraper             (deployed by mlx-rdma-exporter role)
+# This config focuses on the LLM/perf/fabric scrape targets so the same
+# Prometheus rules and Grafana dashboards work from either tool.
+{%- set node_id         = pillar.get('hydra_node_id', '') or grains.get('id', 'unknown') %}
+{%- set hostname        = pillar.get('hydra_hostname', '') or grains.get('fqdn', grains.get('id', 'unknown')) %}
+{%- set cluster         = pillar.get('mc_cluster', 'hydra') %}
+{%- set environment     = pillar.get('mc_environment', 'production') %}
+{%- set os_val          = pillar.get('mc_os', 'macos') %}
+{%- set gpu_provider    = pillar.get('mc_gpu_provider', 'apple') %}
+{%- set chip            = pillar.get('mc_chip', 'unknown') %}
+{%- set pool            = pillar.get('mc_pool', 'fast') %}
+{%- set health_port     = pillar.get('mc_health_port', 13133) %}
+{%- set grpc_port       = pillar.get('mc_grpc_port', 4317) %}
+{%- set http_port       = pillar.get('mc_http_port', 4318) %}
+{%- set prom_port       = pillar.get('mc_prometheus_port', 8888) %}
+{%- set mem_mib         = pillar.get('mc_memory_limit_mib', 256) %}
+{%- set mem_spike       = pillar.get('mc_memory_spike_mib', 64) %}
+{%- set gateway_ep      = pillar.get('otel_gateway_endpoint', 'otel-gateway.hydra.svc.cluster.local:4317') %}
+{%- set tls_insecure    = pillar.get('otel_tls_insecure', True) %}
+{%- set tls_ca          = pillar.get('otel_tls_ca_file', '/etc/hydra/tls/ca.crt') %}
+{%- set tls_cert        = pillar.get('otel_tls_cert_file', '/etc/hydra/tls/client.crt') %}
+{%- set tls_key         = pillar.get('otel_tls_key_file', '/etc/hydra/tls/client.key') %}
+{%- set victoria_url    = pillar.get('mc_victoria_url', '') %}
+{%- set fleet_otlp      = pillar.get('mc_fleet_otlp', '') %}
+{%- set enable_otlp_in  = pillar.get('enable_otlp_ingest', True) %}
+{%- set enable_fleet    = pillar.get('enable_fleet_otlp', False) %}
+
+{# Build providers from the same logic as discovered.yml.j2 #}
+{%- set mlx_backend   = pillar.get('hydra_mlx_backend', 'vllm_mlx') %}
+{%- set mlx_sidecar   = mlx_backend != 'vllm_mlx' %}
+{%- set frameworks    = pillar.get('llm_frameworks', []) %}
+{%- set mlx_on_node   = 'mlx' in frameworks or 'vllm-mlx' in frameworks %}
+{%- set exo_on_node   = 'exo' in frameworks %}
+{%- set allreduce_en  = pillar.get('mlx_allreduce_enabled', False) %}
+{%- set mlx_port      = pillar.get('mlx_port', 11500) %}
+{%- set mlx_perf_port = pillar.get('mlx_perf_scrape_port', 11501) %}
+{%- set mlx_log_port  = pillar.get('mlx_logexporter_scrape_port', 11502) %}
+{%- set fabric_port   = pillar.get('mlx_allreduce_fabric_scrape_port', 11503) %}
+{%- set exo_perf_port = pillar.get('exo_perf_scrape_port', 52417) %}
+
+{%- set providers = [] %}
+{%- if mlx_on_node and not mlx_sidecar %}
+{%-   set _ = providers.append({'name': 'mlx',        'port': mlx_port | string,      'metrics_path': '/metrics'}) %}
+{%- endif %}
+{%- if mlx_on_node and mlx_sidecar %}
+{%-   set _ = providers.append({'name': 'mlx_perf',   'port': mlx_perf_port | string, 'metrics_path': '/metrics'}) %}
+{%- endif %}
+{%- if mlx_on_node %}
+{%-   set _ = providers.append({'name': 'mlx_errors', 'port': mlx_log_port | string,  'metrics_path': '/metrics'}) %}
+{%- endif %}
+{%- if exo_on_node %}
+{%-   set _ = providers.append({'name': 'exo',        'port': exo_perf_port | string, 'metrics_path': '/metrics'}) %}
+{%- endif %}
+{%- if allreduce_en %}
+{%-   set _ = providers.append({'name': 'mlx_fabric', 'port': fabric_port | string,   'metrics_path': '/metrics'}) %}
+{%- endif %}
+
+{# Tensor-parallel topology labels #}
+{%- set minion_id  = grains.get('id', '') %}
+{%- set tp_groups  = pillar.get('tensor_parallel_groups', {}) %}
+{%- set tp_group   = '' %}
+{%- set tp_rank    = '' %}
+{%- for gname, members in tp_groups.items() %}
+{%-   if minion_id in members %}
+{%-     set tp_group = gname %}
+{%-     set tp_rank  = members.index(minion_id) | string %}
+{%-   endif %}
+{%- endfor %}
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:{{ health_port }}"
+
+receivers:
+{% if providers | length > 0 %}
+  # ── Discovered LLM engines (mirrors Ansible ANS-6 llm_scrape path) ────────────
+{% for p in providers %}
+  prometheus/llm_{{ p.name }}:
+    config:
+      scrape_configs:
+        - job_name: "llm-{{ p.name }}"
+          scrape_interval: 15s
+          metrics_path: "{{ p.metrics_path }}"
+          scheme: http
+          static_configs:
+            - targets: ["127.0.0.1:{{ p.port }}"]
+          metric_relabel_configs:
+            - target_label: provider
+              replacement: "{{ p.name }}"
+            - target_label: node_id
+              replacement: "{{ node_id }}"
+{% endfor %}
+{% endif %}
+{% if enable_otlp_in %}
+
+  # ── OTLP ingest — engines push traces/metrics to local agent ─────────────────
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "127.0.0.1:{{ grpc_port }}"
+        max_recv_msg_size_mib: 4
+      http:
+        endpoint: "127.0.0.1:{{ http_port }}"
+{% endif %}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: {{ mem_mib }}
+    spike_limit_mib: {{ mem_spike }}
+
+  resource:
+    attributes:
+      - { key: node_id,        value: "{{ node_id }}",      action: upsert }
+      - { key: salt.minion_id, value: "{{ node_id }}",      action: upsert }
+      - { key: host.name,      value: "{{ hostname }}",     action: upsert }
+      - { key: hostname,       value: "{{ hostname }}",     action: upsert }
+      - { key: cluster,        value: "{{ cluster }}",      action: upsert }
+      - { key: environment,    value: "{{ environment }}",  action: upsert }
+      - { key: os,             value: "{{ os_val }}",       action: upsert }
+      - { key: gpu_provider,   value: "{{ gpu_provider }}", action: upsert }
+      - { key: chip,           value: "{{ chip }}",         action: upsert }
+      - { key: pool,           value: "{{ pool }}",         action: upsert }
+{% if tp_group %}
+      - { key: tp_group,       value: "{{ tp_group }}",     action: upsert }
+      - { key: rank,           value: "{{ tp_rank }}",      action: upsert }
+{% endif %}
+
+  transform/quantization:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["quantization"],
+              ExtractPatterns(attributes["model"],
+                "[-_](q[0-9]+[_k_msx0-9]*|f16|f32|f64|mxfp4|gguf)")[0])
+              where attributes["model"] != nil
+
+  filter/noise:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - ".*_debug_.*"
+          - "go_.*"
+          - "process_.*"
+
+  batch:
+    send_batch_size: 200
+    send_batch_max_size: 1000
+    timeout: 5s
+
+exporters:
+  otlp/gateway:
+    endpoint: "{{ gateway_ep }}"
+    tls:
+{% if tls_insecure %}
+      insecure: true
+{% else %}
+      insecure: false
+      ca_file: "{{ tls_ca }}"
+      cert_file: "{{ tls_cert }}"
+      key_file: "{{ tls_key }}"
+{% endif %}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      num_consumers: 4
+      queue_size: 1000
+{% if victoria_url | length > 0 %}
+
+  prometheusremotewrite/victoriametrics:
+    endpoint: "{{ victoria_url }}/api/v1/write"
+    tls:
+{% if tls_insecure %}
+      insecure: true
+{% else %}
+      insecure: false
+      ca_file: "{{ tls_ca }}"
+      cert_file: "{{ tls_cert }}"
+      key_file: "{{ tls_key }}"
+{% endif %}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 2000
+    resource_to_telemetry_conversion:
+      enabled: true
+{% endif %}
+{% if enable_fleet and fleet_otlp | length > 0 %}
+
+  otlp/fleet_platform:
+    endpoint: "{{ fleet_otlp }}"
+    tls:
+{% if tls_insecure %}
+      insecure: true
+{% else %}
+      insecure: false
+      ca_file: "{{ tls_ca }}"
+      cert_file: "{{ tls_cert }}"
+      key_file: "{{ tls_key }}"
+{% endif %}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+{% endif %}
+
+  prometheus:
+    endpoint: "0.0.0.0:{{ prom_port }}"
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_expiration: 5m
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers:
+{% if providers | length > 0 %}
+{% for p in providers %}
+        - prometheus/llm_{{ p.name }}
+{% endfor %}
+{% endif %}
+{% if enable_otlp_in %}
+        - otlp
+{% endif %}
+      processors:
+        - memory_limiter
+        - resource
+        - transform/quantization
+        - filter/noise
+        - batch
+      exporters:
+        - otlp/gateway
+{% if victoria_url | length > 0 %}
+        - prometheusremotewrite/victoriametrics
+{% endif %}
+{% if enable_fleet and fleet_otlp | length > 0 %}
+        - otlp/fleet_platform
+{% endif %}
+        - prometheus
+{% if enable_otlp_in %}
+
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters:
+        - otlp/gateway
+{% if enable_fleet and fleet_otlp | length > 0 %}
+        - otlp/fleet_platform
+{% endif %}
+{% endif %}

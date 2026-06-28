@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.exo-perf.plist — Managed by Salt (llm-exo state).
+  Perf-proxy sidecar: fronts exo chat API, emits exo:* metrics on port 52417.
+-->
+{%- set llm_base_dir     = pillar.get('llm_base_dir', '/opt/hydra/llm') %}
+{%- set exo_dir          = pillar.get('exo_dir',  llm_base_dir ~ '/exo') %}
+{%- set exo_venv         = pillar.get('exo_venv', exo_dir ~ '/venv') %}
+{%- set perf_proxy       = pillar.get('llm_perf_proxy_path', llm_base_dir ~ '/bin/llm_perf_proxy.py') %}
+{%- set exo_api_port     = pillar.get('exo_api_port', 52416) %}
+{%- set exo_internal_api = pillar.get('exo_internal_api_port', 52426) %}
+{%- set exo_metrics_port = pillar.get('exo_perf_scrape_port', 52417) %}
+{%- set exo_model_path   = pillar.get('exo_model_local_path', '/opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit') %}
+{%- set exo_max_kv       = pillar.get('exo_max_kv', 8192) %}
+{%- set exo_max_conc     = pillar.get('exo_max_concurrency', 4) %}
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.exo-perf</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ exo_venv }}/bin/python</string>
+    <string>{{ perf_proxy }}</string>
+    <string>--listen-host</string><string>0.0.0.0</string>
+    <string>--listen-port</string><string>{{ exo_api_port }}</string>
+    <string>--upstream-host</string><string>127.0.0.1</string>
+    <string>--upstream-port</string><string>{{ exo_internal_api }}</string>
+    <string>--metrics-port</string><string>{{ exo_metrics_port }}</string>
+    <string>--engine-name</string><string>exo</string>
+    <string>--metric-prefix</string><string>exo</string>
+    <string>--model</string><string>{{ exo_model_path | basename }}</string>
+    <string>--max-kv</string><string>{{ exo_max_kv }}</string>
+    <string>--max-concurrency</string><string>{{ exo_max_conc }}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardOutPath</key><string>/var/log/hydra/exo-perf.log</string>
+  <key>StandardErrorPath</key><string>/var/log/hydra/exo-perf-error.log</string>
+</dict>
+</plist>

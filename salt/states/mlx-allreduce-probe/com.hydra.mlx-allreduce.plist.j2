@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.mlx-allreduce.plist — Managed by Salt.
+  Periodic AllReduce benchmark across the tensor-parallel group (leader only).
+-->
+{%- set llm_base_dir      = pillar.get('llm_base_dir', '/opt/hydra/llm') %}
+{%- set llm_log_dir       = pillar.get('llm_log_dir', '/var/log/hydra') %}
+{%- set allreduce_dir     = pillar.get('allreduce_dir', llm_base_dir ~ '/allreduce') %}
+{%- set runner            = pillar.get('allreduce_runner', allreduce_dir ~ '/run-allreduce-probe.sh') %}
+{%- set interval          = pillar.get('mlx_allreduce_interval_sec', 60) %}
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.mlx-allreduce</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>{{ runner }}</string>
+  </array>
+  <key>StartInterval</key><integer>{{ interval }}</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ThrottleInterval</key><integer>{{ interval }}</integer>
+  <key>StandardOutPath</key><string>{{ llm_log_dir }}/mlx-allreduce.log</string>
+  <key>StandardErrorPath</key><string>{{ llm_log_dir }}/mlx-allreduce-error.log</string>
+</dict>
+</plist>

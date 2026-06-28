@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.mlx-server.plist
+  Managed by Salt (llm-mlx state) — do not edit manually.
+  Apple MLX inference server. Backend selected by pillar hydra_mlx_backend.
+-->
+{%- set llm_base_dir     = pillar.get('llm_base_dir', '/opt/hydra/llm') %}
+{%- set mlx_dir          = pillar.get('mlx_dir',  llm_base_dir ~ '/mlx') %}
+{%- set mlx_venv         = pillar.get('mlx_venv', mlx_dir ~ '/venv') %}
+{%- set mlx_backend      = pillar.get('hydra_mlx_backend', 'vllm_mlx') %}
+{%- set mlx_sidecar      = mlx_backend != 'vllm_mlx' %}
+{%- set mlx_port         = pillar.get('mlx_port', 11500) %}
+{%- set mlx_internal_port = pillar.get('mlx_internal_port', 11510) %}
+{%- set bind_host        = '127.0.0.1' if mlx_sidecar else '0.0.0.0' %}
+{%- set bind_port        = mlx_internal_port if mlx_sidecar else mlx_port %}
+{%- set mlx_model        = pillar.get('mlx_default_model', '/opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit') %}
+{%- set mlx_max_tokens   = pillar.get('mlx_max_tokens', 2048) %}
+{%- set mlx_max_kv       = pillar.get('mlx_max_kv_size', 4096) %}
+{%- set otel_http        = pillar.get('otel_traces_http_endpoint', 'http://127.0.0.1:4318') %}
+{%- set node_id          = pillar.get('hydra_node_id', '') or grains.get('id', 'unknown') %}
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.mlx-server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+{% if mlx_backend == 'vllm_mlx' %}
+    <string>{{ mlx_venv }}/bin/vllm-mlx</string>
+    <string>serve</string>
+    <string>{{ mlx_model }}</string>
+    <string>--host</string><string>{{ bind_host }}</string>
+    <string>--port</string><string>{{ bind_port }}</string>
+    <string>--enable-metrics</string>
+    <string>--continuous-batching</string>
+    <string>--use-paged-cache</string>
+    <string>--max-request-tokens</string><string>{{ mlx_max_tokens }}</string>
+    <string>--cache-memory-percent</string><string>0.20</string>
+{% else %}
+    <string>{{ mlx_venv }}/bin/python</string>
+    <string>-m</string><string>mlx_lm.server</string>
+    <string>--model</string><string>{{ mlx_model }}</string>
+    <string>--host</string><string>{{ bind_host }}</string>
+    <string>--port</string><string>{{ bind_port }}</string>
+    <string>--max-tokens</string><string>{{ mlx_max_tokens }}</string>
+{% endif %}
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{ mlx_dir }}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TOKENIZERS_PARALLELISM</key><string>false</string>
+    <key>HF_DATASETS_OFFLINE</key><string>1</string>
+    <key>TRANSFORMERS_OFFLINE</key><string>1</string>
+    <key>HF_HUB_OFFLINE</key><string>1</string>
+    <key>MLX_METAL_DEBUG</key><string>0</string>
+    <key>HYDRA_MLX_MAX_KV_SIZE</key><string>{{ mlx_max_kv }}</string>
+    <key>OTEL_TRACES_EXPORTER</key><string>otlp</string>
+    <key>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</key>
+    <string>{{ otel_http }}/v1/traces</string>
+    <key>OTEL_SERVICE_NAME</key><string>mlx-server</string>
+    <key>OTEL_RESOURCE_ATTRIBUTES</key>
+    <string>node_id={{ node_id }},component=mlx</string>
+  </dict>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/mlx-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/mlx-server-error.log</string>
+</dict>
+</plist>
