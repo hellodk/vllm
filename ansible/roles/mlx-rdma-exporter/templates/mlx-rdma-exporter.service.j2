@@ -1,0 +1,17 @@
+[Unit]
+# managed-by: mlx-rdma-exporter (SRE-3)
+Description=Hydra RDMA/RoCE fabric exporter
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart={{ mlx_rdma_exporter_bin }} --listen {{ mlx_rdma_exporter_listen_host }}:{{ mlx_rdma_exporter_port }}
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mlx-rdma-exporter
+
+[Install]
+WantedBy=multi-user.target

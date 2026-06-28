@@ -1,0 +1,14 @@
+# ansible/roles/snmp-exporter/defaults/main.yml
+# Installs prometheus snmp_exporter to poll the fabric switch (SRE-3) for
+# per-priority pause / ECN / queue-3 drop counters. Prebuilt, air-gapped binary.
+---
+snmp_exporter_version: "{{ hydra_versions.snmp_exporter | default('0.26.0') }}"
+snmp_exporter_listen_host: "127.0.0.1"
+snmp_exporter_port: 9116
+snmp_exporter_bin: /usr/local/bin/snmp_exporter
+snmp_exporter_config: /etc/hydra/snmp.yml
+snmp_exporter_log_dir: /var/log/hydra
+
+# Target switch (RoCE fabric ToR).
+snmp_switch_address: "192.168.10.1"
+snmp_community: "public"

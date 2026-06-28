@@ -1,0 +1,9 @@
+# ansible/roles/snmp-exporter/handlers/main.yml
+---
+- name: restart snmp-exporter
+  ansible.builtin.systemd:
+    name: snmp-exporter
+    state: restarted
+    enabled: true
+    daemon_reload: true
+  become: true

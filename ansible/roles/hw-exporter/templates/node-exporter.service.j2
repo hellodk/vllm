@@ -5,13 +5,19 @@ After=network.target
 [Service]
 Type=simple
 User=root
+# SRE-3: --collector.infiniband surfaces RDMA/RoCE sysfs counters (rx/tx_pause,
+# np_cnp_sent, out_of_buffer, rnr_nak_retry_err) for the fabric dashboard/alerts.
+# --collector.textfile lets the nccl-probe role (SRE-4) publish .prom files.
 ExecStart=/usr/local/bin/node_exporter \
   --web.listen-address=127.0.0.1:9100 \
   --collector.cpu \
   --collector.meminfo \
   --collector.diskstats \
   --collector.filesystem \
-  --collector.netdev
+  --collector.netdev \
+  --collector.infiniband \
+  --collector.textfile \
+  --collector.textfile.directory=/var/lib/node_exporter/textfile
 Restart=on-failure
 RestartSec=10
 

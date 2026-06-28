@@ -1,0 +1,19 @@
+[Unit]
+# managed-by: snmp-exporter (SRE-3)
+Description=Hydra SNMP exporter (fabric switch)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart={{ snmp_exporter_bin }} \
+  --config.file={{ snmp_exporter_config }} \
+  --web.listen-address={{ snmp_exporter_listen_host }}:{{ snmp_exporter_port }}
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=snmp-exporter
+
+[Install]
+WantedBy=multi-user.target

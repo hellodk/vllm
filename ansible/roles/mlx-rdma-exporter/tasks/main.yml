@@ -1,0 +1,89 @@
+# ansible/roles/mlx-rdma-exporter/tasks/main.yml
+# Stage + run the prebuilt RDMA/RoCE exporter (SRE-3). Per-arch air-gapped binary.
+---
+- name: Resolve per-arch artifact suffix
+  ansible.builtin.set_fact:
+    _rdma_arch: >-
+      {{ 'darwin_arm64' if ansible_system == 'Darwin'
+         else ('linux_arm64' if ansible_architecture in ['aarch64', 'arm64']
+               else 'linux_amd64') }}
+
+- name: Set artifact name
+  ansible.builtin.set_fact:
+    _rdma_artifact: "mlx-rdma-exporter_{{ mlx_rdma_exporter_version }}_{{ _rdma_arch }}"
+
+- name: Assert prebuilt binary is staged in files/ (air-gap)
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/{{ _rdma_artifact }}"
+  register: _rdma_local
+
+- name: Fail with staging instructions when binary is missing
+  ansible.builtin.fail:
+    msg: |
+      Missing pre-staged binary: {{ role_path }}/files/{{ _rdma_artifact }}
+      The exporter binary is built by the monitoring team; stage the prebuilt
+      artifact here. See files/README.md.
+  when: not _rdma_local.stat.exists
+
+- name: Install mlx-rdma-exporter binary
+  ansible.builtin.copy:
+    src: "{{ _rdma_artifact }}"
+    dest: "{{ mlx_rdma_exporter_bin }}"
+    mode: "0755"
+    owner: root
+    group: "{{ 'wheel' if ansible_system == 'Darwin' else 'root' }}"
+  become: true
+  notify: restart mlx-rdma-exporter
+
+- name: Ensure log directory exists
+  ansible.builtin.file:
+    path: "{{ mlx_rdma_exporter_log_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Install mlx-rdma-exporter LaunchDaemon (macOS)
+  ansible.builtin.template:
+    src: com.hydra.mlx-rdma-exporter.plist.j2
+    dest: /Library/LaunchDaemons/{{ mlx_rdma_exporter_label }}.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  when: ansible_system == "Darwin"
+  notify: restart mlx-rdma-exporter
+
+- name: Install mlx-rdma-exporter systemd unit (Linux)
+  ansible.builtin.template:
+    src: mlx-rdma-exporter.service.j2
+    dest: /etc/systemd/system/mlx-rdma-exporter.service
+    mode: "0644"
+  become: true
+  when: ansible_system == "Linux"
+  notify: restart mlx-rdma-exporter
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for mlx-rdma-exporter to respond
+  ansible.builtin.uri:
+    url: "http://{{ mlx_rdma_exporter_listen_host }}:{{ mlx_rdma_exporter_port }}/metrics"
+    status_code: 200
+    timeout: 5
+  register: _rdma_health
+  until: _rdma_health.status == 200
+  retries: 6
+  delay: 5
+
+- name: Assert roce_hardware_present gauge is exposed
+  ansible.builtin.assert:
+    that: "'roce_hardware_present' in _rdma_health.content"
+    fail_msg: "roce_hardware_present missing from :{{ mlx_rdma_exporter_port }}/metrics"
+
+# Enable the unified OTEL agent's RDMA scrape on this host by setting
+# enable_rdma_scrape: true (host_vars / group_vars). The agent then renders the
+# prometheus/rdma receiver pointed at mc_rdma_exporter_port.
+# TODO(SRE-3): owned by monitoring agent — PFC/CNP/buffer alerting rules and the
+# "RDMA Fabric" dashboard live in monitoring/ and are out of scope here.
