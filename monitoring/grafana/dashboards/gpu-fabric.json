@@ -27,7 +27,7 @@
       }
     ]
   },
-  "description": "MLX inference telemetry — TTFT, throughput, queue depth, Metal failures, unified-memory pressure, and KV/scheduler health for vllm-mlx nodes. All vLLM metrics use the canonical vllm: prefix (vLLM-MLX 0.4.0rc1+ mirrors upstream vLLM metric names). Cross-engine rollup panels use hydra:llm:* recording rules (hydra-llm-normalization.yml).",
+  "description": "GPU fabric telemetry — NVLink TX/RX bandwidth, PCIe TX/RX, SM and DRAM active utilisation, and NCCL AllReduce latency vs 8 ms RDMA target (from docs/network-design.md). Metrics from DCGM exporter with custom counters CSV (DCGM_FI_PROF_NVLINK_*/PCIE_*/SM_ACTIVE/DRAM_ACTIVE) and nccl-tests probe. TODO(SRE-4): mount custom counters CSV in dcgm-exporter.service.j2 to activate NVLINK/PCIe profiler counters.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -39,12 +39,399 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 1,
-      "title": "Latency",
+      "title": "NVLink Bandwidth",
       "type": "row"
     },
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "NVLink transmit bytes per GPU per second. Source: DCGM_FI_PROF_NVLINK_TX_BYTES. Requires custom DCGM counters CSV with profiling group enabled.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "bytes/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "NVLink TX Bytes / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "DCGM_FI_PROF_NVLINK_TX_BYTES{node_id=~\"$node\", gpu=~\"$gpu\"}",
+          "legendFormat": "{{node_id}} gpu{{gpu}} tx",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "NVLink receive bytes per GPU per second. Source: DCGM_FI_PROF_NVLINK_RX_BYTES.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "bytes/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "NVLink RX Bytes / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "DCGM_FI_PROF_NVLINK_RX_BYTES{node_id=~\"$node\", gpu=~\"$gpu\"}",
+          "legendFormat": "{{node_id}} gpu{{gpu}} rx",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 10,
+      "title": "PCIe Bandwidth",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "PCIe transmit bytes per GPU. Source: DCGM_FI_PROF_PCIE_TX_BYTES. High PCIe TX during AllReduce may indicate NVLink is not being used (tensor-parallel group topology mismatch).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "bytes/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "PCIe TX Bytes / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "DCGM_FI_PROF_PCIE_TX_BYTES{node_id=~\"$node\", gpu=~\"$gpu\"}",
+          "legendFormat": "{{node_id}} gpu{{gpu}} tx",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "PCIe receive bytes per GPU. Source: DCGM_FI_PROF_PCIE_RX_BYTES.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "bytes/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "PCIe RX Bytes / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "DCGM_FI_PROF_PCIE_RX_BYTES{node_id=~\"$node\", gpu=~\"$gpu\"}",
+          "legendFormat": "{{node_id}} gpu{{gpu}} rx",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 20,
+      "title": "GPU Compute Utilisation",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "SM (Streaming Multiprocessor) active ratio. Source: DCGM_FI_PROF_SM_ACTIVE (0–1). Values > 0.85 during idle network periods may indicate compute-bound stall masking a fabric problem.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Active ratio",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "id": 21,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "SM Active",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "DCGM_FI_PROF_SM_ACTIVE{node_id=~\"$node\", gpu=~\"$gpu\"}",
+          "legendFormat": "{{node_id}} gpu{{gpu}}",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "DRAM active ratio (memory bus busy). Source: DCGM_FI_PROF_DRAM_ACTIVE. Low DRAM active during inference indicates model weights fit on-chip or are cache-resident.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Active ratio",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "DRAM Active",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "DCGM_FI_PROF_DRAM_ACTIVE{node_id=~\"$node\", gpu=~\"$gpu\"}",
+          "legendFormat": "{{node_id}} gpu{{gpu}}",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 30,
+      "title": "AllReduce Latency",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "NCCL AllReduce latency from periodic nccl-tests probe (nccl_allreduce_latency_seconds). The red threshold line at 8 ms is the RDMA target from docs/network-design.md; values above it indicate fallback to TCP or fabric degradation (~1280 ms expected on TCP for 32B model).",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -75,269 +462,11 @@
             "mode": "absolute",
             "steps": [
               { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 3 }
+              { "color": "yellow", "value": 0.005 },
+              { "color": "red", "value": 0.008 }
             ]
           },
           "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 1 },
-      "id": 2,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "TTFT p95 by Node",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{node_id=~\"$node\"}[5m])) by (le, node_id))",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
-      "id": 10,
-      "title": "Throughput",
-      "type": "row"
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Tokens/s",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 20,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
-      "id": 11,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Tokens/sec by Node",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(rate(vllm:generation_tokens_total{node_id=~\"$node\"}[1m])) by (node_id)",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
-      "id": 20,
-      "title": "Queue & Failures",
-      "type": "row"
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Requests",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 15,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "stepAfter",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "line+area" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 10 },
-              { "color": "red", "value": 50 }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
-      "id": 21,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Request Queue Depth by Node",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(vllm:num_requests_waiting{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [
-            { "options": { "0": { "text": "0" } }, "type": "value" }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 5 }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
-      "id": 22,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto"
-      },
-      "title": "Metal Failures (1h)",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "increase(mlx_metal_failures_total{node_id=~\"$node\"}[1h])",
-          "instant": true,
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
-      "id": 30,
-      "title": "Memory",
-      "type": "row"
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "line+area" }
-          },
-          "mappings": [],
-          "max": 1,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 0.75 },
-              { "color": "red", "value": 0.90 }
-            ]
-          },
-          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -352,285 +481,14 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Unified-Memory Pressure by Node",
+      "title": "NCCL AllReduce Latency (target ≤ 8 ms RDMA)",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "apple_gpu_memory_used_bytes{node_id=~\"$node\"} / apple_gpu_memory_total_bytes{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
+          "expr": "nccl_allreduce_latency_seconds{node_id=~\"$node\", tp_group=~\"$tp_group\"}",
+          "legendFormat": "{{node_id}} tp{{tp_group}}",
           "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
-      "id": 40,
-      "title": "KV & Scheduler",
-      "type": "row"
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "KV cache fill ratio from hydra:llm:kv_cache_usage_ratio recording rule (source: vllm:gpu_cache_usage_perc). Thresholds: 0.85 = warning (paged-attention pressure), 0.95 = critical (imminent preemptions).",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Ratio",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 15,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "line+area" }
-          },
-          "mappings": [],
-          "max": 1,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 0.85 },
-              { "color": "red", "value": 0.95 }
-            ]
-          },
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
-      "id": 41,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "KV Cache Usage %",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "hydra:llm:kv_cache_usage_ratio{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Prefix/radix cache hit ratio from hydra:llm:prefix_cache_hit_ratio. Low values on 16 GB M4 nodes indicate cold cache or working-set churn.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Ratio",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 15,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "max": 1,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
-      "id": 42,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Prefix Cache Hit Rate",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "hydra:llm:prefix_cache_hit_ratio{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Paged-attention preemptions per second from hydra:llm:preemption:rate5m recording rule (source: rate(vllm:num_preemptions_total[5m])). Sustained values > 0 indicate KV thrashing.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Preemptions/s",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 20,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "line+area" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 0.1 },
-              { "color": "red", "value": 1 }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
-      "id": 43,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Preemptions / s",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "hydra:llm:preemption:rate5m{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Running vs waiting requests from hydra:llm:requests_running and hydra:llm:requests_waiting. A growing waiting queue with a flat running queue signals scheduler saturation.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Requests",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "stepAfter",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
-          "unit": "short"
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "waiting" },
-            "properties": [
-              { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }
-            ]
-          }
-        ]
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
-      "id": 44,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Running vs Waiting Requests",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(hydra:llm:requests_running{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "running — {{node_id}}",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(hydra:llm:requests_waiting{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "waiting — {{node_id}}",
-          "refId": "B"
         }
       ]
     }
@@ -638,21 +496,21 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["mlx", "llm", "inference", "hydra"],
+  "tags": ["gpu", "nvlink", "pcie", "dcgm", "nccl", "hydra"],
   "templating": {
     "list": [
       {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-        "definition": "label_values(apple_gpu_utilization_percent, pool)",
+        "definition": "label_values(DCGM_FI_PROF_SM_ACTIVE, node_id)",
         "hide": 0,
         "includeAll": true,
-        "label": "Pool",
+        "label": "Node",
         "multi": true,
-        "name": "pool",
+        "name": "node",
         "options": [],
         "query": {
-          "query": "label_values(apple_gpu_utilization_percent, pool)",
+          "query": "label_values(DCGM_FI_PROF_SM_ACTIVE, node_id)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -663,15 +521,34 @@
       {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-        "definition": "label_values(apple_gpu_utilization_percent{pool=~\"$pool\"}, node_id)",
+        "definition": "label_values(DCGM_FI_PROF_SM_ACTIVE{node_id=~\"$node\"}, gpu)",
         "hide": 0,
         "includeAll": true,
-        "label": "Node",
+        "label": "GPU",
         "multi": true,
-        "name": "node",
+        "name": "gpu",
         "options": [],
         "query": {
-          "query": "label_values(apple_gpu_utilization_percent{pool=~\"$pool\"}, node_id)",
+          "query": "label_values(DCGM_FI_PROF_SM_ACTIVE{node_id=~\"$node\"}, gpu)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+        "definition": "label_values(nccl_allreduce_latency_seconds, tp_group)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "TP Group",
+        "multi": true,
+        "name": "tp_group",
+        "options": [],
+        "query": {
+          "query": "label_values(nccl_allreduce_latency_seconds, tp_group)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -684,8 +561,8 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "MLX Inference — vllm-mlx",
-  "uid": "mlx-inference",
+  "title": "GPU Fabric — NVLink & PCIe & AllReduce",
+  "uid": "gpu-fabric",
   "version": 1,
   "weekStart": ""
 }
