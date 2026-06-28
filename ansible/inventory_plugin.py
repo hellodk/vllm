@@ -8,7 +8,8 @@ import yaml
 
 VALID_OS = {"macos", "linux"}
 VALID_GPU_PROVIDERS = {"apple", "nvidia", "amd", "none"}
-VALID_LLM_PROVIDERS = {"llamacpp", "ollama", "vllm-mlx", "litellm"}
+# ANS-6 / LLM-7: catalog-aligned provider set (adds vllm, mlx, sglang).
+VALID_LLM_PROVIDERS = {"llamacpp", "ollama", "vllm", "vllm-mlx", "mlx", "sglang", "litellm"}
 
 _CLUSTER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cluster.yml")
 
@@ -20,7 +21,11 @@ def _load_cluster(path: str = _CLUSTER_PATH) -> dict:
 
 def build_inventory(cluster: dict) -> dict:
     cfg = cluster["cluster"]
-    nodes = cluster["nodes"]
+    # ANS-9: cluster.yml is the single source of truth. Surface BOTH the
+    # production fleet (production_nodes) and the pilot/baseline hosts (nodes) so
+    # the dynamic inventory matches the static inventories/llm/hosts.yml host set
+    # instead of silently exposing only the 3 pilot nodes.
+    nodes = list(cluster.get("production_nodes", [])) + list(cluster.get("nodes", []))
 
     inv: dict = {
         "_meta": {"hostvars": {}},
@@ -30,6 +35,10 @@ def build_inventory(cluster: dict) -> dict:
     groups: dict[str, list[str]] = {}
 
     for node in nodes:
+        # Skip the YAML-anchor "defaults" holder (&m4_defaults) which is a real
+        # list element carrying shared keys but no id (ANS-9).
+        if "id" not in node:
+            continue
         if node.get("maintenance", False):
             continue
 
