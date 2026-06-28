@@ -18,3 +18,30 @@ storage:
 compactor:
   compaction:
     block_retention: 168h
+
+# metrics-generator turns spans into RED metrics + a service graph and pushes
+# them to VictoriaMetrics. This is what powers Grafana's Service Map / node graph
+# and trace↔metric correlation for the LLM perf-proxy spans.
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: hydra
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://victoria-metrics:8428/api/v1/write
+        send_exemplars: true
+  processor:
+    span_metrics:
+      # Extra dimensions promoted to labels on traces_spanmetrics_* series.
+      dimensions: [service.name, llm.model, llm.finished_reason]
+    service_graphs:
+      dimensions: [service.name]
+
+# Enable the generator processors for the default (single) tenant. Tempo 2.4+
+# nests per-tenant overrides under overrides.defaults.
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

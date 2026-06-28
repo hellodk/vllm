@@ -155,6 +155,10 @@ class Metrics:
         self.requests = PromCounter(f"{p}:request_success_total",
                                     "Completed requests by finished_reason",
                                     ["engine", "model", "finished_reason"])
+        self.errors = PromCounter(f"{p}:errors_total",
+                                  "Failed requests by error_type "
+                                  "(timeout/connection/rate_limit/parse_error/...)",
+                                  ["engine", "model", "error_type"])
         self.running = Gauge(f"{p}:num_requests_running",
                              "Requests currently being served", ["engine", "model"])
         self.waiting = Gauge(f"{p}:num_requests_waiting",
@@ -198,6 +202,10 @@ class Metrics:
     def record_request(self, finished_reason):
         self.requests.labels(engine=self.engine, model=self.model,
                              finished_reason=finished_reason).inc()
+
+    def record_error(self, error_type):
+        self.errors.labels(engine=self.engine, model=self.model,
+                           error_type=error_type).inc()
 
 
 class State:
@@ -306,6 +314,18 @@ def make_proxy_handler(upstream_host, upstream_port, metrics, state, traces_endp
         def _is_completion(self):
             return self.path.rstrip("/").endswith(_COMPLETION_SUFFIXES)
 
+        def _fail_502(self):
+            # Must terminate the response explicitly: with HTTP/1.1 keep-alive a
+            # client would otherwise hang waiting for a body that never comes.
+            try:
+                self.send_response(502)
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "close")
+                self.close_connection = True
+                self.end_headers()
+            except Exception:
+                pass
+
         def _enter(self, est_prompt):
             with state.lock:
                 state.running += 1
@@ -371,6 +391,7 @@ def make_proxy_handler(upstream_host, upstream_port, metrics, state, traces_endp
             gen_tokens = 0
             prompt_tokens = est_prompt
             finished = "stop"
+            error_type = None
             resp_text_parts = []
             token_probs = []
             if track:
@@ -382,6 +403,12 @@ def make_proxy_handler(upstream_host, upstream_port, metrics, state, traces_endp
                        if k.lower() not in ("host", "content-length")}
                 conn.request(self.command, self.path, body=body, headers=fwd)
                 resp = conn.getresponse()
+                if resp.status == 429:
+                    error_type = "rate_limit"
+                elif resp.status >= 500:
+                    error_type = "upstream_5xx"
+                elif resp.status >= 400:
+                    error_type = "client_4xx"
                 self.send_response(resp.status)
                 ctype = resp.getheader("Content-Type", "")
                 streaming = "text/event-stream" in ctype
@@ -436,14 +463,22 @@ def make_proxy_handler(upstream_host, upstream_port, metrics, state, traces_endp
                                 token_probs.extend(
                                     math.exp(t["logprob"]) for t in lp if "logprob" in t)
                         except ValueError:
-                            pass
-            except Exception:
+                            error_type = error_type or "parse_error"
+            except TimeoutError:
+                finished, error_type = "abort", "timeout"
+                self._fail_502()
+            except (ConnectionError, ConnectionRefusedError) as exc:
                 finished = "abort"
-                try:
-                    self.send_response(502)
-                    self.end_headers()
-                except Exception:
-                    pass
+                error_type = ("connection_refused"
+                              if isinstance(exc, ConnectionRefusedError)
+                              else "connection")
+                self._fail_502()
+            except OSError:
+                finished, error_type = "abort", "connection"
+                self._fail_502()
+            except Exception:
+                finished, error_type = "abort", error_type or "proxy_error"
+                self._fail_502()
             finally:
                 conn.close()
                 if track:
@@ -457,6 +492,8 @@ def make_proxy_handler(upstream_host, upstream_port, metrics, state, traces_endp
                     if prompt_tokens > 0:
                         metrics.m(metrics.prompt_tokens).inc(prompt_tokens)
                     metrics.record_request(finished)
+                    if error_type:
+                        metrics.record_error(error_type)
                     self._exit(prompt_tokens, gen_tokens)
                     if metrics.quality_on:
                         self._score_quality("".join(resp_text_parts), token_probs)

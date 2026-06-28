@@ -289,3 +289,144 @@ groups:
           histogram_quantile(0.95, sum by (le, provider, model, node_id) (
             rate(exo:time_per_output_token_seconds_bucket[5m])
           ))
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Hetu gap-closure rules (request rate, success rate, latency p50/p99,
+      # token rollups, error taxonomy, models loaded, unified-memory headroom).
+      # Added to reach parity with the external cluster_intel_* / ollama_* suite.
+      # ════════════════════════════════════════════════════════════════════════
+
+      # ── hydra:llm:requests:rate1m ────────────────────────────────────────────
+      # Completed request throughput (requests/second, 1-minute window), all
+      # finish reasons. SGLang has no success counter → vLLM / mlx / exo only.
+      - record: hydra:llm:requests:rate1m
+        expr: |
+          sum by (provider, model, node_id) (rate(vllm:request_success_total[1m]))
+          or
+          sum by (provider, model, node_id) (rate(mlx:request_success_total[1m]))
+          or
+          sum by (provider, model, node_id) (rate(exo:request_success_total[1m]))
+
+      # ── hydra:llm:success_rate ───────────────────────────────────────────────
+      # Fraction of completed requests that finished normally (1 = no aborts).
+      # success = all finish reasons except "abort"; window 5m for stability.
+      - record: hydra:llm:success_rate
+        expr: |
+          (
+            sum by (provider, model, node_id) (rate(vllm:request_success_total{finished_reason!="abort"}[5m]))
+            /
+            clamp_min(sum by (provider, model, node_id) (rate(vllm:request_success_total[5m])), 0.0001)
+          )
+          or
+          (
+            sum by (provider, model, node_id) (rate(mlx:request_success_total{finished_reason!="abort"}[5m]))
+            /
+            clamp_min(sum by (provider, model, node_id) (rate(mlx:request_success_total[5m])), 0.0001)
+          )
+          or
+          (
+            sum by (provider, model, node_id) (rate(exo:request_success_total{finished_reason!="abort"}[5m]))
+            /
+            clamp_min(sum by (provider, model, node_id) (rate(exo:request_success_total[5m])), 0.0001)
+          )
+
+      # ── hydra:llm:request_e2e_seconds:p50 / :p99 ─────────────────────────────
+      # Complements the existing :p95. Matches Hetu's p50/p99 latency tiles.
+      - record: hydra:llm:request_e2e_seconds:p50
+        expr: |
+          histogram_quantile(0.50, sum by (le, provider, model, node_id) (
+            rate(vllm:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.50, sum by (le, provider, model, node_id) (
+            rate(sglang:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.50, sum by (le, provider, model, node_id) (
+            rate(mlx:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.50, sum by (le, provider, model, node_id) (
+            rate(exo:e2e_request_latency_seconds_bucket[5m])
+          ))
+
+      - record: hydra:llm:request_e2e_seconds:p99
+        expr: |
+          histogram_quantile(0.99, sum by (le, provider, model, node_id) (
+            rate(vllm:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.99, sum by (le, provider, model, node_id) (
+            rate(sglang:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.99, sum by (le, provider, model, node_id) (
+            rate(mlx:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.99, sum by (le, provider, model, node_id) (
+            rate(exo:e2e_request_latency_seconds_bucket[5m])
+          ))
+
+      # ── hydra:llm:tokens_input:rate1m ────────────────────────────────────────
+      # Prompt (input) token ingest rate (tokens/second, 1-minute window).
+      # Complements the existing hydra:llm:tokens_generated:rate1m (output side).
+      - record: hydra:llm:tokens_input:rate1m
+        expr: |
+          sum by (provider, model, node_id) (rate(vllm:prompt_tokens_total[1m]))
+          or
+          sum by (provider, model, node_id) (rate(sglang:num_prompt_tokens_total[1m]))
+          or
+          sum by (provider, model, node_id) (rate(mlx:prompt_tokens_total[1m]))
+          or
+          sum by (provider, model, node_id) (rate(exo:prompt_tokens_total[1m]))
+
+      # ── hydra:llm:tokens_input:increase1h / tokens_output:increase1h ─────────
+      # Hourly token volume rollups (cost / capacity accounting). Mirrors Hetu's
+      # hourly token counters used for spend dashboards.
+      - record: hydra:llm:tokens_input:increase1h
+        expr: |
+          sum by (provider, model, node_id) (increase(vllm:prompt_tokens_total[1h]))
+          or
+          sum by (provider, model, node_id) (increase(mlx:prompt_tokens_total[1h]))
+          or
+          sum by (provider, model, node_id) (increase(exo:prompt_tokens_total[1h]))
+
+      - record: hydra:llm:tokens_output:increase1h
+        expr: |
+          sum by (provider, model, node_id) (increase(vllm:generation_tokens_total[1h]))
+          or
+          sum by (provider, model, node_id) (increase(sglang:num_generated_tokens_total[1h]))
+          or
+          sum by (provider, model, node_id) (increase(mlx:generation_tokens_total[1h]))
+          or
+          sum by (provider, model, node_id) (increase(exo:generation_tokens_total[1h]))
+
+      # ── hydra:llm:errors_by_type:rate5m ──────────────────────────────────────
+      # Error taxonomy (requests/second by error_type), Hetu cluster_intel_llm_
+      # errors_total equivalent. Emitted by the perf-proxy (errors_total) for
+      # mlx/exo: timeout, connection, connection_refused, rate_limit,
+      # parse_error, upstream_5xx, client_4xx, proxy_error.
+      - record: hydra:llm:errors_by_type:rate5m
+        expr: |
+          sum by (provider, model, node_id, error_type) (rate(mlx:errors_total[5m]))
+          or
+          sum by (provider, model, node_id, error_type) (rate(exo:errors_total[5m]))
+
+      # ── hydra:llm:models_loaded ──────────────────────────────────────────────
+      # Distinct model count currently serving per provider/node. Derived from
+      # the running-requests gauge series (one series per loaded model).
+      # Mirrors Hetu's "models loaded" count tile.
+      - record: hydra:llm:models_loaded
+        expr: |
+          count by (provider, node_id) (
+            count by (provider, node_id, model) (hydra:llm:requests_running)
+          )
+
+      # ── hydra:llm:gpu_memory_usage_ratio ─────────────────────────────────────
+      # Apple unified memory IS the GPU/VRAM pool — this surfaces the existing
+      # apple_gpu_memory_* gauges (already alerted on in mlx-alerts.yml) into the
+      # hydra:llm:* namespace so dashboards have one consistent name.
+      - record: hydra:llm:gpu_memory_usage_ratio
+        expr: |
+          apple_gpu_memory_used_bytes / clamp_min(apple_gpu_memory_total_bytes, 1)
