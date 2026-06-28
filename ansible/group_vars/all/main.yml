@@ -8,12 +8,27 @@ hw_exporter_ports:
   amd: 9102
   none: 9100
 
-# ── Default LLM provider probe ports ─────────────────────────────────────────
-llm_probe_ports:
-  11434: ollama
-  21434: llamacpp
-  8000: vllm-mlx
-  8080: litellm
+# ── LLM engine catalog (ANS-6) ───────────────────────────────────────────────
+# Registry that drives BOTH discovery probes and OTEL scrape jobs. Replaces the
+# fixed 4-port probe map. Each engine declares how to reach it (port/scheme),
+# how to health-check it (health_path), where its Prometheus metrics live
+# (metrics_path) and how to authenticate (auth: none|bearer). Bearer tokens are
+# resolved from vault_llm_provider_api_keys[<provider>] at discovery time.
+llm_engine_catalog:
+  ollama:    {port: 11434, scheme: http, health_path: "/",            metrics_path: "/metrics", auth: none}
+  llamacpp:  {port: 21434, scheme: http, health_path: "/health",      metrics_path: "/metrics", auth: none}
+  vllm:      {port: 8000,  scheme: http, health_path: "/health",      metrics_path: "/metrics", auth: none}
+  vllm-mlx:  {port: 11500, scheme: http, health_path: "/health",      metrics_path: "/metrics", auth: none}
+  mlx:       {port: 11500, scheme: http, health_path: "/v1/models",   metrics_path: "/metrics", auth: none}
+  sglang:    {port: 30000, scheme: http, health_path: "/health",      metrics_path: "/metrics", auth: none}
+  litellm:   {port: 8080,  scheme: http, health_path: "/health/liveliness", metrics_path: "/metrics", auth: bearer}
+
+# ── Engine OTLP trace export (LLM-6) ─────────────────────────────────────────
+# Engines push spans to the LOCAL OTEL agent, which forwards them to the gateway
+# (the unified template now has a traces pipeline). Keep these pointed at the
+# loopback agent ports, not the remote gateway.
+otel_traces_grpc_endpoint: "127.0.0.1:4317"
+otel_traces_http_endpoint: "http://127.0.0.1:4318"
 
 # MLX /metrics scrape target. vllm-mlx serves /metrics on its main serving port (mlx_port=11500).
 # Kept here (not only in the llm-mlx role) so llm-discovery — which runs in site.yml without the
@@ -31,6 +46,7 @@ mlx_logexporter_scrape_port: 11502
 jfrog:
   pypi_index: "https://artifactory.hydra.local/artifactory/api/pypi/pypi-remote/simple"
   pypi_trusted_host: "artifactory.hydra.local"
+  token: "{{ vault_jfrog_token }}"   # ansible-vault — group_vars/all/vault.yml (ANS-5)
 
 # ── Air-gap flag ─────────────────────────────────────────────────────────────
 # Set false only in dev/lab environments that have internet access on targets.
@@ -64,7 +80,7 @@ node_exporter_download_base: "https://github.com/prometheus/node_exporter/releas
 # ── Allowed enum values ───────────────────────────────────────────────────────
 valid_os: [macos, linux]
 valid_gpu_providers: [apple, nvidia, amd, none]
-valid_llm_providers: [llamacpp, ollama, vllm-mlx, litellm]
+valid_llm_providers: [llamacpp, ollama, vllm, vllm-mlx, mlx, sglang, litellm]
 valid_pools: [fast, reason, largepool, vision, embed, speech, gateway, infra]
 
 # ── Hydra directories created on every node ──────────────────────────────────
@@ -88,6 +104,11 @@ network_subnet: "192.168.10.0/24"
 ntp_server: "192.168.10.13"    # hydra-svc-01 acts as NTP stratum 1
 dns_server: "192.168.10.10"    # hydra-gw-01 runs dnsmasq
 dns_domain: "hydra.local"
+
+# ── LiteLLM proxy (ANS-9: single source of truth for the port) ───────────────
+# Canonical LiteLLM listen port. llm-litellm/vars/main.yml and llm_engine_catalog
+# must both resolve to this; cluster.yml gateway role_notes reference it too.
+litellm_port: 8080
 
 # ── Model registry ───────────────────────────────────────────────────────────
 model_registry_port: 8100

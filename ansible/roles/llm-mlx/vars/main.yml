@@ -3,10 +3,13 @@
 mlx_dir: "{{ llm_base_dir }}/mlx"
 mlx_venv: "{{ mlx_dir }}/venv"
 mlx_port: 11500          # moved off 11434 (Ollama) — see Task 2
-mlx_metrics_port: 11501  # /metrics scrape target — see Task 5
+# LLM-5 perf sidecar /metrics for the pure-MLX (mlx_lm / mlx_lm_sidecar) backends,
+# which otherwise expose only crash counters. vllm_mlx serves /metrics on mlx_port
+# directly, so this sidecar port is used only when mlx_server_backend != vllm_mlx.
+mlx_metrics_port: 11501
 mlx_logexporter_port: 11502  # log exporter /metrics — must match mlx_logexporter_scrape_port in group_vars/all.yml
-# vllm-mlx serves /metrics on the main port; the sidecar uses a separate port.
-mlx_effective_metrics_port: "{{ mlx_port if mlx_server_backend == 'vllm_mlx' else mlx_metrics_port }}"
+# NOTE: the dead `mlx_effective_metrics_port` indirection was removed (ANS-6);
+# discovery now selects the scrape target via mlx_server_backend directly.
 mlx_workers: 2
 mlx_default_model: /opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit
 mlx_models_dir: /opt/hydra/models/mlx
