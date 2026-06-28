@@ -74,3 +74,42 @@ groups:
             Check: launchctl list | grep mlx-allreduce, and the log at
             /var/log/hydra/mlx-allreduce-error.log.
           runbook_url: "https://wiki.company.internal/runbooks/mlx-allreduce-stale"
+
+  # ── Tensor-parallel rank balance ─────────────────────────────────────────
+  # Every metric from a TP-group node carries tp_group/rank labels (upserted by
+  # the OTEL agent's resource processor, LLM-8). In a healthy tensor-parallel
+  # group all ranks advance in lockstep, so GPU utilisation should be uniform;
+  # a persistent straggler (slow rank) shows up as high cross-rank variance and
+  # stalls every layer's collective.
+  - name: mlx_tensor_parallel_balance
+    interval: 30s
+    rules:
+
+      - record: hydra:fabric:tp_gpu_util:stddev
+        expr: stddev by (tp_group) (apple_gpu_utilization_percent{tp_group!=""})
+
+      - record: hydra:fabric:tp_gpu_util:mean
+        expr: avg by (tp_group) (apple_gpu_utilization_percent{tp_group!=""})
+
+      - alert: MLXTensorParallelImbalance
+        expr: |
+          hydra:fabric:tp_gpu_util:stddev > 20
+          and hydra:fabric:tp_gpu_util:mean > 30
+        for: 10m
+        labels:
+          severity: warning
+          team: sre
+          category: mlx-fabric
+        annotations:
+          summary: "Tensor-parallel rank imbalance in group {{ $labels.tp_group }}"
+          description: |
+            Cross-rank GPU-utilisation stddev is {{ $value | printf "%.0f" }}% on
+            tensor-parallel group {{ $labels.tp_group }} while the group is active.
+
+            One rank is lagging (straggler) — likely thermal throttling, a slow
+            interconnect leg, or uneven shard placement. Tensor-parallel decode runs
+            at the speed of the slowest rank, so this caps the whole group's throughput.
+
+            Check: per-node apple_thermal_pressure and apple_gpu_utilization_percent
+            within {{ $labels.tp_group }}, and the AllReduce latency panel.
+          runbook_url: "https://wiki.company.internal/runbooks/mlx-tp-imbalance"

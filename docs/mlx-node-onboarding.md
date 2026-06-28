@@ -188,7 +188,38 @@ alert are there to catch.
 
 ---
 
-## 7. Salt equivalent
+## 7. Quality / hallucination + tracing
+
+The perf-proxy has two opt-in layers (on by default via `llm_quality_enabled` /
+`llm_traces_enabled`):
+
+**Quality** (`--quality`) scores every response and emits the `llm_*` metrics that
+the hallucination-detection alert suite (`monitoring/prometheus/rules/llm-quality.yml`)
+keys off:
+* Always available (text only): `llm_repetition_score`, `llm_refusal_total`,
+  `llm_hedging_score`, `llm_hallucination_risk` (composite).
+* Needs logprobs: `llm_output_entropy`, `llm_perplexity`, `llm_confidence_{mean,std}`.
+  Request them from the client to populate these:
+
+```bash
+curl -s 127.0.0.1:11500/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"model":"Qwen3.5-4B-MLX-8bit","messages":[{"role":"user","content":"hi"}],
+       "logprobs":true,"top_logprobs":1}'
+curl -s 127.0.0.1:11501/metrics | grep -E '^llm_(output_entropy|repetition|hallucination)'
+```
+
+> The proxy computes scores and discards the text — **raw response content is never
+> logged or exported**, only derived numbers. Quality work happens off the hot path.
+
+**Tracing** (`--otlp-traces-endpoint`) emits one OTLP span per request to the local
+OTEL agent (`127.0.0.1:4318`), which forwards to Tempo. Each span carries TTFT,
+e2e, token counts and finish reason — so the Tempo pipeline finally has a source on
+the pure-MLX path. View in Grafana → Explore → Tempo, service `mlx_lm` / `exo`.
+
+To disable either layer fleet-wide set `llm_quality_enabled: false` /
+`llm_traces_enabled: false` (or per host in inventory).
+
+## 8. Salt equivalent
 
 Every step above is also implemented as Salt states under `salt/` (states +
 pillar mirror of these roles) so you can run the same node from either tool and

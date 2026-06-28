@@ -203,11 +203,93 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "id": 12,
+      "title": "Output quality / hallucination (proxy --quality)",
+      "type": "row",
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "min": 0, "max": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 0.5 },
+            { "color": "red", "value": 0.7 }
+          ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "id": 13,
+      "title": "Hallucination risk (composite)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:hallucination_risk{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "{{model}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+      "id": 14,
+      "title": "Output entropy p95 (logprob-gated)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "histogram_quantile(0.95, sum by (le, provider, model, node_id) (rate(llm_output_entropy_bucket{provider=~\"$provider\", node_id=~\"$node\"}[10m])))",
+          "legendFormat": "{{model}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
+      "id": 15,
+      "title": "Repetition score (EWMA)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "llm_repetition_score{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "{{model}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
+      "id": 16,
+      "title": "Refusal rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "llm_refusal_rate{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "{{model}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["mlx", "exo", "llm", "fabric"],
+  "tags": ["mlx", "exo", "llm", "fabric", "quality"],
   "templating": {
     "list": [
       {

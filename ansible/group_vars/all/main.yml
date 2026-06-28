@@ -55,6 +55,17 @@ mlx_sidecar_enabled: "{{ hydra_mlx_backend != 'vllm_mlx' }}"  # proxy fronts pur
 mlx_perf_scrape_port: 11501   # sidecar /metrics (== mlx_metrics_port in llm-mlx vars)
 mlx_internal_port: 11510      # engine loopback bind when the sidecar fronts it
 
+# ── perf-proxy quality + tracing layers (shared by mlx + exo sidecars) ───────
+# quality: scores each response for hallucination/quality signals (llm_* metrics)
+#   that light up the hallucination-detection alert suite. Scores only — the proxy
+#   never logs raw response text. entropy/perplexity/confidence need the client to
+#   request logprobs; repetition/refusal/hedging are always available.
+# tracing: emits one OTLP/HTTP span per request to the local OTEL agent so the
+#   existing Tempo pipeline finally has a source.
+llm_quality_enabled: true
+llm_traces_enabled: true
+llm_otlp_traces_endpoint: "http://127.0.0.1:{{ mc_http_port | default(4318) }}"
+
 # ── exo perf-proxy sidecar ports ─────────────────────────────────────────────
 # exo's API has no Prometheus metrics; the llm-exo role fronts it with the shared
 # perf-proxy. exo_sidecar_enabled defaults on wherever exo runs.

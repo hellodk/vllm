@@ -22,6 +22,12 @@
     <string>--model</string><string>{{ exo_model_local_path | basename }}</string>
     <string>--max-kv</string><string>{{ exo_max_kv }}</string>
     <string>--max-concurrency</string><string>{{ exo_max_concurrency }}</string>
+{% if llm_quality_enabled | default(true) | bool %}
+    <string>--quality</string>
+{% endif %}
+{% if llm_traces_enabled | default(true) | bool %}
+    <string>--otlp-traces-endpoint</string><string>{{ llm_otlp_traces_endpoint }}</string>
+{% endif %}
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

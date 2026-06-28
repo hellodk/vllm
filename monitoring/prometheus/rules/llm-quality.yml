@@ -1,0 +1,112 @@
+# monitoring/prometheus/rules/llm-quality.yml
+#
+# LLM output-quality / hallucination signals — now LIVE.
+#
+# History: apple-silicon-monitoring/alerts/hallucination-detection.yaml defined a
+# rich alert suite but its metrics were only ever emitted by a manual SDK wrapper
+# / mock server, so the alerts were silent against deployed engines. The perf-proxy
+# sidecar (llm_perf_proxy.py --quality) now emits these metrics directly for the
+# pure-mlx_lm and exo paths, scoring every response (text signals always; entropy/
+# perplexity/confidence when the client requests logprobs). Raw text is never logged.
+#
+# Metric sources (proxy, job=llm-mlx_perf / llm-exo; provider + node_id via OTEL):
+#   llm_output_entropy_bucket, llm_perplexity_bucket   (histograms, logprob-gated)
+#   llm_repetition_score, llm_confidence_mean/std, llm_hedging_score  (EWMA gauges)
+#   llm_hallucination_risk                              (composite EWMA gauge 0-1)
+#   llm_refusal_total, llm_quality_requests_total       (counters)
+
+groups:
+
+  - name: llm_quality_recording
+    interval: 30s
+    rules:
+
+      # Fraction of responses detected as refusals (0-1), 15-minute window.
+      - record: llm_refusal_rate
+        expr: |
+          sum by (provider, model, node_id) (rate(llm_refusal_total[15m]))
+            /
+          clamp_min(sum by (provider, model, node_id) (rate(llm_quality_requests_total[15m])), 0.0001)
+
+      # Unified composite risk in the hydra:llm:* namespace.
+      - record: hydra:llm:hallucination_risk
+        expr: max by (provider, model, node_id) (llm_hallucination_risk)
+
+  - name: llm_quality_alerts
+    interval: 30s
+    rules:
+
+      - alert: LLMHighOutputEntropy
+        expr: |
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(llm_output_entropy_bucket[10m]))) > 4.0
+        for: 10m
+        labels: { severity: warning, team: ml-platform, category: hallucination }
+        annotations:
+          summary: "High output entropy for {{ $labels.model }} ({{ $labels.provider }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            P95 output entropy is {{ $value | printf "%.2f" }} (> 4.0). The model is
+            highly uncertain — possible out-of-distribution queries or hallucination.
+
+      - alert: LLMSevereRepetition
+        expr: llm_repetition_score > 0.5
+        for: 2m
+        labels: { severity: critical, team: ml-platform, category: hallucination }
+        annotations:
+          summary: "Severe repetition in {{ $labels.model }} outputs"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Repetition score {{ $value | printf "%.2f" }} — the model appears to be
+            looping / generating degenerate output. Check temperature & repetition penalty.
+
+      - alert: LLMLowConfidenceOutputs
+        expr: llm_confidence_mean < 0.5 and llm_confidence_mean > 0
+        for: 10m
+        labels: { severity: warning, team: ml-platform, category: hallucination }
+        annotations:
+          summary: "Low confidence outputs from {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: "Mean token confidence {{ $value | printf \"%.2f\" }} — consistent uncertainty."
+
+      - alert: LLMHighPerplexity
+        expr: |
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(llm_perplexity_bucket[10m]))) > 50
+        for: 10m
+        labels: { severity: warning, team: ml-platform, category: hallucination }
+        annotations:
+          summary: "High perplexity for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: "P95 perplexity {{ $value | printf \"%.1f\" }} (normal 1-30, high 50+)."
+
+      - alert: LLMHallucinationRiskElevated
+        expr: hydra:llm:hallucination_risk > 0.5
+        for: 15m
+        labels: { severity: warning, team: ml-platform, category: hallucination }
+        annotations:
+          summary: "Elevated hallucination risk for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Composite risk {{ $value | printf "%.2f" }} (entropy + repetition + low
+            confidence + perplexity + refusal). Review outputs / consider guardrails.
+
+      - alert: LLMHallucinationRiskCritical
+        expr: hydra:llm:hallucination_risk > 0.7
+        for: 5m
+        labels: { severity: critical, team: ml-platform, category: hallucination, pagerduty: trigger }
+        annotations:
+          summary: "CRITICAL hallucination risk for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Composite risk {{ $value | printf "%.2f" }}. Consider taking the model
+            offline; review recent outputs and inference health.
+
+      - alert: LLMRefusalRateSpike
+        expr: llm_refusal_rate > 0.5
+        for: 5m
+        labels: { severity: warning, team: ml-platform, category: quality }
+        annotations:
+          summary: "Refusal-rate spike for {{ $labels.model }}"
+          node_id: "{{ $labels.node_id }}"
+          description: "{{ $value | humanizePercentage }} of responses are refusals."
