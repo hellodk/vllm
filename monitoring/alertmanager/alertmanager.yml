@@ -16,6 +16,13 @@ route:
 
   routes:
     - match:
+        pagerduty: trigger
+      receiver: pagerduty-critical
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: true
+
+    - match:
         severity: critical
       receiver: slack-and-email
       group_wait: 10s
@@ -27,6 +34,18 @@ route:
       repeat_interval: 4h
 
 receivers:
+  - name: pagerduty-critical
+    pagerduty_configs:
+      - routing_key: "${ALERTMANAGER_PAGERDUTY_KEY}"
+        severity: critical
+        description: |
+          {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}
+        details:
+          cluster: "{{ .CommonLabels.cluster }}"
+          alertname: "{{ .CommonLabels.alertname }}"
+          description: "{{ range .Alerts }}{{ .Annotations.description }}{{ end }}"
+          runbook: "{{ range .Alerts }}{{ .Annotations.runbook_url }}{{ end }}"
+
   - name: slack-hydra
     slack_configs:
       - api_url: "${ALERTMANAGER_SLACK_WEBHOOK}"
