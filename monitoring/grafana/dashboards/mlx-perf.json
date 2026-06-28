@@ -1,0 +1,254 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Pure-MLX (mlx_lm) and exo perf-proxy sidecar telemetry plus the Apple distributed AllReduce fabric probe. TTFT/TPOT/throughput/KV are proxy-measured by llm_perf_proxy.py (mlx_lm and exo expose no native Prometheus metrics). Folded into hydra:llm:* via hydra-llm-normalization.yml; fabric panels use hydra:fabric:* (mlx-fabric.rules.yml).",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Sidecar inference (pure mlx_lm / exo)",
+      "type": "row",
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 2,
+      "title": "TTFT p95 (proxy-measured)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:ttft_seconds:p95{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "{{provider}} {{model}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 3,
+      "title": "TPOT p95 (inter-token latency)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:tpot_seconds:p95{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "{{provider}} {{model}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "tps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 4,
+      "title": "Generation throughput (tokens/s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:tokens_generated:rate1m{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "{{provider}} {{model}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 5,
+      "title": "Requests running vs waiting",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:requests_running{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "running {{provider}} {{node_id}}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:requests_waiting{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "waiting {{provider}} {{node_id}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "description": "Best-effort estimate for pure mlx_lm/exo — not true KV occupancy." }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "id": 6,
+      "title": "KV-cache usage (estimated)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:kv_cache_usage_ratio{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "{{provider}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "id": 7,
+      "title": "Aborted/error request rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:errors:rate5m{provider=~\"$provider\", node_id=~\"$node\"}",
+          "legendFormat": "{{provider}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 8,
+      "title": "Apple AllReduce fabric (mlx.distributed)",
+      "type": "row",
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "id": 9,
+      "title": "AllReduce latency p99",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:fabric:mlx_allreduce_latency_seconds:p99",
+          "legendFormat": "{{tp_group}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": { "defaults": { "unit": "GBs" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 12, "y": 26 },
+      "id": 10,
+      "title": "AllReduce bus bandwidth p50",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:fabric:mlx_allreduce_busbw_gbytes_per_sec:p50",
+          "legendFormat": "{{tp_group}} {{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "STALE", "color": "red" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 26 },
+      "id": 11,
+      "title": "Probe freshness",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "max(mlx_allreduce_probe_stale)",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["mlx", "exo", "llm", "fabric"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+        "definition": "label_values(hydra:llm:requests_running, provider)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Provider",
+        "multi": true,
+        "name": "provider",
+        "options": [],
+        "query": { "query": "label_values(hydra:llm:requests_running, provider)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "/mlx.*|exo/",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+        "definition": "label_values(hydra:llm:requests_running, node_id)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Node",
+        "multi": true,
+        "name": "node",
+        "options": [],
+        "query": { "query": "label_values(hydra:llm:requests_running, node_id)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "MLX / exo Perf + Fabric",
+  "uid": "mlx-perf-fabric",
+  "version": 1,
+  "weekStart": ""
+}

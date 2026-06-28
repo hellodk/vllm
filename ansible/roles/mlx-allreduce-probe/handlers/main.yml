@@ -1,0 +1,15 @@
+# ansible/roles/mlx-allreduce-probe/handlers/main.yml
+---
+- name: restart mlx-allreduce
+  ansible.builtin.shell: |
+    launchctl bootout system/com.hydra.mlx-allreduce 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-allreduce.plist
+  become: true
+  ignore_errors: true
+
+- name: restart mlx-fabric-exporter
+  ansible.builtin.shell: |
+    launchctl bootout system/com.hydra.mlx-fabric-exporter 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-fabric-exporter.plist
+  become: true
+  ignore_errors: true

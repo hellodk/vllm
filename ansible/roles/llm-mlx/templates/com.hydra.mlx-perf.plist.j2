@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.mlx-perf.plist — Managed by Ansible (llm-mlx role).
+  Perf-proxy sidecar (LLM-5): fronts the pure-MLX engine and emits mlx:* metrics
+  (TTFT/TPOT/throughput/running/waiting/KV) that mlx_lm.server does not expose.
+  Only installed when mlx_sidecar_active (hydra_mlx_backend != vllm_mlx).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.mlx-perf</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ mlx_venv }}/bin/python</string>
+    <string>{{ llm_perf_proxy_path }}</string>
+    <string>--listen-host</string><string>0.0.0.0</string>
+    <string>--listen-port</string><string>{{ mlx_port }}</string>
+    <string>--upstream-host</string><string>127.0.0.1</string>
+    <string>--upstream-port</string><string>{{ mlx_internal_port }}</string>
+    <string>--metrics-port</string><string>{{ mlx_metrics_port }}</string>
+    <string>--engine-name</string><string>mlx_lm</string>
+    <string>--metric-prefix</string><string>mlx</string>
+    <string>--model</string><string>{{ mlx_default_model | basename }}</string>
+    <string>--max-kv</string><string>{{ mlx_max_kv_size }}</string>
+    <string>--max-concurrency</string><string>{{ mlx_max_concurrency }}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardOutPath</key><string>{{ llm_log_dir }}/mlx-perf.log</string>
+  <key>StandardErrorPath</key><string>{{ llm_log_dir }}/mlx-perf-error.log</string>
+</dict>
+</plist>

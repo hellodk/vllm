@@ -89,6 +89,26 @@
   changed_when: _exo_boot.rc == 0
   ignore_errors: true
 
+# ── Perf-proxy sidecar (exo observability) ───────────────────────────────────
+- name: Install exo perf-proxy LaunchDaemon
+  template:
+    src: com.hydra.exo-perf.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.exo-perf.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  when: exo_sidecar_active | bool
+  notify: restart exo-perf
+
+- name: Bootstrap exo perf-proxy LaunchDaemon (first load)
+  command: launchctl bootstrap system /Library/LaunchDaemons/com.hydra.exo-perf.plist
+  become: true
+  register: _exo_perf_boot
+  changed_when: _exo_perf_boot.rc == 0
+  ignore_errors: true
+  when: exo_sidecar_active | bool
+
 - name: Flush handlers
   meta: flush_handlers
 

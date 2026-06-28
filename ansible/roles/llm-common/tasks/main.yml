@@ -10,8 +10,16 @@
   become: true
   loop:
     - "{{ llm_base_dir }}"
+    - "{{ llm_bin_dir }}"
     - "{{ llm_log_dir }}"
     - /var/log/hydra
+
+- name: Install generic LLM perf-proxy exporter (shared by mlx / exo)
+  copy:
+    src: llm_perf_proxy.py
+    dest: "{{ llm_perf_proxy_path }}"
+    mode: "0755"
+  become: true
 
 - name: Check Homebrew Python {{ python_version }} is installed
   stat:

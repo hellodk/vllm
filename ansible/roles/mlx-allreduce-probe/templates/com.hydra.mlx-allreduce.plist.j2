@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.mlx-allreduce.plist — Managed by Ansible (mlx-allreduce-probe).
+  Periodic AllReduce benchmark across a tensor-parallel group (leader only).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.mlx-allreduce</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>{{ allreduce_runner }}</string>
+  </array>
+  <key>StartInterval</key><integer>{{ mlx_allreduce_interval_sec }}</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ThrottleInterval</key><integer>{{ mlx_allreduce_interval_sec }}</integer>
+  <key>StandardOutPath</key><string>{{ llm_log_dir }}/mlx-allreduce.log</string>
+  <key>StandardErrorPath</key><string>{{ llm_log_dir }}/mlx-allreduce-error.log</string>
+</dict>
+</plist>

@@ -155,6 +155,33 @@
   become: true
   notify: restart mlx-logexporter
 
+# ── Perf-proxy sidecar (LLM-5) ────────────────────────────────────────────────
+# Only the pure-MLX backends need it; vllm_mlx serves vllm:* natively. The shared
+# script is installed by the llm-common role at {{ llm_perf_proxy_path }}.
+- name: Install MLX perf-proxy LaunchDaemon (pure-MLX backends only)
+  template:
+    src: com.hydra.mlx-perf.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.mlx-perf.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  when: mlx_sidecar_active | bool
+  notify: restart mlx-perf
+
+- name: Remove MLX perf-proxy when backend exposes native metrics (vllm_mlx)
+  when: not (mlx_sidecar_active | bool)
+  become: true
+  block:
+    - name: Bootout MLX perf-proxy
+      command: launchctl bootout system/com.hydra.mlx-perf
+      changed_when: false
+      failed_when: false
+    - name: Delete MLX perf-proxy plist
+      file:
+        path: /Library/LaunchDaemons/com.hydra.mlx-perf.plist
+        state: absent
+
 - name: Flush handlers
   meta: flush_handlers
 

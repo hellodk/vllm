@@ -22,6 +22,13 @@ llm_engine_catalog:
   mlx:       {port: 11500, scheme: http, health_path: "/v1/models",   metrics_path: "/metrics", auth: none}
   sglang:    {port: 30000, scheme: http, health_path: "/health",      metrics_path: "/metrics", auth: none}
   litellm:   {port: 8080,  scheme: http, health_path: "/health/liveliness", metrics_path: "/metrics", auth: bearer}
+  # exo P2P distributed inference (large_pool). exo's API exposes no Prometheus
+  # metrics, so the llm-exo role fronts it with the shared perf-proxy and the
+  # /metrics here points at that sidecar's port (exo_perf_scrape_port), not the API.
+  exo:       {port: "{{ exo_perf_scrape_port | default(52417) }}", scheme: http, health_path: "/metrics", metrics_path: "/metrics", auth: none}
+  # mlx perf-proxy sidecar for the pure-MLX path (mlx_lm). vllm-mlx serves vllm:*
+  # natively on mlx_scrape_port; pure mlx_lm has no metrics so the sidecar emits mlx:*.
+  mlx_perf:  {port: "{{ mlx_perf_scrape_port | default(11501) }}", scheme: http, health_path: "/metrics", metrics_path: "/metrics", auth: none}
 
 # ── Engine OTLP trace export (LLM-6) ─────────────────────────────────────────
 # Engines push spans to the LOCAL OTEL agent, which forwards them to the gateway
@@ -37,6 +44,32 @@ mlx_scrape_port: 11500
 # Log-exporter scrape port — must stay equal to mlx_logexporter_port in llm-mlx/vars/main.yml.
 # Defined here so llm-discovery (site.yml, no llm-mlx role loaded) can reference it safely.
 mlx_logexporter_scrape_port: 11502
+
+# ── MLX backend selector + perf-proxy sidecar (single source of truth) ───────
+# Drives BOTH the llm-mlx role and llm-discovery (which runs without the role
+# loaded). Flip per host/group in inventory: set `hydra_mlx_backend: mlx_lm` on
+# nodes that run pure mlx_lm.server (e.g. an experiment box) to enable the
+# perf-proxy sidecar; leave at vllm_mlx for the production fleet (native vllm:*).
+hydra_mlx_backend: vllm_mlx                                   # vllm_mlx | mlx_lm | mlx_lm_sidecar
+mlx_sidecar_enabled: "{{ hydra_mlx_backend != 'vllm_mlx' }}"  # proxy fronts pure-MLX
+mlx_perf_scrape_port: 11501   # sidecar /metrics (== mlx_metrics_port in llm-mlx vars)
+mlx_internal_port: 11510      # engine loopback bind when the sidecar fronts it
+
+# ── exo perf-proxy sidecar ports ─────────────────────────────────────────────
+# exo's API has no Prometheus metrics; the llm-exo role fronts it with the shared
+# perf-proxy. exo_sidecar_enabled defaults on wherever exo runs.
+exo_sidecar_enabled: true
+exo_perf_scrape_port: 52417   # sidecar /metrics
+exo_internal_api_port: 52426  # exo API loopback bind behind the sidecar
+
+# ── Apple distributed AllReduce probe (SRE-4 Apple counterpart to nccl-probe) ──
+# A periodic mlx.core.distributed all_sum benchmark across each tensor_parallel
+# group, exposed via a textfile exporter the OTEL agent scrapes.
+mlx_allreduce_enabled: false           # enable on tensor_parallel_groups leaders
+mlx_allreduce_fabric_scrape_port: 11503
+mlx_allreduce_size_mb: 256             # payload per all_sum iteration
+mlx_allreduce_iters: 20
+mlx_allreduce_interval_sec: 60
 
 # ── JFrog Artifactory (on-prem PyPI mirror) ──────────────────────────────────
 # Source of truth is cluster.yml, but that file is only read by inventory_plugin.py
@@ -80,7 +113,7 @@ node_exporter_download_base: "https://github.com/prometheus/node_exporter/releas
 # ── Allowed enum values ───────────────────────────────────────────────────────
 valid_os: [macos, linux]
 valid_gpu_providers: [apple, nvidia, amd, none]
-valid_llm_providers: [llamacpp, ollama, vllm, vllm-mlx, mlx, sglang, litellm]
+valid_llm_providers: [llamacpp, ollama, vllm, vllm-mlx, mlx, sglang, litellm, exo]
 valid_pools: [fast, reason, largepool, vision, embed, speech, gateway, infra]
 
 # ── Hydra directories created on every node ──────────────────────────────────

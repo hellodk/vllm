@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.mlx-fabric-exporter.plist — Managed by Ansible.
+  Always-on exporter serving the AllReduce probe textfile at /metrics.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.mlx-fabric-exporter</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ allreduce_python }}</string>
+    <string>{{ allreduce_dir }}/mlx_fabric_exporter.py</string>
+    <string>--textfile</string><string>{{ allreduce_textfile }}</string>
+    <string>--port</string><string>{{ mlx_allreduce_fabric_scrape_port }}</string>
+    <string>--max-age</string><string>{{ (mlx_allreduce_interval_sec | int) * 3 }}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardErrorPath</key><string>{{ llm_log_dir }}/mlx-fabric-exporter-error.log</string>
+</dict>
+</plist>

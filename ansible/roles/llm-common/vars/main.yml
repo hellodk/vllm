@@ -4,3 +4,9 @@ llm_base_dir: /opt/hydra/llm
 llm_log_dir: /var/log/hydra
 llm_python_bin: "/opt/hydra/llm/python/bin/python3"
 homebrew_prefix: /opt/homebrew
+
+# Shared LLM tooling dir + the generic perf-proxy exporter installed once here and
+# fronted by the mlx / exo roles (gives TTFT/TPOT/throughput/KV to engines that
+# expose no native Prometheus metrics — pure mlx_lm and exo).
+llm_bin_dir: "{{ llm_base_dir }}/bin"
+llm_perf_proxy_path: "{{ llm_bin_dir }}/llm_perf_proxy.py"

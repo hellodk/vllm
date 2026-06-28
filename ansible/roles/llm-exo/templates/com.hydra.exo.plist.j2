@@ -21,8 +21,10 @@
     <string>{{ exo_p2p_port }}</string>
     <string>--inference-engine</string>
     <string>mlx</string>
+    {# When the perf-proxy sidecar is active it owns the public exo_api_port and
+       exo binds the loopback exo_internal_api_port behind it. #}
     <string>--chatgpt-api-port</string>
-    <string>{{ exo_api_port }}</string>
+    <string>{{ exo_effective_api_port }}</string>
     <string>--model</string>
     <string>{{ exo_model_local_path }}</string>
 {% for peer in exo_peers %}

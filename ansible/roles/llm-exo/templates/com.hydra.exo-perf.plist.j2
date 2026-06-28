@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.exo-perf.plist — Managed by Ansible (llm-exo role).
+  Perf-proxy sidecar: fronts the exo chat API and emits exo:* metrics
+  (TTFT/TPOT/throughput/running/waiting) that exo does not expose natively.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hydra.exo-perf</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ exo_venv }}/bin/python</string>
+    <string>{{ llm_perf_proxy_path }}</string>
+    <string>--listen-host</string><string>0.0.0.0</string>
+    <string>--listen-port</string><string>{{ exo_api_port }}</string>
+    <string>--upstream-host</string><string>127.0.0.1</string>
+    <string>--upstream-port</string><string>{{ exo_internal_api_port }}</string>
+    <string>--metrics-port</string><string>{{ exo_metrics_port }}</string>
+    <string>--engine-name</string><string>exo</string>
+    <string>--metric-prefix</string><string>exo</string>
+    <string>--model</string><string>{{ exo_model_local_path | basename }}</string>
+    <string>--max-kv</string><string>{{ exo_max_kv }}</string>
+    <string>--max-concurrency</string><string>{{ exo_max_concurrency }}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardOutPath</key><string>/var/log/hydra/exo-perf.log</string>
+  <key>StandardErrorPath</key><string>/var/log/hydra/exo-perf-error.log</string>
+</dict>
+</plist>

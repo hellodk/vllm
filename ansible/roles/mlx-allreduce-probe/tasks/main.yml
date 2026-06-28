@@ -1,0 +1,82 @@
+# ansible/roles/mlx-allreduce-probe/tasks/main.yml
+# Apple distributed AllReduce probe — the Apple-silicon counterpart to nccl-probe.
+# Deploys a periodic mlx.core.distributed benchmark (launched via mlx.launch across
+# a tensor_parallel group) + an always-on textfile exporter the OTEL agent scrapes.
+#
+# Requires: this node runs llm-mlx (mlx + mlx.launch in the venv) and passwordless
+# SSH between group peers (same prerequisite exo already needs). Gated globally by
+# mlx_allreduce_enabled and per-node by membership in tensor_parallel_groups.
+---
+- name: Resolve this node's tensor-parallel group
+  ansible.builtin.set_fact:
+    _allreduce_group: >-
+      {{ (tensor_parallel_groups | default({}) | dict2items
+          | selectattr('value', 'contains', inventory_hostname)
+          | map(attribute='key') | list | first) | default('') }}
+
+- name: Skip nodes not in any tensor-parallel group
+  ansible.builtin.meta: end_host
+  when: _allreduce_group | length == 0
+
+- name: Compute group members, leadership and peer hosts
+  ansible.builtin.set_fact:
+    _allreduce_members: "{{ tensor_parallel_groups[_allreduce_group] }}"
+    _allreduce_is_leader: "{{ tensor_parallel_groups[_allreduce_group][0] == inventory_hostname }}"
+    _allreduce_peer_hosts: >-
+      {{ tensor_parallel_groups[_allreduce_group]
+         | map('extract', hostvars)
+         | map(attribute='ansible_host', default=omit) | list }}
+
+- name: Create AllReduce directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ allreduce_dir }}"
+    - "{{ allreduce_textfile_dir }}"
+
+- name: Install AllReduce probe + fabric exporter scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ allreduce_dir }}/{{ item }}"
+    mode: "0755"
+  become: true
+  loop:
+    - mlx_allreduce_probe.py
+    - mlx_fabric_exporter.py
+
+# ── Always-on fabric exporter (every group member can serve its last result) ──
+- name: Install fabric exporter LaunchDaemon
+  ansible.builtin.template:
+    src: com.hydra.mlx-fabric-exporter.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.mlx-fabric-exporter.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  notify: restart mlx-fabric-exporter
+
+# ── Periodic probe — leader only (it launches the distributed run across peers) ─
+- name: Install AllReduce probe runner (leader only)
+  ansible.builtin.template:
+    src: run-allreduce-probe.sh.j2
+    dest: "{{ allreduce_runner }}"
+    mode: "0755"
+  become: true
+  when: _allreduce_is_leader | bool
+
+- name: Install AllReduce probe LaunchDaemon (leader only)
+  ansible.builtin.template:
+    src: com.hydra.mlx-allreduce.plist.j2
+    dest: /Library/LaunchDaemons/com.hydra.mlx-allreduce.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  when: _allreduce_is_leader | bool
+  notify: restart mlx-allreduce
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers

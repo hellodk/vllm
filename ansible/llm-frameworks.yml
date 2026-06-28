@@ -34,6 +34,15 @@
       when: "'exo' in llm_frameworks"
       tags: [exo]
 
+    # Apple distributed AllReduce probe — only on tensor-parallel group members.
+    # Gated globally by mlx_allreduce_enabled; the role self-skips nodes that are
+    # not part of any tensor_parallel_groups entry.
+    - role: mlx-allreduce-probe
+      when:
+        - "'mlx' in llm_frameworks"
+        - mlx_allreduce_enabled | default(false) | bool
+      tags: [mlx, allreduce]
+
 # ── Gateway nodes (hydra-gw-01/02) ────────────────────────────────────────────
 - name: Deploy LiteLLM proxy gateway
   hosts: gateway

@@ -15,7 +15,19 @@ mlx_default_model: /opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit
 mlx_models_dir: /opt/hydra/models/mlx
 
 # Backend selector: vllm_mlx (4A, default) | mlx_lm_sidecar (4B) | mlx_lm (4C)
-mlx_server_backend: vllm_mlx
+# Sourced from the group-level hydra_mlx_backend so llm-discovery (which runs
+# without this role loaded) and the role agree on whether the perf-proxy sidecar
+# is active. Override hydra_mlx_backend per host/group in inventory.
+mlx_server_backend: "{{ hydra_mlx_backend | default('vllm_mlx') }}"
+
+# Perf-proxy sidecar (LLM-5): for the pure-MLX backends the engine emits no
+# TTFT/throughput/KV metrics. When enabled the sidecar binds the public mlx_port
+# and forwards to the engine on mlx_engine_bind_port (loopback), exposing mlx:*
+# metrics on mlx_metrics_port.
+mlx_sidecar_active: "{{ (mlx_server_backend != 'vllm_mlx') | bool }}"
+mlx_engine_bind_host: "{{ '127.0.0.1' if mlx_sidecar_active | bool else '0.0.0.0' }}"
+mlx_engine_bind_port: "{{ mlx_internal_port if mlx_sidecar_active | bool else mlx_port }}"
+mlx_max_concurrency: 8
 
 # Dependency delivery
 mlx_use_jfrog: true

@@ -1,0 +1,76 @@
+# monitoring/prometheus/rules/mlx-fabric.rules.yml
+#
+# Apple distributed AllReduce fabric — the Apple-silicon counterpart to the
+# NVIDIA NCCL probe (gpu-fabric.rules.yml). Source metrics come from the
+# mlx-allreduce-probe role: a periodic mlx.core.distributed all_sum benchmark
+# launched via mlx.launch across each tensor_parallel group, exposed by an
+# always-on textfile exporter (job="llm-mlx_fabric").
+#
+# ── Metric sources ───────────────────────────────────────────────────────────
+#   mlx_allreduce_latency_seconds{tp_group,world_size,quantile}      gauge (s)
+#   mlx_allreduce_busbw_gbytes_per_sec{tp_group,world_size,quantile} gauge (GB/s)
+#   mlx_allreduce_payload_bytes{tp_group,world_size}                 gauge
+#   mlx_allreduce_last_success_timestamp_seconds{tp_group}           gauge
+#   mlx_allreduce_probe_stale                                        gauge (0/1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+groups:
+
+  - name: mlx_allreduce_fabric
+    interval: 30s
+    rules:
+
+      # p99 AllReduce latency per tensor-parallel group (seconds).
+      - record: hydra:fabric:mlx_allreduce_latency_seconds:p99
+        expr: max by (tp_group, node_id) (mlx_allreduce_latency_seconds{quantile="0.99"})
+
+      # p50 bus bandwidth per group (GB/s) — sustained collective throughput.
+      - record: hydra:fabric:mlx_allreduce_busbw_gbytes_per_sec:p50
+        expr: max by (tp_group, node_id) (mlx_allreduce_busbw_gbytes_per_sec{quantile="0.5"})
+
+      # Alert: AllReduce latency regression. The Thunderbolt/RoCE ring should keep
+      # a 256 MB all_sum well under ~150 ms; sustained higher means the fabric has
+      # fallen back to a slow path (TCP) or is congested — tensor-parallel decode
+      # will stall on every layer's collective.
+      - alert: MLXAllReduceLatencyHigh
+        expr: hydra:fabric:mlx_allreduce_latency_seconds:p99 > 0.15
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          category: mlx-fabric
+        annotations:
+          summary: "MLX AllReduce p99 latency high on group {{ $labels.tp_group }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            mlx.distributed all_sum p99 latency is {{ $value | printf "%.3f" }}s on
+            tensor-parallel group {{ $labels.tp_group }} (leader node={{ $labels.node_id }}).
+
+            Expected < 150 ms for a 256 MB payload over the Thunderbolt/RoCE ring.
+            Elevated latency means tensor-parallel inference is bottlenecked on the
+            inter-node collective.
+
+            Check: RDMA hardware presence (RDMAHardwareAbsent), PFC/ECN pause storms,
+            Thunderbolt cabling, and that mlx.launch is using the fast interface.
+          runbook_url: "https://wiki.company.internal/runbooks/mlx-allreduce-latency"
+
+      # Alert: the probe stopped reporting (textfile missing or stale). Without it
+      # we are blind to fabric regressions on the Apple tensor-parallel groups.
+      - alert: MLXAllReduceProbeStale
+        expr: mlx_allreduce_probe_stale == 1
+        for: 10m
+        labels:
+          severity: warning
+          team: sre
+          category: mlx-fabric
+        annotations:
+          summary: "MLX AllReduce probe stale on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            The mlx-allreduce probe has not produced a fresh result on
+            node={{ $labels.node_id }}. mlx.launch may be failing to reach peers
+            (SSH / hostfile), or the leader's launchd job is not running.
+
+            Check: launchctl list | grep mlx-allreduce, and the log at
+            /var/log/hydra/mlx-allreduce-error.log.
+          runbook_url: "https://wiki.company.internal/runbooks/mlx-allreduce-stale"

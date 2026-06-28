@@ -79,7 +79,7 @@
          or ((hydra_llm_endpoints | default([]))
              | selectattr('provider', 'equalto', 'vllm-mlx') | list | length > 0) }}
 
-- name: Add MLX /metrics endpoint (when MLX deployed on this node)
+- name: Add MLX /metrics endpoint (vllm_mlx — native vllm:* on the serving port)
   vars:
     _cat: "{{ llm_engine_catalog['mlx'] | default({}) }}"
   ansible.builtin.set_fact:
@@ -93,7 +93,55 @@
         'api_key': '',
         'status': 'up'
       }] }}
-  when: _mlx_on_node | bool
+  when: _mlx_on_node | bool and not (mlx_sidecar_enabled | bool)
+
+- name: Add MLX perf-proxy /metrics endpoint (pure-MLX sidecar — mlx:* metrics)
+  ansible.builtin.set_fact:
+    _discovered_providers: >-
+      {{ _discovered_providers + [{
+        'name': 'mlx_perf',
+        'url': 'http://127.0.0.1:' ~ mlx_perf_scrape_port ~ '/metrics',
+        'port': mlx_perf_scrape_port | string,
+        'metrics_path': '/metrics',
+        'scheme': 'http',
+        'api_key': '',
+        'status': 'up'
+      }] }}
+  when: _mlx_on_node | bool and (mlx_sidecar_enabled | bool)
+
+# ── exo distributed inference perf-proxy ─────────────────────────────────────
+- name: Determine whether exo runs on this node
+  ansible.builtin.set_fact:
+    _exo_on_node: "{{ 'exo' in (llm_frameworks | default([])) }}"
+
+- name: Add exo perf-proxy /metrics endpoint (when exo deployed on this node)
+  ansible.builtin.set_fact:
+    _discovered_providers: >-
+      {{ _discovered_providers + [{
+        'name': 'exo',
+        'url': 'http://127.0.0.1:' ~ exo_perf_scrape_port ~ '/metrics',
+        'port': exo_perf_scrape_port | string,
+        'metrics_path': '/metrics',
+        'scheme': 'http',
+        'api_key': '',
+        'status': 'up'
+      }] }}
+  when: _exo_on_node | bool and (exo_sidecar_enabled | bool)
+
+# ── Apple AllReduce fabric probe (tensor-parallel group leaders) ─────────────
+- name: Add MLX AllReduce fabric /metrics endpoint (tensor-parallel leaders)
+  ansible.builtin.set_fact:
+    _discovered_providers: >-
+      {{ _discovered_providers + [{
+        'name': 'mlx_fabric',
+        'url': 'http://127.0.0.1:' ~ mlx_allreduce_fabric_scrape_port ~ '/metrics',
+        'port': mlx_allreduce_fabric_scrape_port | string,
+        'metrics_path': '/metrics',
+        'scheme': 'http',
+        'api_key': '',
+        'status': 'up'
+      }] }}
+  when: mlx_allreduce_enabled | default(false) | bool
 
 - name: Add MLX log-exporter /metrics endpoint (when MLX deployed on this node)
   ansible.builtin.set_fact:

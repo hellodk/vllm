@@ -22,3 +22,14 @@ exo_packages:
   - "numpy>=1.26.0"
   - "huggingface-hub>=0.23.0"
   - "transformers>=4.41.0"
+  - "prometheus-client>=0.20.0"   # for the perf-proxy sidecar
+
+# ── Perf-proxy sidecar (exo observability) ───────────────────────────────────
+# exo's chat API exposes no Prometheus metrics. The shared perf-proxy (installed
+# by llm-common) fronts the API on exo_api_port and forwards to the engine on
+# exo_internal_api_port, emitting exo:* metrics on exo_metrics_port.
+exo_sidecar_active: "{{ exo_sidecar_enabled | default(true) | bool }}"
+exo_effective_api_port: "{{ exo_internal_api_port if exo_sidecar_active | bool else exo_api_port }}"
+exo_metrics_port: "{{ exo_perf_scrape_port | default(52417) }}"
+exo_max_kv: 8192
+exo_max_concurrency: 4

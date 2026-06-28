@@ -13,3 +13,10 @@
     launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-logexporter.plist
   become: true
   ignore_errors: true
+
+- name: restart mlx-perf
+  shell: |
+    launchctl bootout system/com.hydra.mlx-perf 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.hydra.mlx-perf.plist
+  become: true
+  ignore_errors: true

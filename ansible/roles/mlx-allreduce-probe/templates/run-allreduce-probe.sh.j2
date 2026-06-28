@@ -1,0 +1,14 @@
+#!/bin/bash
+# Managed by Ansible (mlx-allreduce-probe role) — do not edit manually.
+# Launches the distributed AllReduce benchmark across the tensor-parallel group
+# via mlx.launch. Runs from the group leader; rank 0 writes the textfile metrics.
+set -euo pipefail
+
+HOSTS="{{ _allreduce_peer_hosts | join(',') }}"
+
+exec {{ allreduce_mlx_launch }} --hosts "${HOSTS}" \
+  {{ allreduce_dir }}/mlx_allreduce_probe.py \
+  --size-mb {{ mlx_allreduce_size_mb }} \
+  --iters {{ mlx_allreduce_iters }} \
+  --tp-group {{ _allreduce_group }} \
+  --out {{ allreduce_textfile }}

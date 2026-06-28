@@ -1,0 +1,10 @@
+# ansible/roles/mlx-allreduce-probe/vars/main.yml
+---
+# Reuses the MLX venv (mlx + mlx.launch live there; this node must also run llm-mlx).
+allreduce_python: "{{ llm_base_dir }}/mlx/venv/bin/python"
+allreduce_mlx_launch: "{{ llm_base_dir }}/mlx/venv/bin/mlx.launch"
+
+allreduce_dir: "{{ llm_base_dir }}/allreduce"
+allreduce_textfile_dir: /var/lib/hydra/textfile
+allreduce_textfile: "{{ allreduce_textfile_dir }}/mlx_allreduce.prom"
+allreduce_runner: "{{ allreduce_dir }}/run-allreduce-probe.sh"

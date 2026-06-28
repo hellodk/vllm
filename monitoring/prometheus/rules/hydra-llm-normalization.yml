@@ -88,6 +88,14 @@ groups:
           histogram_quantile(0.50, sum by (le, provider, model, node_id) (
             rate(sglang:time_to_first_token_seconds_bucket[5m])
           ))
+          or
+          histogram_quantile(0.50, sum by (le, provider, model, node_id) (
+            rate(mlx:time_to_first_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.50, sum by (le, provider, model, node_id) (
+            rate(exo:time_to_first_token_seconds_bucket[5m])
+          ))
 
       # ── hydra:llm:ttft_seconds:p95 ────────────────────────────────────────
       # vLLM source: vllm:time_to_first_token_seconds_bucket
@@ -101,6 +109,14 @@ groups:
           histogram_quantile(0.95, sum by (le, provider, model, node_id) (
             rate(sglang:time_to_first_token_seconds_bucket[5m])
           ))
+          or
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(mlx:time_to_first_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(exo:time_to_first_token_seconds_bucket[5m])
+          ))
 
       # ── hydra:llm:ttft_seconds:p99 ────────────────────────────────────────
       # vLLM source: vllm:time_to_first_token_seconds_bucket
@@ -113,6 +129,14 @@ groups:
           or
           histogram_quantile(0.99, sum by (le, provider, model, node_id) (
             rate(sglang:time_to_first_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.99, sum by (le, provider, model, node_id) (
+            rate(mlx:time_to_first_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.99, sum by (le, provider, model, node_id) (
+            rate(exo:time_to_first_token_seconds_bucket[5m])
           ))
 
       # ── hydra:llm:tokens_generated:rate1m ────────────────────────────────
@@ -128,20 +152,28 @@ groups:
           sum by (provider, model, node_id) (
             rate(sglang:num_generated_tokens_total[1m])
           )
+          or
+          sum by (provider, model, node_id) (
+            rate(mlx:generation_tokens_total[1m])
+          )
+          or
+          sum by (provider, model, node_id) (
+            rate(exo:generation_tokens_total[1m])
+          )
 
       # ── hydra:llm:requests_running ────────────────────────────────────────
       # Requests currently being decoded (occupying KV-cache slots).
       # vLLM source: vllm:num_requests_running
       # SGLang source: sglang:num_running_reqs
       - record: hydra:llm:requests_running
-        expr: vllm:num_requests_running or sglang:num_running_reqs
+        expr: vllm:num_requests_running or sglang:num_running_reqs or mlx:num_requests_running or exo:num_requests_running
 
       # ── hydra:llm:requests_waiting ────────────────────────────────────────
       # Requests queued, awaiting a free KV-cache slot.
       # vLLM source: vllm:num_requests_waiting
       # SGLang source: sglang:num_waiting_reqs
       - record: hydra:llm:requests_waiting
-        expr: vllm:num_requests_waiting or sglang:num_waiting_reqs
+        expr: vllm:num_requests_waiting or sglang:num_waiting_reqs or mlx:num_requests_waiting or exo:num_requests_waiting
 
       # ── hydra:llm:kv_cache_usage_ratio ───────────────────────────────────
       # KV-cache fill fraction (0–1). Both engines target the 0–1 range.
@@ -149,8 +181,11 @@ groups:
       #   ambiguity between 0–1 and 0–100 across vLLM versions.
       # vLLM source: vllm:gpu_cache_usage_perc
       # SGLang source: sglang:token_usage
+      # ⚠ mlx:/exo: gpu_cache_usage_perc is a best-effort ESTIMATE from the perf
+      #   proxy (active tokens / (max_kv * concurrency)) — pure mlx_lm/exo expose
+      #   no true KV occupancy. Treat as a saturation signal, not ground truth.
       - record: hydra:llm:kv_cache_usage_ratio
-        expr: vllm:gpu_cache_usage_perc or sglang:token_usage
+        expr: vllm:gpu_cache_usage_perc or sglang:token_usage or mlx:gpu_cache_usage_perc or exo:gpu_cache_usage_perc
 
       # ── hydra:llm:prefix_cache_hit_ratio ─────────────────────────────────
       # Fraction of prefill tokens served from prefix/prompt cache (0–1).
@@ -179,6 +214,14 @@ groups:
           sum by (provider, model, node_id) (
             rate(vllm:request_success_total{finished_reason="abort"}[5m])
           )
+          or
+          sum by (provider, model, node_id) (
+            rate(mlx:request_success_total{finished_reason="abort"}[5m])
+          )
+          or
+          sum by (provider, model, node_id) (
+            rate(exo:request_success_total{finished_reason="abort"}[5m])
+          )
 
       # ── hydra:llm:request_e2e_seconds:p95 ────────────────────────────────
       # End-to-end request latency p95 (seconds), from prefill start to last token.
@@ -193,6 +236,14 @@ groups:
           or
           histogram_quantile(0.95, sum by (le, provider, model, node_id) (
             rate(sglang:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(mlx:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(exo:e2e_request_latency_seconds_bucket[5m])
           ))
 
       # ── hydra:llm:preemption:rate5m ──────────────────────────────────────
@@ -216,3 +267,25 @@ groups:
           (vllm:num_requests_running / clamp_min(vllm:num_requests_waiting, 1))
           or
           (sglang:num_running_reqs / clamp_min(sglang:num_waiting_reqs, 1))
+          or
+          (mlx:num_requests_running / clamp_min(mlx:num_requests_waiting, 1))
+          or
+          (exo:num_requests_running / clamp_min(exo:num_requests_waiting, 1))
+
+      # ── hydra:llm:tpot_seconds:p95 ───────────────────────────────────────
+      # Time-per-output-token p95 (inter-token latency, seconds).
+      # vLLM source:  vllm:time_per_output_token_seconds_bucket
+      # mlx/exo:      proxy-measured (e2e - ttft) / (out_tokens - 1).
+      - record: hydra:llm:tpot_seconds:p95
+        expr: |
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(vllm:time_per_output_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(mlx:time_per_output_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(exo:time_per_output_token_seconds_bucket[5m])
+          ))
