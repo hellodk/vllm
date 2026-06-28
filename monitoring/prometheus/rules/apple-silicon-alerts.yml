@@ -2,6 +2,23 @@
 # Apple Silicon hardware health alert rules.
 # Metrics are pushed from apple-silicon-exporter via OTEL mac-agent → Victoria Metrics.
 # Evaluated by Prometheus (evaluation_interval: 15s) against Victoria Metrics remote data.
+#
+# ── CANONICAL METRIC CONTRACT (source of truth — SRE-6) ──────────────────────
+# apple_thermal_pressure  type: gauge  values: integer {0, 1, 2, 3}
+#   0 = Nominal   (no thermal pressure)
+#   1 = Fair      (light thermal pressure, no throttling yet)
+#   2 = Serious   (thermal throttling active, performance degraded)
+#   3 = Critical  (severe throttling, hardware longevity at risk)
+#
+# The metric is a numeric gauge — NOT a label-encoded constant-1 series.
+# Any rule or dashboard that matches on `{level="critical"}` is wrong and
+# should be rewritten to compare against the numeric value instead.
+#
+# TODO(exporter): emit apple_thermal_pressure as numeric 0-3 gauge (see SRE-6).
+#   The exporter currently emits value=1 with a `level` label; it must be
+#   changed to emit the numeric encoding above.  Do not change alert thresholds
+#   here until the exporter is updated.
+# ─────────────────────────────────────────────────────────────────────────────
 
 groups:
   - name: apple_silicon_hardware
