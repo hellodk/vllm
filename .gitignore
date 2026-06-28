@@ -3,6 +3,11 @@ airllm/
 llama.cpp/
 opik/
 
+# Pre-staged binary tarballs and Docker image archives (air-gap staging)
+ansible/roles/base/files/*.tar.gz
+ansible/roles/hw-exporter/files/*.tar.gz
+ansible/roles/hw-exporter/files/*.tar
+
 # Build artifacts
 **/build/
 **/__pycache__/

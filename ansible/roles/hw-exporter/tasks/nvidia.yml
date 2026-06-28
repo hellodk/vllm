@@ -1,16 +1,23 @@
 # ansible/roles/hw-exporter/tasks/nvidia.yml
 ---
-- name: Ensure Docker is installed
+
+# ── Runtime dependencies ───────────────────────────────────────────────────────
+# Package installs require outbound apt access; skip in air-gapped environments
+# where Docker and nvidia-container-toolkit must already be present on the host.
+
+- name: Ensure Docker is installed (online)
   package:
     name: docker.io
     state: present
   become: true
+  when: not hydra_airgapped | default(true)
 
-- name: Ensure nvidia-container-toolkit is installed (required for --gpus flag)
+- name: Ensure nvidia-container-toolkit is installed (online)
   package:
     name: nvidia-container-toolkit
     state: present
   become: true
+  when: not hydra_airgapped | default(true)
 
 - name: Configure Docker daemon for NVIDIA runtime
   command: nvidia-ctk runtime configure --runtime=docker
@@ -24,11 +31,59 @@
     enabled: true
   become: true
 
-- name: Pull dcgm-exporter image
+# ── dcgm-exporter image acquisition ───────────────────────────────────────────
+
+- name: Pull dcgm-exporter image (online)
   community.docker.docker_image:
     name: "nvcr.io/nvidia/k8s/dcgm-exporter:{{ hydra_versions.dcgm_exporter }}-ubuntu22.04"
     source: pull
   become: true
+  when: not hydra_airgapped | default(true)
+
+- name: Check for pre-staged dcgm-exporter image tarball (air-gapped)
+  local_action:
+    module: stat
+    path: "{{ role_path }}/files/dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar"
+  register: _dcgm_image_tar
+
+- name: Fail if dcgm-exporter image tarball is missing (air-gapped)
+  fail:
+    msg: |
+      Air-gapped install requires a pre-staged Docker image tarball:
+        {{ role_path }}/files/dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar
+
+      On a machine with internet access and Docker, run:
+        docker pull nvcr.io/nvidia/k8s/dcgm-exporter:{{ hydra_versions.dcgm_exporter }}-ubuntu22.04
+        docker save nvcr.io/nvidia/k8s/dcgm-exporter:{{ hydra_versions.dcgm_exporter }}-ubuntu22.04 \
+          -o ansible/roles/hw-exporter/files/dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar
+
+      Then transfer the file to the Ansible control node and re-run.
+  when: (hydra_airgapped | default(true)) and not _dcgm_image_tar.stat.exists
+
+- name: Copy dcgm-exporter image tarball to target (air-gapped)
+  copy:
+    src: "dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar"
+    dest: "/tmp/dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar"
+    mode: "0644"
+  become: true
+  when: hydra_airgapped | default(true)
+
+- name: Load dcgm-exporter image from tarball (air-gapped)
+  community.docker.docker_image:
+    name: "nvcr.io/nvidia/k8s/dcgm-exporter:{{ hydra_versions.dcgm_exporter }}-ubuntu22.04"
+    source: load
+    load_path: "/tmp/dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar"
+  become: true
+  when: hydra_airgapped | default(true)
+
+- name: Clean up dcgm-exporter image tarball from /tmp (air-gapped)
+  file:
+    path: "/tmp/dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar"
+    state: absent
+  become: true
+  when: hydra_airgapped | default(true)
+
+# ── Service deployment ─────────────────────────────────────────────────────────
 
 - name: Create dcgm-exporter systemd unit
   template:

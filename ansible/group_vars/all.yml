@@ -32,11 +32,34 @@ jfrog:
   pypi_index: "https://artifactory.hydra.local/artifactory/api/pypi/pypi-remote/simple"
   pypi_trusted_host: "artifactory.hydra.local"
 
+# ── Air-gap flag ─────────────────────────────────────────────────────────────
+# Set false only in dev/lab environments that have internet access on targets.
+# When true (default), all binary installs must use pre-staged files in each
+# role's files/ directory — no outbound fetches are issued.
+hydra_airgapped: true
+
 # ── Offline binary directory ──────────────────────────────────────────────────
 # NO internet access on targets — all binaries pre-staged here by operator.
 # See ansible/roles/otel-mac-agent/files/README.md and
 #     ansible/roles/model-registry/files/README.md for download instructions.
 offline_bin_dir: "{{ playbook_dir }}/roles/otel-mac-agent/files"
+
+# ── Version defaults ──────────────────────────────────────────────────────────
+# Source of truth is cluster.yml:versions, surfaced as hydra_versions per-host
+# by inventory_plugin.py.  This block covers the static LLM inventory path
+# where inventory_plugin.py is not loaded (group_vars are the only source).
+# Keep in sync with cluster.yml:cluster.versions.
+hydra_versions:
+  otel_agent: "0.96.0"
+  apple_silicon_exporter: "1.0.0"
+  node_exporter: "1.8.1"
+  dcgm_exporter: "3.3.5-3.4.0"
+
+# ── Binary download base URLs ─────────────────────────────────────────────────
+# Consulted only when hydra_airgapped: false (dev/lab).
+# In production the air-gapped paths in each role's tasks use pre-staged files.
+otel_agent_download_base: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download"
+node_exporter_download_base: "https://github.com/prometheus/node_exporter/releases/download"
 
 # ── Allowed enum values ───────────────────────────────────────────────────────
 valid_os: [macos, linux]
