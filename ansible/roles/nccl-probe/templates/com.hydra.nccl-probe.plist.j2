@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  /Library/LaunchDaemons/com.hydra.nccl-probe.plist
+  managed-by: nccl-probe (SRE-4) — periodic AllReduce probe for largepool TP nodes.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydra.nccl-probe</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ nccl_probe_script }}</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NCCL_PROBE_TEXTFILE</key>
+    <string>{{ nccl_probe_textfile }}</string>
+    <key>NCCL_PROBE_BIN</key>
+    <string>{{ nccl_probe_bin }}</string>
+    <key>TP_GROUP</key>
+    <string>{{ _tp_group }}</string>
+    <key>RANK</key>
+    <string>{{ _tp_rank }}</string>
+    <key>MODEL</key>
+    <string>{{ nccl_probe_model }}</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>{{ nccl_probe_interval_seconds }}</integer>
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/hydra/nccl-probe.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hydra/nccl-probe-error.log</string>
+</dict>
+</plist>

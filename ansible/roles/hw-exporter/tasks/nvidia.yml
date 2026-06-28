@@ -44,7 +44,20 @@
   local_action:
     module: stat
     path: "{{ role_path }}/files/dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar"
+    checksum_algorithm: sha256
+    get_checksum: true
   register: _dcgm_image_tar
+
+- name: Verify dcgm-exporter image tarball sha256 (air-gapped, ANS-4)
+  assert:
+    that:
+      - hydra_artifact_checksums['dcgm_exporter']['tarball'] is defined
+      - _dcgm_image_tar.stat.checksum == hydra_artifact_checksums['dcgm_exporter']['tarball']
+    fail_msg: >-
+      sha256 mismatch for dcgm-exporter-{{ hydra_versions.dcgm_exporter }}.tar:
+      staged={{ _dcgm_image_tar.stat.checksum | default('<missing>') }}
+      expected={{ hydra_artifact_checksums['dcgm_exporter']['tarball'] | default('<unpinned>') }}
+  when: (hydra_airgapped | default(true)) and _dcgm_image_tar.stat.exists
 
 - name: Fail if dcgm-exporter image tarball is missing (air-gapped)
   fail:
@@ -82,6 +95,23 @@
     state: absent
   become: true
   when: hydra_airgapped | default(true)
+
+# ── Custom counter CSV (SRE-4) ─────────────────────────────────────────────────
+
+- name: Create dcgm-exporter config directory on host
+  file:
+    path: /etc/dcgm-exporter
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Stage custom DCGM counter CSV (NVLink/PCIe/SM/DRAM profiling)
+  copy:
+    src: dcgm-metrics.csv
+    dest: "{{ dcgm_custom_csv_host_path }}"
+    mode: "0644"
+  become: true
+  notify: restart dcgm-exporter
 
 # ── Service deployment ─────────────────────────────────────────────────────────
 

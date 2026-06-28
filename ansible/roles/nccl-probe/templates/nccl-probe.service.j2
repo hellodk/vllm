@@ -1,0 +1,13 @@
+[Unit]
+# managed-by: nccl-probe (SRE-4)
+Description=Hydra collective-comms AllReduce probe
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=NCCL_PROBE_TEXTFILE={{ nccl_probe_textfile }}
+Environment=NCCL_PROBE_BIN={{ nccl_probe_bin }}
+Environment=TP_GROUP={{ _tp_group }}
+Environment=RANK={{ _tp_rank }}
+Environment=MODEL={{ nccl_probe_model }}
+ExecStart={{ nccl_probe_script }}

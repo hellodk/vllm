@@ -6,12 +6,16 @@ Requires=docker.service
 [Service]
 Restart=always
 ExecStartPre=-/usr/bin/docker rm -f dcgm-exporter
+# SRE-4: mount the custom counter CSV and select it with -f so NVLink/PCIe/SM/DRAM
+# profiling fields are collected (default counter set omits DCGM_FI_PROF_*).
 ExecStart=/usr/bin/docker run --rm \
   --gpus all \
   --cap-add SYS_ADMIN \
   -p 127.0.0.1:9400:9400 \
+  -v {{ dcgm_custom_csv_host_path }}:/etc/dcgm-exporter/hydra-custom.csv:ro \
   --name dcgm-exporter \
-  nvcr.io/nvidia/k8s/dcgm-exporter:{{ hydra_versions.dcgm_exporter }}-ubuntu22.04
+  nvcr.io/nvidia/k8s/dcgm-exporter:{{ hydra_versions.dcgm_exporter }}-ubuntu22.04 \
+  -f /etc/dcgm-exporter/hydra-custom.csv
 ExecStop=/usr/bin/docker stop dcgm-exporter
 
 [Install]

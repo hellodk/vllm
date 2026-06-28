@@ -1,0 +1,17 @@
+# ansible/roles/nccl-probe/defaults/main.yml
+# Periodic collective-comms (AllReduce) probe for tensor-parallel groups (SRE-4).
+# Emits nccl_allreduce_latency_seconds / nccl_busbw_gbps labeled tp_group/rank/model.
+---
+nccl_probe_dir: /opt/hydra/nccl-probe
+nccl_probe_script: "{{ nccl_probe_dir }}/nccl_probe.sh"
+nccl_probe_interval_seconds: 300
+nccl_probe_model: "{{ tensor_parallel_model | default('unknown') }}"
+
+# Destination textfile (scraped by node_exporter --collector.textfile on Linux).
+nccl_probe_textfile_dir: /var/lib/node_exporter/textfile
+nccl_probe_textfile: "{{ nccl_probe_textfile_dir }}/nccl_probe.prom"
+
+# Air-gapped collective benchmark binary (nccl-tests all_reduce_perf or the
+# Apple-Silicon Thunderbolt/RoCE equivalent). Staged by the operator; "" disables
+# the live benchmark (the probe then publishes nccl_probe_up=0).
+nccl_probe_bin: ""

@@ -1,0 +1,8 @@
+# ansible/roles/hw-exporter/handlers/main.yml
+---
+- name: restart dcgm-exporter
+  ansible.builtin.systemd:
+    name: dcgm-exporter
+    state: restarted
+    daemon_reload: true
+  become: true
