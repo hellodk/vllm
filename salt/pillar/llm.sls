@@ -34,6 +34,14 @@ mlx_memory_limit_mb: 12000
 # mlx_lm    → pure mlx_lm.server; perf-proxy sidecar enabled; engine on loopback
 hydra_mlx_backend: vllm_mlx
 
+# ── perf-proxy quality + tracing layers (parallel of group_vars) ──────────────
+# quality: in-proxy hallucination/quality scoring (llm_* metrics). Scores only —
+#          raw response text is never logged. logprobs gate entropy/perplexity.
+# tracing: one OTLP/HTTP span per request → local OTEL agent (otel_traces_http_endpoint).
+llm_quality_enabled: true
+llm_traces_enabled: true
+llm_otlp_traces_endpoint: "http://127.0.0.1:4318"
+
 # ── MLX packages (JFrog Artifactory primary, offline wheels fallback) ─────────
 mlx_use_jfrog: true
 jfrog_pypi_index: "https://artifactory.hydra.local/artifactory/api/pypi/pypi-remote/simple"

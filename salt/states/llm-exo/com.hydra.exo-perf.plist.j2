@@ -14,6 +14,9 @@
 {%- set exo_model_path   = pillar.get('exo_model_local_path', '/opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit') %}
 {%- set exo_max_kv       = pillar.get('exo_max_kv', 8192) %}
 {%- set exo_max_conc     = pillar.get('exo_max_concurrency', 4) %}
+{%- set quality_on       = pillar.get('llm_quality_enabled', True) %}
+{%- set traces_on        = pillar.get('llm_traces_enabled', True) %}
+{%- set traces_endpoint  = pillar.get('llm_otlp_traces_endpoint', pillar.get('otel_traces_http_endpoint', 'http://127.0.0.1:4318')) %}
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.hydra.exo-perf</string>
@@ -31,6 +34,12 @@
     <string>--model</string><string>{{ exo_model_path | basename }}</string>
     <string>--max-kv</string><string>{{ exo_max_kv }}</string>
     <string>--max-concurrency</string><string>{{ exo_max_conc }}</string>
+{%- if quality_on %}
+    <string>--quality</string>
+{%- endif %}
+{%- if traces_on %}
+    <string>--otlp-traces-endpoint</string><string>{{ traces_endpoint }}</string>
+{%- endif %}
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

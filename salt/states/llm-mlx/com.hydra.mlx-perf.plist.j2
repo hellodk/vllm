@@ -17,6 +17,9 @@
 {%- set mlx_model        = pillar.get('mlx_default_model', '/opt/hydra/models/mlx/Mistral-7B-Instruct-v0.3-4bit') %}
 {%- set mlx_max_kv       = pillar.get('mlx_max_kv_size', 4096) %}
 {%- set mlx_max_conc     = pillar.get('mlx_max_concurrency', 8) %}
+{%- set quality_on       = pillar.get('llm_quality_enabled', True) %}
+{%- set traces_on        = pillar.get('llm_traces_enabled', True) %}
+{%- set traces_endpoint  = pillar.get('llm_otlp_traces_endpoint', pillar.get('otel_traces_http_endpoint', 'http://127.0.0.1:4318')) %}
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.hydra.mlx-perf</string>
@@ -34,6 +37,12 @@
     <string>--model</string><string>{{ mlx_model | basename }}</string>
     <string>--max-kv</string><string>{{ mlx_max_kv }}</string>
     <string>--max-concurrency</string><string>{{ mlx_max_conc }}</string>
+{%- if quality_on %}
+    <string>--quality</string>
+{%- endif %}
+{%- if traces_on %}
+    <string>--otlp-traces-endpoint</string><string>{{ traces_endpoint }}</string>
+{%- endif %}
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
