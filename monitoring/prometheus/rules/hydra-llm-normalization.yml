@@ -1,0 +1,196 @@
+# monitoring/prometheus/rules/hydra-llm-normalization.yml
+#
+# Cross-engine metric normalization layer.
+# Maps engine-native metric names into a unified hydra:llm:* namespace so that
+# dashboards and alerts can target a single series name regardless of which
+# inference engine is running on a node.
+#
+# Architecture note: all LLM metrics arrive via OTEL push (not direct Prometheus
+# scrape). The OTEL agent attaches `provider` and `node_id` to every metric via
+# metric_relabel_configs in otel-agent-config.yaml.j2. The `model` label is
+# emitted by the engines themselves and passes through unmodified.
+# The `or` operator merges results from different engines into a single rule;
+# the `provider` label keeps each engine's series distinct at query time.
+#
+# ┌────────────────────────────────────────────────────────────────────────────────────────┐
+# │ hydra:llm:* unified series          │ vLLM / vLLM-MLX source          │ SGLang source              │
+# ├─────────────────────────────────────┼─────────────────────────────────┼────────────────────────────┤
+# │ up                                  │ up{job=~"llm-.*"}               │ up{job=~"llm-.*"}          │
+# │ ttft_seconds:{p50,p95,p99}          │ vllm:time_to_first_token_       │ sglang:time_to_first_      │
+# │                                     │   seconds_bucket                │   token_seconds_bucket     │
+# │ tokens_generated:rate1m             │ vllm:generation_tokens_total    │ sglang:num_generated_      │
+# │                                     │                                 │   tokens_total             │
+# │ requests_running                    │ vllm:num_requests_running       │ sglang:num_running_reqs    │
+# │ requests_waiting                    │ vllm:num_requests_waiting       │ sglang:num_waiting_reqs    │
+# │ kv_cache_usage_ratio                │ vllm:gpu_cache_usage_perc       │ sglang:token_usage         │
+# │                                     │   (0–1 fraction; ⚠ see note 1) │ (0–1 fraction)             │
+# │ prefix_cache_hit_ratio              │ rate(vllm:prefix_cache_         │ sglang:cache_hit_rate      │
+# │                                     │   hits_total[5m]) /             │ (direct ratio gauge)       │
+# │                                     │   rate(vllm:prefix_cache_       │                            │
+# │                                     │   queries_total[5m])            │                            │
+# │ errors:rate5m                       │ rate(vllm:request_success_      │ ⚠ no standard counter;     │
+# │                                     │   total{finished_reason=        │   rule omitted pending     │
+# │                                     │   "abort"}[5m]) [proxy]         │   live-node confirmation   │
+# │ request_e2e_seconds:p95             │ vllm:e2e_request_latency_       │ sglang:e2e_request_        │
+# │                                     │   seconds_bucket                │   latency_seconds_bucket   │
+# └─────────────────────────────────────┴─────────────────────────────────┴────────────────────────────┘
+#
+# ⚠ Metrics requiring live-node confirmation before trusting values:
+#
+#   1. vllm:gpu_cache_usage_perc — vLLM ≥0.4 exports a 0–1 fraction despite
+#      the "perc" suffix. Builds prior to 0.4 exported 0–100 and would require
+#      dividing by 100 here. Verify:
+#        curl -s http://<node>:8000/metrics | grep gpu_cache_usage_perc
+#
+#   2. vllm:prefix_cache_hits_total / vllm:prefix_cache_queries_total — metric
+#      names changed across vLLM versions. Older builds may expose these as
+#      vllm:prefix_caching_requests_total or vllm:cache_{hit,miss}_total.
+#      Verify: curl -s http://<node>:8000/metrics | grep -i prefix_cache
+#
+#   3. vllm:request_success_total{finished_reason="abort"} — standard vLLM does
+#      not use finished_reason="error". The "abort" value is the closest proxy
+#      for abnormally terminated requests (includes client disconnects and
+#      server-side cancellations). Verify label values:
+#        curl -s http://<node>:8000/metrics | grep request_success_total
+#
+#   4. SGLang error counter — SGLang does not expose a standard error/abort
+#      counter in its default Prometheus metrics. The hydra:llm:errors:rate5m
+#      rule below has no SGLang entry. Add one when a confirmed metric name is
+#      available (candidate: sglang:num_aborted_requests_total).
+#
+#   5. sglang:e2e_request_latency_seconds_bucket — some SGLang builds expose
+#      only _sum and _count without histogram buckets. If histogram_quantile()
+#      returns NaN for SGLang nodes, confirm with:
+#        curl -s http://<node>:30000/metrics | grep e2e_request_latency
+
+groups:
+  - name: hydra_llm_normalization
+    interval: 30s
+    rules:
+
+      # ── hydra:llm:up ──────────────────────────────────────────────────────
+      # Engine scrape health: 1 = scrape succeeded, 0 = scrape failed.
+      # Inherits provider and node_id from OTEL relabeling. The `model` label
+      # is absent on the up metric (it is target-level, not series-level).
+      - record: hydra:llm:up
+        expr: up{job=~"llm-.*"}
+
+      # ── hydra:llm:ttft_seconds:p50 ────────────────────────────────────────
+      # Time-to-first-token p50 by (provider, model, node_id); 5-minute window.
+      # vLLM source: vllm:time_to_first_token_seconds_bucket
+      # SGLang source: sglang:time_to_first_token_seconds_bucket
+      - record: hydra:llm:ttft_seconds:p50
+        expr: |
+          histogram_quantile(0.50, sum by (le, provider, model, node_id) (
+            rate(vllm:time_to_first_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.50, sum by (le, provider, model, node_id) (
+            rate(sglang:time_to_first_token_seconds_bucket[5m])
+          ))
+
+      # ── hydra:llm:ttft_seconds:p95 ────────────────────────────────────────
+      # vLLM source: vllm:time_to_first_token_seconds_bucket
+      # SGLang source: sglang:time_to_first_token_seconds_bucket
+      - record: hydra:llm:ttft_seconds:p95
+        expr: |
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(vllm:time_to_first_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(sglang:time_to_first_token_seconds_bucket[5m])
+          ))
+
+      # ── hydra:llm:ttft_seconds:p99 ────────────────────────────────────────
+      # vLLM source: vllm:time_to_first_token_seconds_bucket
+      # SGLang source: sglang:time_to_first_token_seconds_bucket
+      - record: hydra:llm:ttft_seconds:p99
+        expr: |
+          histogram_quantile(0.99, sum by (le, provider, model, node_id) (
+            rate(vllm:time_to_first_token_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.99, sum by (le, provider, model, node_id) (
+            rate(sglang:time_to_first_token_seconds_bucket[5m])
+          ))
+
+      # ── hydra:llm:tokens_generated:rate1m ────────────────────────────────
+      # Generation throughput (tokens/second, 1-minute sliding window).
+      # vLLM source: vllm:generation_tokens_total
+      # SGLang source: sglang:num_generated_tokens_total
+      - record: hydra:llm:tokens_generated:rate1m
+        expr: |
+          sum by (provider, model, node_id) (
+            rate(vllm:generation_tokens_total[1m])
+          )
+          or
+          sum by (provider, model, node_id) (
+            rate(sglang:num_generated_tokens_total[1m])
+          )
+
+      # ── hydra:llm:requests_running ────────────────────────────────────────
+      # Requests currently being decoded (occupying KV-cache slots).
+      # vLLM source: vllm:num_requests_running
+      # SGLang source: sglang:num_running_reqs
+      - record: hydra:llm:requests_running
+        expr: vllm:num_requests_running or sglang:num_running_reqs
+
+      # ── hydra:llm:requests_waiting ────────────────────────────────────────
+      # Requests queued, awaiting a free KV-cache slot.
+      # vLLM source: vllm:num_requests_waiting
+      # SGLang source: sglang:num_waiting_reqs
+      - record: hydra:llm:requests_waiting
+        expr: vllm:num_requests_waiting or sglang:num_waiting_reqs
+
+      # ── hydra:llm:kv_cache_usage_ratio ───────────────────────────────────
+      # KV-cache fill fraction (0–1). Both engines target the 0–1 range.
+      # ⚠ vllm:gpu_cache_usage_perc: see note 1 in header regarding unit
+      #   ambiguity between 0–1 and 0–100 across vLLM versions.
+      # vLLM source: vllm:gpu_cache_usage_perc
+      # SGLang source: sglang:token_usage
+      - record: hydra:llm:kv_cache_usage_ratio
+        expr: vllm:gpu_cache_usage_perc or sglang:token_usage
+
+      # ── hydra:llm:prefix_cache_hit_ratio ─────────────────────────────────
+      # Fraction of prefill tokens served from prefix/prompt cache (0–1).
+      # ⚠ vLLM metric names: see note 2 in header.
+      # vLLM source: rate(vllm:prefix_cache_hits_total) / rate(vllm:prefix_cache_queries_total)
+      # SGLang source: sglang:cache_hit_rate (direct ratio gauge — no counter arithmetic needed)
+      - record: hydra:llm:prefix_cache_hit_ratio
+        expr: |
+          (
+            rate(vllm:prefix_cache_hits_total[5m])
+              /
+            rate(vllm:prefix_cache_queries_total[5m])
+          )
+          or
+          sglang:cache_hit_rate
+
+      # ── hydra:llm:errors:rate5m ───────────────────────────────────────────
+      # Abnormally terminated request rate (requests/second, 5-minute window).
+      # ⚠ vLLM: finished_reason="abort" is the proxy for error/abort requests;
+      #   standard vLLM does not emit finished_reason="error". See note 3.
+      # ⚠ SGLang: no standard error counter available; omitted until a confirmed
+      #   metric name is identified on a live node. See note 4.
+      # vLLM source: vllm:request_success_total{finished_reason="abort"}
+      - record: hydra:llm:errors:rate5m
+        expr: |
+          sum by (provider, model, node_id) (
+            rate(vllm:request_success_total{finished_reason="abort"}[5m])
+          )
+
+      # ── hydra:llm:request_e2e_seconds:p95 ────────────────────────────────
+      # End-to-end request latency p95 (seconds), from prefill start to last token.
+      # ⚠ SGLang histogram bucket availability: see note 5 in header.
+      # vLLM source: vllm:e2e_request_latency_seconds_bucket
+      # SGLang source: sglang:e2e_request_latency_seconds_bucket
+      - record: hydra:llm:request_e2e_seconds:p95
+        expr: |
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(vllm:e2e_request_latency_seconds_bucket[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (le, provider, model, node_id) (
+            rate(sglang:e2e_request_latency_seconds_bucket[5m])
+          ))
