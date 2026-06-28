@@ -1,0 +1,223 @@
+# monitoring/prometheus/rules/llm-advanced.rules.yml
+#
+# LLM-8: Advanced vLLM engine internals.
+# Recording rules for tensor-parallel / pipeline-parallel / expert-parallel
+# topology correlation, MoE expert load balance, speculative-decoding acceptance
+# rate, and LoRA adapter request volume.
+#
+# ── Metric contract ──────────────────────────────────────────────────────────
+# All source metrics are vLLM-native (vllm:* namespace).  SGLang equivalents
+# are noted where known; add entries when confirmed on a live node.
+#
+# Labels carried through:
+#   tp_group  — tensor-parallel group ID (A, B, …); set via metric relabeling
+#               in otel-agent-config.yaml.j2 using the node's pool membership.
+#   rank      — intra-group rank (0, 1); set at relabel time from node hostname.
+#   model     — model name; emitted by vLLM natively.
+#   provider  — engine identifier; set by OTEL relabeling.
+#   node_id   — node hostname; set by OTEL relabeling.
+#
+# ⚠ metric name verification: several vLLM metric names below are based on
+#   vLLM ≥0.5 source review.  Mark any that differ with # verify metric name
+#   and confirm via: curl -s http://<node>:8000/metrics | grep <name>
+# ─────────────────────────────────────────────────────────────────────────────
+
+groups:
+
+  # ── Tensor / Pipeline / Expert Parallelism ───────────────────────────────
+  - name: llm_parallelism
+    interval: 30s
+    rules:
+
+      # Per-rank token throughput (tokens/s) — correlate with RDMA fabric metrics
+      # (SRE-4: hydra:gpu:allreduce_latency_seconds:p99) to detect stragglers.
+      # vLLM source: vllm:generation_tokens_total (counter, per-rank series via relabeling)
+      - record: hydra:llm:tokens_generated:rate1m:by_rank
+        expr: |
+          sum by (tp_group, rank, model, provider, node_id) (
+            rate(vllm:generation_tokens_total[1m])
+          )
+
+      # Inter-rank throughput imbalance: ratio of max/min per tp_group.
+      # >1.2 (20% skew) indicates a straggler rank — investigate RDMA pause or
+      # thermal throttling on the slow node.
+      - record: hydra:llm:tp_rank_throughput_imbalance
+        expr: |
+          max by (tp_group, model) (hydra:llm:tokens_generated:rate1m:by_rank)
+            /
+          clamp_min(
+            min by (tp_group, model) (hydra:llm:tokens_generated:rate1m:by_rank),
+            1
+          )
+
+      # Pipeline parallel stage queue depth — # verify metric name
+      # vLLM exposes per-stage metrics in PP mode; confirm field name on live node.
+      - record: hydra:llm:pp_stage_queue_depth
+        expr: |
+          sum by (pp_stage, tp_group, model, node_id) (
+            vllm:pipeline_parallel_stage_queue_size  # verify metric name
+          )
+
+  # ── MoE Expert Load Balance ──────────────────────────────────────────────
+  - name: llm_moe
+    interval: 30s
+    rules:
+
+      # Expert activation fraction: rate of tokens routed to each expert.
+      # Source: vllm:moe_expert_tokens_total (counter per expert_id)  # verify metric name
+      - record: hydra:llm:moe_expert_activation:rate1m
+        expr: |
+          sum by (expert_id, model, provider, node_id) (
+            rate(vllm:moe_expert_tokens_total[1m])  # verify metric name
+          )
+
+      # Expert load imbalance: coefficient of variation (stddev/mean) across
+      # all experts for a given model.  Values >0.5 indicate severe expert collapse
+      # — one expert handles the majority of tokens; model quality degrades.
+      - record: hydra:llm:moe_expert_load_imbalance
+        expr: |
+          stddev by (model, provider, node_id) (
+            hydra:llm:moe_expert_activation:rate1m
+          )
+            /
+          clamp_min(
+            avg by (model, provider, node_id) (
+              hydra:llm:moe_expert_activation:rate1m
+            ),
+            0.001
+          )
+
+      # Alert on expert collapse
+      - alert: MoEExpertLoadImbalance
+        expr: hydra:llm:moe_expert_load_imbalance > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: inference
+        annotations:
+          summary: "MoE expert load imbalance on {{ $labels.node_id }} ({{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Expert load coefficient of variation is {{ $value | printf "%.2f" }}
+            (threshold: 0.5) for model={{ $labels.model }}.
+
+            One or more MoE experts are receiving a disproportionate share of
+            tokens (expert collapse).  Throughput and model quality may degrade.
+
+            Check vllm:moe_expert_tokens_total distribution on node {{ $labels.node_id }}.
+            Verify metric name: curl -s http://{{ $labels.node_id }}:8000/metrics | grep moe
+          runbook_url: "https://wiki.company.internal/runbooks/moe-expert-imbalance"
+
+  # ── Speculative Decoding ─────────────────────────────────────────────────
+  - name: llm_speculative_decode
+    interval: 30s
+    rules:
+
+      # Speculative decoding acceptance rate: fraction of draft tokens accepted
+      # by the verifier model.  Rates <0.5 mean spec-decode is slowing down
+      # inference rather than accelerating it (draft model mismatch).
+      # vLLM source: vllm:spec_decode_draft_acceptance_rate  # verify metric name
+      - record: hydra:llm:spec_decode_acceptance_rate
+        expr: |
+          avg by (model, provider, node_id) (
+            vllm:spec_decode_draft_acceptance_rate  # verify metric name
+          )
+
+      # Speculative decoding throughput multiplier (speedup factor).
+      # >1 = net speedup; <1 = spec-decode overhead exceeds benefit.
+      # vLLM source: vllm:spec_decode_efficiency  # verify metric name
+      - record: hydra:llm:spec_decode_efficiency
+        expr: |
+          avg by (model, provider, node_id) (
+            vllm:spec_decode_efficiency  # verify metric name
+          )
+
+      # Alert when acceptance rate falls below 50% for >10 min — spec decode is
+      # actively hurting throughput.  Disable or retune draft model.
+      - alert: SpecDecodeAcceptanceRateLow
+        expr: hydra:llm:spec_decode_acceptance_rate < 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: performance
+        annotations:
+          summary: "Speculative decode acceptance rate low on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Speculative decode acceptance rate is {{ $value | humanizePercentage }}
+            (threshold: 50%) on node={{ $labels.node_id }}, model={{ $labels.model }}.
+
+            The draft model is being rejected by the verifier more often than
+            accepted.  Net throughput is likely lower than without spec-decode.
+
+            Actions:
+            1. Review draft model choice / temperature settings
+            2. Disable spec-decode temporarily: remove --speculative-model flag
+            3. Verify metric: curl -s http://{{ $labels.node_id }}:8000/metrics | grep spec_decode
+          runbook_url: "https://wiki.company.internal/runbooks/spec-decode-low-acceptance"
+
+      # Alert on spec-decode throughput regression vs baseline (no spec-decode)
+      - alert: SpecDecodeEfficiencyDegraded
+        expr: hydra:llm:spec_decode_efficiency < 1.0
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: performance
+        annotations:
+          summary: "Speculative decode efficiency <1× on {{ $labels.node_id }} — net slowdown"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Speculative decoding efficiency is {{ $value | printf "%.2f" }}× (threshold: 1.0×)
+            on node={{ $labels.node_id }}.  Spec-decode overhead currently exceeds
+            the throughput gain from skipping verifier passes.
+
+            Verify metric: curl -s http://{{ $labels.node_id }}:8000/metrics | grep spec_decode_efficiency
+          runbook_url: "https://wiki.company.internal/runbooks/spec-decode-efficiency"
+
+  # ── LoRA Adapter Metrics ─────────────────────────────────────────────────
+  - name: llm_lora
+    interval: 30s
+    rules:
+
+      # Per-adapter request volume — identifies hot/cold adapters.
+      # vLLM source: vllm:lora_requests_info  (gauge, label: lora_name)  # verify metric name
+      # ⚠ Some vLLM builds expose this as vllm:num_running_lora_adapters or
+      #   vllm:lora_requests_running; confirm on live node.
+      - record: hydra:llm:lora_adapter_requests:rate5m
+        expr: |
+          sum by (lora_name, model, provider, node_id) (
+            rate(vllm:lora_requests_info[5m])  # verify metric name
+          )
+
+      # Number of currently-loaded LoRA adapters (occupying VRAM budget).
+      # vLLM source: vllm:num_running_lora_adapters  # verify metric name
+      - record: hydra:llm:lora_adapters_loaded
+        expr: |
+          sum by (model, provider, node_id) (
+            vllm:num_running_lora_adapters  # verify metric name
+          )
+
+      # Alert when a LoRA adapter receives zero traffic for 30 min while loaded.
+      # Loaded-but-idle adapters consume VRAM budget without benefit.
+      - alert: LoRAAdapterIdle
+        expr: |
+          hydra:llm:lora_adapter_requests:rate5m == 0
+          AND hydra:llm:lora_adapters_loaded > 0
+        for: 30m
+        labels:
+          severity: info
+          team: ml-platform
+          category: capacity
+        annotations:
+          summary: "LoRA adapter idle on {{ $labels.node_id }} ({{ $labels.lora_name }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            LoRA adapter {{ $labels.lora_name }} has received no requests for 30
+            minutes on node={{ $labels.node_id }} but is consuming VRAM budget.
+
+            Consider unloading idle adapters to free VRAM for the base model.
+            Verify: curl -s http://{{ $labels.node_id }}:8000/metrics | grep lora
+          runbook_url: "https://wiki.company.internal/runbooks/lora-adapter-idle"

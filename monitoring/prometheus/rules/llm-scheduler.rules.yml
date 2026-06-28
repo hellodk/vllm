@@ -1,0 +1,127 @@
+# monitoring/prometheus/rules/llm-scheduler.rules.yml
+#
+# LLM-4: vLLM scheduler & KV-cache observability.
+# Alerts fire against the hydra:llm:* normalization layer defined in
+# hydra-llm-normalization.yml.  New recording rules (preemption:rate5m,
+# running_waiting_ratio) are appended to hydra-llm-normalization.yml.
+#
+# ── Metric coverage ──────────────────────────────────────────────────────────
+# KV cache fill:   hydra:llm:kv_cache_usage_ratio  (0–1 fraction)
+# Preemptions:     hydra:llm:preemption:rate5m      (evictions/sec)
+# Prefix cache:    hydra:llm:prefix_cache_hit_ratio (0–1 fraction)
+# Running/waiting: hydra:llm:running_waiting_ratio
+#
+# ── SGLang equivalents (comment reference) ───────────────────────────────────
+# KVCacheSaturation  → sglang:token_usage already feeds hydra:llm:kv_cache_usage_ratio
+# PagedAttentionThrashing → SGLang does not expose a preemption counter; the
+#   equivalent signal is sglang:num_waiting_reqs rising while sglang:token_usage
+#   is near 1.0.  Add a dedicated alert when sglang:num_preemptions_total (or
+#   equivalent) is confirmed on a live node.
+# PrefixCacheColdspot → sglang:cache_hit_rate already feeds
+#   hydra:llm:prefix_cache_hit_ratio; the alert below covers both engines.
+# ─────────────────────────────────────────────────────────────────────────────
+
+groups:
+  - name: llm_scheduler
+    interval: 30s
+    rules:
+
+      # -----------------------------------------------------------------------
+      # KV Cache Saturation
+      # -----------------------------------------------------------------------
+      # Fires when the KV cache is >90% full for 2 minutes.  At this fill level
+      # the scheduler starts preempting (evicting) in-flight requests; latency
+      # spikes and throughput drops.  On 16 GB M4 nodes the window is narrow —
+      # act before the cache is fully exhausted.
+      - alert: KVCacheSaturation
+        expr: hydra:llm:kv_cache_usage_ratio > 0.9
+        for: 2m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: memory
+        annotations:
+          summary: "KV cache >90% on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            KV cache utilisation is {{ $value | humanizePercentage }} on
+            node={{ $labels.node_id }}, provider={{ $labels.provider }},
+            model={{ $labels.model }}.
+
+            At this level the vLLM/SGLang scheduler begins preempting
+            (evicting) in-flight requests to host DRAM and re-scheduling them.
+            TTFT and E2E latency will increase; check hydra:llm:preemption:rate5m.
+
+            Actions:
+            1. Lower --max-model-len or --gpu-memory-utilization to reduce peak fill
+            2. Drain long-context sessions to another node
+            3. Check for memory leaks: curl <node>:8000/metrics | grep gpu_cache
+          runbook_url: "https://wiki.company.internal/runbooks/kv-cache-saturation"
+
+      # -----------------------------------------------------------------------
+      # Paged Attention Thrashing
+      # -----------------------------------------------------------------------
+      # Fires when vLLM is actively preempting requests — i.e., evicting
+      # partially-decoded sequences from KV cache back to host memory and
+      # re-scheduling them.  Any non-zero sustained preemption rate on 16 GB
+      # M4 nodes is a leading indicator of imminent OOM or Metal failure.
+      # SGLang equivalent: no preemption counter; see comment block in header.
+      - alert: PagedAttentionThrashing
+        expr: hydra:llm:preemption:rate5m > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: memory
+        annotations:
+          summary: "Paged-attention preemptions detected on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            vLLM is preempting (evicting) in-flight requests at a rate of
+            {{ $value | printf "%.3f" }}/s (5m window) on node={{ $labels.node_id }}.
+
+            Preemption means partially-decoded sequences are being written to
+            host memory and re-scheduled — this degrades TTFT and E2E latency
+            and can lead to OOM/Metal crashes on 16 GB M4 nodes.
+
+            Actions:
+            1. Check KV cache fill: hydra:llm:kv_cache_usage_ratio
+            2. Reduce concurrent requests or --max-model-len
+            3. Check prefix cache hit rate: if low, requests carry full context
+          runbook_url: "https://wiki.company.internal/runbooks/paged-attention-thrashing"
+
+      # -----------------------------------------------------------------------
+      # Prefix Cache Coldspot
+      # -----------------------------------------------------------------------
+      # Fires when the prefix/radix cache hit rate is below 20% while the
+      # engine is under load (running_waiting_ratio > 0, i.e. there are active
+      # requests).  A cold prefix cache means every request must re-process its
+      # full context from scratch — doubling TTFT and wasting KV capacity.
+      - alert: PrefixCacheColdspot
+        expr: |
+          hydra:llm:prefix_cache_hit_ratio < 0.2
+          AND hydra:llm:running_waiting_ratio > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: performance
+        annotations:
+          summary: "Prefix cache hit rate low on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Prefix/radix cache hit rate is {{ $value | humanizePercentage }}
+            (threshold: 20%) on node={{ $labels.node_id }} under load.
+
+            Requests are not reusing cached KV blocks — each request recomputes
+            its full context.  This increases TTFT proportionally to prompt
+            length and evicts other requests' cached prefixes.
+
+            Likely causes:
+            - Highly varied system prompts or no shared prefix
+            - Cache disabled or not configured (--enable-prefix-caching)
+            - Requests using different chat templates per session
+
+            Verify metric names (⚠ vLLM versions vary):
+              curl -s http://{{ $labels.node_id }}:8000/metrics | grep -i prefix_cache
+          runbook_url: "https://wiki.company.internal/runbooks/prefix-cache-coldspot"

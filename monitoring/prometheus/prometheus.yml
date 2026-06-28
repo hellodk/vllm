@@ -52,3 +52,36 @@ scrape_configs:
   - job_name: tempo
     static_configs:
       - targets: ["tempo:3200"]
+
+  # ── SRE-3: RDMA/RoCE switch fabric (SNMP exporter) ───────────────────────
+  # The snmp_exporter runs as a sidecar on hydra-svc-01 and translates SNMP
+  # GET/WALK responses into Prometheus exposition format.
+  # Target: 192.168.10.1 (switch management interface, see network-design.md)
+  # Module: if_mib — covers ifHCInOctets, ifHCOutOctets, dot3Stats pause counters.
+  # Deploy: roles/snmp-exporter (owned by sibling ansible agent).
+  - job_name: snmp
+    static_configs:
+      - targets: ["192.168.10.1"]
+        labels:
+          device_type: switch
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "snmp-exporter:9116"
+
+  # ── SRE-5: MinIO model-store metrics ─────────────────────────────────────
+  # MinIO on hydra-store-01 (192.168.10.12) exposes Prometheus metrics at
+  # /minio/v2/metrics/cluster.  Provides minio_s3_traffic_* bandwidth counters
+  # for model-pull throughput tracking and S3 error-rate alerting.
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["192.168.10.12:9000"]
+        labels:
+          instance: hydra-store-01

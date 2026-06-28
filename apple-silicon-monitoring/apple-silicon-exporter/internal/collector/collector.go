@@ -188,8 +188,8 @@ func (c *AppleSiliconCollector) initDescriptors() {
 	)
 	c.thermalPressure = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "thermal", "pressure"),
-		"Thermal pressure level (0=nominal, 1=moderate, 2=heavy, 3=critical)",
-		[]string{"level"}, nil,
+		"Thermal pressure level: 0=nominal, 1=fair, 2=serious, 3=critical",
+		nil, nil,
 	)
 	c.thermalThrottle = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "thermal", "throttle_active"),
@@ -320,7 +320,7 @@ func (c *AppleSiliconCollector) collectIOKit(ch chan<- prometheus.Metric) {
 
 		// Thermal metrics — unavailable on generic Linux, so emit only when present.
 		if metrics.HasThermal {
-			ch <- prometheus.MustNewConstMetric(c.thermalPressure, prometheus.GaugeValue, 1, metrics.ThermalLevel)
+			ch <- prometheus.MustNewConstMetric(c.thermalPressure, prometheus.GaugeValue, float64(metrics.ThermalPressureLevel))
 			ch <- prometheus.MustNewConstMetric(c.thermalThrottle, prometheus.GaugeValue, boolToFloat(metrics.CPUThrottled), "cpu")
 			ch <- prometheus.MustNewConstMetric(c.thermalThrottle, prometheus.GaugeValue, boolToFloat(metrics.GPUThrottled), "gpu")
 		}

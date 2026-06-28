@@ -53,3 +53,14 @@ func TestCollectFromSysfsNoGPU(t *testing.T) {
 		t.Fatal("thermal pressure should be unavailable on generic Linux")
 	}
 }
+
+func TestThermalPressureLevelDefaultsToZero(t *testing.T) {
+	root := t.TempDir()
+	m := collectFromSysfs(root)
+	if m.HasThermal {
+		t.Fatal("HasThermal must be false on generic Linux (no sysfs thermal source)")
+	}
+	if m.ThermalPressureLevel != 0 {
+		t.Fatalf("ThermalPressureLevel = %d, want 0 (nominal default)", m.ThermalPressureLevel)
+	}
+}

@@ -178,8 +178,8 @@ func NewCollector(logger *zap.Logger) (*Collector, error) {
 // Collect gathers metrics from IOKit.
 func (c *Collector) Collect() (*Metrics, error) {
 	metrics := &Metrics{
-		GPUs:         make([]GPUMetrics, 0, 1),
-		ThermalLevel: "nominal",
+		GPUs:                 make([]GPUMetrics, 0, 1),
+		ThermalPressureLevel: 0, // 0 = nominal default
 	}
 
 	// Collect GPU metrics
@@ -206,18 +206,11 @@ func (c *Collector) Collect() (*Metrics, error) {
 	// Collect thermal metrics
 	var thermalMetrics C.ThermalMetrics
 	if result := C.get_thermal_metrics(&thermalMetrics); result == 0 {
-		switch thermalMetrics.thermal_level {
-		case 0:
-			metrics.ThermalLevel = "nominal"
-		case 1:
-			metrics.ThermalLevel = "moderate"
-		case 2:
-			metrics.ThermalLevel = "heavy"
-		case 3:
-			metrics.ThermalLevel = "critical"
-		default:
-			metrics.ThermalLevel = "unknown"
+		level := int(thermalMetrics.thermal_level)
+		if level < 0 || level > 3 {
+			level = 0 // treat unknown as nominal
 		}
+		metrics.ThermalPressureLevel = level
 		metrics.HasThermal = true
 		metrics.CPUThrottled = thermalMetrics.cpu_throttled != 0
 		metrics.GPUThrottled = thermalMetrics.gpu_throttled != 0
@@ -266,10 +259,11 @@ func (c *Collector) collectGPUFallback(metrics *Metrics) error {
 
 // collectThermalFallback uses sysctl/pmset to get thermal pressure.
 func (c *Collector) collectThermalFallback(metrics *Metrics) error {
+	// kern.sched_rt_avoid_cpu0 == 1 indicates at least moderate pressure.
 	cmd := exec.Command("sysctl", "-n", "kern.sched_rt_avoid_cpu0")
 	if output, err := cmd.Output(); err == nil {
 		if strings.TrimSpace(string(output)) == "1" {
-			metrics.ThermalLevel = "moderate"
+			metrics.ThermalPressureLevel = 1 // fair/moderate
 			metrics.HasThermal = true
 		}
 	}
@@ -280,9 +274,9 @@ func (c *Collector) collectThermalFallback(metrics *Metrics) error {
 		if strings.Contains(outputStr, "CPU_Speed_Limit") {
 			metrics.HasThermal = true
 			if strings.Contains(outputStr, "100") {
-				metrics.ThermalLevel = "nominal"
+				metrics.ThermalPressureLevel = 0 // nominal — full speed
 			} else {
-				metrics.ThermalLevel = "throttled"
+				metrics.ThermalPressureLevel = 1 // fair — throttled below 100%
 				metrics.CPUThrottled = true
 			}
 		}

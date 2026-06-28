@@ -1,4 +1,7 @@
 # monitoring/alertmanager/alertmanager.yml
+#
+# SRE-7: Updated with multi-burn-rate SLO routing, team/category routing,
+# and corrected inhibition rules (node_id/instance normalization).
 global:
   resolve_timeout: 5m
   smtp_smarthost: "${ALERTMANAGER_SMTP_SMARTHOST}"
@@ -15,6 +18,9 @@ route:
   receiver: slack-hydra
 
   routes:
+
+    # ── PagerDuty fast-page (explicit pagerduty: trigger label) ───────────
+    # continue: true so the alert also routes to the severity-matched receiver.
     - match:
         pagerduty: trigger
       receiver: pagerduty-critical
@@ -22,6 +28,70 @@ route:
       repeat_interval: 1h
       continue: true
 
+    # ── SLO burn-rate alerts — team + category routing ────────────────────
+    # Fast burn: critical, page to slack-and-email (PagerDuty handled above).
+    - match:
+        category: slo
+        burn_rate: fast
+      receiver: slack-and-email
+      group_by: [alertname, cluster, slo, provider, model]
+      group_wait: 10s
+      repeat_interval: 30m
+
+    # Slow burn: warning, Slack only with longer repeat.
+    - match:
+        category: slo
+        burn_rate: slow
+      receiver: slack-hydra
+      group_by: [alertname, cluster, slo, provider, model]
+      group_wait: 2m
+      repeat_interval: 6h
+
+    # ── RDMA/GPU fabric alerts ────────────────────────────────────────────
+    - match:
+        category: rdma
+        severity: critical
+      receiver: slack-and-email
+      group_by: [alertname, cluster, tp_group]
+      group_wait: 10s
+      repeat_interval: 30m
+
+    - match:
+        category: rdma
+        severity: warning
+      receiver: slack-hydra
+      group_by: [alertname, cluster, tp_group]
+      repeat_interval: 2h
+
+    # ── ML platform alerts (LLM inference, KV cache, scheduler) ──────────
+    - match:
+        team: ml-platform
+        severity: critical
+      receiver: slack-and-email
+      group_wait: 10s
+      repeat_interval: 1h
+
+    - match:
+        team: ml-platform
+        severity: warning
+      receiver: slack-hydra
+      repeat_interval: 4h
+
+    # ── SRE team alerts (storage, network, platform backends) ─────────────
+    - match:
+        team: sre
+        severity: critical
+      receiver: slack-and-email
+      group_wait: 10s
+      repeat_interval: 1h
+
+    - match:
+        team: sre
+        severity: warning
+      receiver: slack-hydra
+      repeat_interval: 4h
+
+    # ── Generic severity routing (fallback) ───────────────────────────────
     - match:
         severity: critical
       receiver: slack-and-email
@@ -87,8 +157,37 @@ receivers:
           subject: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }} on {{ .CommonLabels.node_id }}'
 
 inhibit_rules:
+  # Critical suppresses warning for the same alert on the same node.
+  # Use node_id OR instance (hardware alerts use node_id; engine alerts use instance).
+  # Two inhibit rules cover both label shapes.
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: [alertname, cluster, node_id]
+
   - source_match:
       severity: critical
     target_match:
       severity: warning
     equal: [alertname, cluster, instance]
+
+  # SLO fast-burn inhibits slow-burn for the same SLO + engine combination.
+  # Prevents duplicate notifications when a fast-burn condition is already paging.
+  - source_match:
+      category: slo
+      burn_rate: fast
+    target_match:
+      category: slo
+      burn_rate: slow
+    equal: [cluster, slo, provider, model, node_id]
+
+  # RDMA critical (pause storm, hardware absent) inhibits RDMA warnings —
+  # both will have tp_group label if set, or fall through to instance.
+  - source_match:
+      category: rdma
+      severity: critical
+    target_match:
+      category: rdma
+      severity: warning
+    equal: [cluster, node_id]

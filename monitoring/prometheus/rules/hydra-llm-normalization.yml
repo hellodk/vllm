@@ -194,3 +194,25 @@ groups:
           histogram_quantile(0.95, sum by (le, provider, model, node_id) (
             rate(sglang:e2e_request_latency_seconds_bucket[5m])
           ))
+
+      # ── hydra:llm:preemption:rate5m ──────────────────────────────────────
+      # Rate of vLLM paged-attention preemptions (request evictions from KV cache)
+      # over a 5-minute window.  Non-zero sustained rate indicates KV thrashing —
+      # requests are being swapped out to host memory and re-scheduled.
+      # vLLM source: vllm:num_preemptions_total (counter)
+      # SGLang: no equivalent counter; omitted pending live-node confirmation.
+      - record: hydra:llm:preemption:rate5m
+        expr: rate(vllm:num_preemptions_total[5m])
+
+      # ── hydra:llm:running_waiting_ratio ──────────────────────────────────
+      # Ratio of actively-decoding requests to queued requests.
+      # High ratio (>>1) → engine is efficiently saturated.
+      # Ratio approaching 0 (many waiting, few running) → KV cache bottleneck.
+      # clamp_min(waiting, 1) prevents division-by-zero when the queue is empty.
+      # vLLM source: vllm:num_requests_running / clamp_min(vllm:num_requests_waiting, 1)
+      # SGLang source: sglang:num_running_reqs / clamp_min(sglang:num_waiting_reqs, 1)
+      - record: hydra:llm:running_waiting_ratio
+        expr: |
+          (vllm:num_requests_running / clamp_min(vllm:num_requests_waiting, 1))
+          or
+          (sglang:num_running_reqs / clamp_min(sglang:num_waiting_reqs, 1))

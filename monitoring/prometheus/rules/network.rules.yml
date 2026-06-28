@@ -1,0 +1,180 @@
+# monitoring/prometheus/rules/network.rules.yml
+#
+# SRE-5: Network bandwidth telemetry — link saturation and MinIO model-pull SLA.
+# Covers all nodes (via hostmetrics) and the MinIO model store (hydra-store-01).
+#
+# ── Metric sources ───────────────────────────────────────────────────────────
+# Host network (node_exporter or OTEL hostmetrics receiver):
+#   node_network_transmit_bytes_total  (counter per interface)
+#   node_network_receive_bytes_total   (counter per interface)
+# Mac agent (OTEL hostmetrics — enabled after ANS-3 template merge):
+#   system.network.io{direction="transmit"}  (counter)
+#   system.network.io{direction="receive"}
+# MinIO (job="minio", /minio/v2/metrics/cluster):
+#   minio_s3_traffic_sent_bytes_total    (bytes sent to clients)
+#   minio_s3_traffic_received_bytes_total(bytes received from clients)
+#   minio_s3_requests_total              (request counter)
+#   minio_s3_requests_errors_total       (4xx/5xx request errors)
+#
+# ── Capacity reference (from docs/network-design.md) ─────────────────────────
+# Uplink: 10 GbE (1,250 MB/s = ~1.25e10 bits/s)
+# 8B model pull: ~4 s at 10 GbE; SLA floor: complete within 30 s (degraded)
+# 32B model pull: ~16 s at 10 GbE; SLA floor: complete within 120 s
+# Link saturation threshold: >80% of 10 GbE = >8 Gbps = >1e9 bytes/s sustained
+# ─────────────────────────────────────────────────────────────────────────────
+
+groups:
+
+  # ── Link Saturation ──────────────────────────────────────────────────────
+  - name: network_saturation
+    interval: 15s
+    rules:
+
+      # Recording rule: TX byte rate per node per interface, 5-minute window.
+      - record: hydra:node:network_tx_bytes:rate5m
+        expr: |
+          sum by (node_id, instance, device) (
+            rate(node_network_transmit_bytes_total{device!~"lo|docker.*|veth.*|br.*"}[5m])
+          )
+
+      # Recording rule: RX byte rate per node per interface, 5-minute window.
+      - record: hydra:node:network_rx_bytes:rate5m
+        expr: |
+          sum by (node_id, instance, device) (
+            rate(node_network_receive_bytes_total{device!~"lo|docker.*|veth.*|br.*"}[5m])
+          )
+
+      # Total bidirectional throughput per node.
+      - record: hydra:node:network_bidi_bytes:rate5m
+        expr: |
+          sum by (node_id, instance) (
+            hydra:node:network_tx_bytes:rate5m + hydra:node:network_rx_bytes:rate5m
+          )
+
+      # Alert: sustained link saturation >80% of 10 GbE for 5 minutes.
+      # 10 GbE = 1.25e9 bytes/s; 80% = 1e9 bytes/s (bidirectional).
+      # At saturation, MinIO model pulls will time out and RDMA AllReduce
+      # competes with TCP inference traffic.
+      - alert: NetworkLinkSaturation
+        expr: hydra:node:network_bidi_bytes:rate5m > 1e9
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          category: network
+        annotations:
+          summary: "Network link saturation >80% on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Bidirectional network throughput is {{ $value | humanize }}B/s
+            (threshold: 1 GB/s = 80% of 10 GbE) on node={{ $labels.node_id }}.
+
+            Sustained saturation will:
+            - Delay MinIO model pulls beyond the SLA floor
+            - Compete with RDMA AllReduce traffic (LargePool nodes)
+            - Increase OTEL telemetry flush latency
+
+            Check for large model downloads running concurrently with inference.
+          runbook_url: "https://wiki.company.internal/runbooks/network-saturation"
+
+      # Critical: >95% link utilisation — packet loss risk on non-RoCE traffic.
+      - alert: NetworkLinkNearCapacity
+        expr: hydra:node:network_bidi_bytes:rate5m > 1.188e9
+        for: 2m
+        labels:
+          severity: critical
+          team: sre
+          category: network
+          pagerduty: trigger
+        annotations:
+          summary: "Network link near capacity (>95%) on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            Bidirectional network throughput is {{ $value | humanize }}B/s
+            (threshold: 1.188 GB/s = 95% of 10 GbE) on node={{ $labels.node_id }}.
+
+            Packet loss is imminent on non-priority traffic.  RDMA (priority 3)
+            is PFC-protected but all other services will be impacted.
+          runbook_url: "https://wiki.company.internal/runbooks/network-saturation"
+
+  # ── MinIO Model Pull Throughput ──────────────────────────────────────────
+  - name: minio_model_pull
+    interval: 30s
+    rules:
+
+      # Recording rule: MinIO S3 sent bytes rate (bytes/s) — model pull throughput.
+      - record: hydra:minio:tx_bytes:rate5m
+        expr: |
+          sum(rate(minio_s3_traffic_sent_bytes_total[5m]))
+
+      # Recording rule: MinIO S3 error rate (errors/s).
+      - record: hydra:minio:s3_errors:rate5m
+        expr: |
+          sum(rate(minio_s3_requests_errors_total[5m]))
+
+      # Alert: MinIO model-pull throughput below SLA floor.
+      # SLA floor: at 10 GbE the minimum expected throughput during a pull is
+      # >100 MB/s (80% of 1.25 GB/s theoretical for a single client pull).
+      # Below 10 MB/s for 5 minutes indicates MinIO is I/O bound, the network
+      # is congested, or MinIO itself is degraded.
+      - alert: MinIOModelPullThroughputLow
+        expr: |
+          hydra:minio:tx_bytes:rate5m < 10e6
+          AND hydra:minio:tx_bytes:rate5m > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          category: storage
+        annotations:
+          summary: "MinIO model-pull throughput below SLA floor (< 10 MB/s)"
+          description: |
+            MinIO S3 sent throughput is {{ $value | humanize }}B/s (SLA floor: 10 MB/s).
+
+            At this rate a 32B model (~20 GB) would take >33 minutes to pull.
+            Expected: ≥100 MB/s on 10 GbE under normal conditions (~3 minutes
+            for a 32B model).
+
+            Check:
+            1. MinIO disk health: minio admin info --json | jq .disks
+            2. Network to hydra-store-01 (192.168.10.12): iperf3 from any node
+            3. Concurrent model pulls competing for bandwidth
+          runbook_url: "https://wiki.company.internal/runbooks/minio-throughput-low"
+
+      # Alert: MinIO S3 error rate is non-zero (4xx/5xx).
+      # Any sustained errors will cause model pull retries and stall inference startup.
+      - alert: MinIORequestErrors
+        expr: hydra:minio:s3_errors:rate5m > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          category: storage
+        annotations:
+          summary: "MinIO S3 request error rate elevated (>0.1/s)"
+          description: |
+            MinIO S3 request errors are occurring at {{ $value | printf "%.2f" }}/s.
+
+            S3 errors will cause model pull failures and may stall inference
+            node startup.  Check MinIO logs:
+              docker logs minio  or  journalctl -u minio
+          runbook_url: "https://wiki.company.internal/runbooks/minio-errors"
+
+      # Alert: MinIO is not returning any traffic — likely down or unreachable.
+      - alert: MinIODown
+        expr: absent(minio_s3_traffic_sent_bytes_total)
+        for: 5m
+        labels:
+          severity: critical
+          team: sre
+          category: storage
+          pagerduty: trigger
+        annotations:
+          summary: "MinIO metrics absent — model store may be down"
+          description: |
+            minio_s3_traffic_sent_bytes_total is absent from scrape targets.
+            The MinIO scrape job at 192.168.10.12:9000 is not returning metrics.
+
+            Model pulls from inference nodes will fail.  New model deployments
+            will be blocked.
+          runbook_url: "https://wiki.company.internal/runbooks/minio-down"
