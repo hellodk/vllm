@@ -1,15 +1,27 @@
 # ansible/roles/otel-mac-agent/handlers/main.yml
 ---
 - name: restart otel agent
-  shell: |
-    launchctl bootout system/{{ otel_agent_label }} 2>/dev/null || true
-    launchctl bootstrap system /Library/LaunchDaemons/{{ otel_agent_label }}.plist
-  become: true
-  ignore_errors: true   # macOS Tahoe returns I/O error but still restarts correctly
+  block:
+    - name: Validate OTEL config (dry-run)
+      command: >
+        {{ otel_binary_path }} validate --config {{ otel_config_path }}
+      become: true
+
+    - name: Bootout OTEL LaunchDaemon
+      # macOS Tahoe: bootout may emit a benign I/O error for already-stopped
+      # services; suppress it but do NOT suppress real failures — the validate
+      # step above already confirmed the config is sane before we get here.
+      shell: launchctl bootout system/{{ otel_agent_label }} 2>/dev/null || true
+      become: true
+      changed_when: false
+
+    - name: Bootstrap OTEL LaunchDaemon
+      shell: launchctl bootstrap system /Library/LaunchDaemons/{{ otel_agent_label }}.plist
+      become: true
+      changed_when: false
 
 - name: restart apple exporter
   shell: |
     launchctl bootout system/{{ apple_exporter_label }} 2>/dev/null || true
     launchctl bootstrap system /Library/LaunchDaemons/{{ apple_exporter_label }}.plist
   become: true
-  ignore_errors: true

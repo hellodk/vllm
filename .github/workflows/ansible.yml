@@ -1,0 +1,174 @@
+---
+# .github/workflows/ansible.yml
+# Ansible CI: lint, syntax-check, and unit tests.
+# Runs on every PR that touches the ansible/ tree or CI config itself.
+
+name: Ansible CI
+
+on:
+  pull_request:
+    paths:
+      - "ansible/**"
+      - ".ansible-lint"
+      - ".github/workflows/ansible.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "ansible/**"
+      - ".ansible-lint"
+
+concurrency:
+  group: ansible-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. YAML lint ──────────────────────────────────────────────────────────
+  yamllint:
+    name: yamllint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install yamllint
+        run: pip install yamllint==1.35.1
+
+      - name: Run yamllint on ansible tree
+        run: |
+          yamllint -d relaxed \
+            ansible/ \
+            .ansible-lint \
+            .github/workflows/ansible.yml
+
+  # ── 2. ansible-lint ───────────────────────────────────────────────────────
+  ansible-lint:
+    name: ansible-lint
+    runs-on: ubuntu-latest
+    needs: yamllint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible-lint + ansible-core
+        run: pip install ansible-lint==24.9.2 ansible-core==2.17.7
+
+      - name: Run ansible-lint
+        run: ansible-lint --profile production ansible/
+        env:
+          ANSIBLE_ROLES_PATH: ansible/roles
+
+  # ── 3. Syntax check — main playbooks ─────────────────────────────────────
+  syntax-check:
+    name: syntax-check
+    runs-on: ubuntu-latest
+    needs: yamllint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible-core
+        run: pip install ansible-core==2.17.7
+
+      - name: Write minimal stub inventory
+        run: |
+          mkdir -p /tmp/hydra-ci-inv
+          cat > /tmp/hydra-ci-inv/hosts.yml <<'INVEOF'
+          ---
+          all:
+            children:
+              os_macos:
+                hosts:
+                  ci-stub-01:
+                    ansible_host: 127.0.0.1
+                    ansible_connection: local
+                    hydra_os: macos
+              pool_fast:
+                hosts:
+                  ci-stub-01:
+              pool_gateway:
+                hosts:
+                  ci-stub-02:
+                    ansible_host: 127.0.0.1
+                    ansible_connection: local
+                    hydra_os: macos
+          INVEOF
+
+      - name: Syntax-check site.yml
+        run: |
+          ansible-playbook ansible/site.yml \
+            -i /tmp/hydra-ci-inv/hosts.yml \
+            --syntax-check
+        env:
+          ANSIBLE_ROLES_PATH: ansible/roles
+
+      - name: Syntax-check mac-monitoring.yml
+        run: |
+          ansible-playbook ansible/mac-monitoring.yml \
+            -i /tmp/hydra-ci-inv/hosts.yml \
+            --syntax-check
+        env:
+          ANSIBLE_ROLES_PATH: ansible/roles
+
+      - name: Syntax-check rolling-restart.yml
+        run: |
+          ansible-playbook \
+            docs/mac-mini-cluster/ansible/playbooks/rolling-restart.yml \
+            -i /tmp/hydra-ci-inv/hosts.yml \
+            --syntax-check
+        env:
+          ANSIBLE_ROLES_PATH: ansible/roles
+
+  # ── 4. Pytest — inventory plugin + discovery logic ────────────────────────
+  pytest:
+    name: pytest (ansible/tests/)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install pytest pyyaml
+
+      - name: Run tests
+        run: pytest ansible/tests/ -q --tb=short
+
+  # ── 5. Molecule stub (future per-role idempotency) ────────────────────────
+  # Uncomment and populate when molecule scenarios are added under
+  # ansible/roles/<role>/molecule/default/.
+  #
+  # molecule:
+  #   name: molecule (${{ matrix.role }})
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       role: [otel-mac-agent, llm-mlx, monitoring-cfg]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.12"
+  #     - run: |
+  #         pip install molecule molecule-plugins[docker] ansible-core==2.17.7
+  #     - run: molecule test
+  #       working-directory: ansible/roles/${{ matrix.role }}

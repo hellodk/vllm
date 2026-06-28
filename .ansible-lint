@@ -1,0 +1,32 @@
+# .ansible-lint — production profile for the Hydra fleet Ansible tree.
+# https://ansible.readthedocs.io/projects/lint/configuring/
+
+profile: production
+
+# Directories that are not Ansible content (vendored / third-party)
+exclude_paths:
+  - llama.cpp/
+  - vllm/
+  - .worktrees/
+  - apple-silicon-monitoring/
+  - opik/
+  - benchmarkings.md
+
+# Rules to skip globally
+skip_list:
+  # macOS launchd restart idiom: `launchctl bootout … || true` is intentional
+  - no-changed-when
+  # Plist templates contain XML with boolean/integer tags that trigger this
+  - yaml[truthy]
+  # Shell tasks that bootout+bootstrap cannot use the service/systemd module
+  - command-instead-of-module
+  # role vars/main.yml files set vars without task — false-positive on var files
+  - var-naming[no-role-prefix]
+
+warn_list:
+  - experimental
+
+# Annotate tasks that are allowed to loop without `label`
+loop_var_prefix: "^(item|__)"
+
+use_default_rules: true
