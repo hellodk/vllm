@@ -23,10 +23,12 @@ type GPUMetrics struct {
 type Metrics struct {
 	GPUs []GPUMetrics
 
-	// ThermalLevel is one of nominal/moderate/heavy/critical. HasThermal is
-	// false when no thermal-pressure source is available (e.g. generic Linux).
-	ThermalLevel string
-	HasThermal   bool
-	CPUThrottled bool
-	GPUThrottled bool
+	// ThermalPressureLevel is the numeric thermal pressure level: 0=nominal,
+	// 1=fair/moderate, 2=serious/heavy, 3=critical. HasThermal is false when
+	// no thermal-pressure source is available (e.g. generic Linux); in that
+	// case ThermalPressureLevel is 0 but must not be emitted.
+	ThermalPressureLevel int
+	HasThermal           bool
+	CPUThrottled         bool
+	GPUThrottled         bool
 }

@@ -1,0 +1,148 @@
+# monitoring/prometheus/rules/gpu-fabric.rules.yml
+#
+# SRE-4: GPU collective communications — NVLink profiling and NCCL AllReduce latency.
+# Covers the LargePool tensor-parallel groups (tp_group A and B, hydra-large-01..04).
+#
+# ── Metric sources ───────────────────────────────────────────────────────────
+# DCGM custom counter CSV (mounted via -f flag on dcgm-exporter):
+#   DCGM_FI_PROF_NVLINK_TX_BYTES   — NVLink TX bytes (counter per GPU, per link)
+#   DCGM_FI_PROF_NVLINK_RX_BYTES   — NVLink RX bytes
+# NCCL AllReduce probe (periodic nccl-tests or dedicated probe role):
+#   nccl_allreduce_latency_seconds  — AllReduce duration (histogram per tp_group, model)
+#   nccl_allreduce_busbw_gbps       — AllReduce bus bandwidth (gauge per tp_group)
+#
+# ── Latency SLO (from docs/network-design.md) ────────────────────────────────
+# RDMA target: ~8 ms for 32B weight tensor AllReduce (LargePool, tp_group A/B)
+# TCP fallback: ~1,280 ms (160× slower — acceptable only for batch inference)
+# Alert threshold: p99 > 0.020 s (20 ms, 2.5× RDMA SLO) → degradation warning
+#                  p99 > 0.100 s (100 ms) → critical, likely fallen back to TCP
+# ─────────────────────────────────────────────────────────────────────────────
+
+groups:
+
+  # ── NVLink Throughput Recording Rules ────────────────────────────────────
+  - name: gpu_nvlink
+    interval: 15s
+    rules:
+
+      # NVLink TX bytes rate (bytes/s) per GPU, 1-minute sliding window.
+      # vLLM TP uses NVLink for all-to-all and broadcast operations within a node.
+      # Cross-node AllReduce uses RDMA (RoCE v2), not NVLink.
+      - record: hydra:gpu:nvlink_tx_bytes:rate1m
+        expr: |
+          sum by (gpu, node_id, instance, tp_group, model) (
+            rate(DCGM_FI_PROF_NVLINK_TX_BYTES[1m])
+          )
+
+      # NVLink RX bytes rate (bytes/s) per GPU, 1-minute sliding window.
+      - record: hydra:gpu:nvlink_rx_bytes:rate1m
+        expr: |
+          sum by (gpu, node_id, instance, tp_group, model) (
+            rate(DCGM_FI_PROF_NVLINK_RX_BYTES[1m])
+          )
+
+      # Total NVLink bidirectional bandwidth per node (sum across all GPUs).
+      - record: hydra:gpu:nvlink_bidi_bytes:rate1m
+        expr: |
+          sum by (node_id, instance, tp_group, model) (
+            hydra:gpu:nvlink_tx_bytes:rate1m + hydra:gpu:nvlink_rx_bytes:rate1m
+          )
+
+  # ── NCCL AllReduce Latency Recording Rules ───────────────────────────────
+  - name: gpu_allreduce
+    interval: 15s
+    rules:
+
+      # AllReduce p99 latency by tp_group and model.
+      # Source: nccl_allreduce_latency_seconds histogram emitted by nccl probe.
+      # Label tp_group identifies which TP pair (A = large-01/02, B = large-03/04).
+      - record: hydra:gpu:allreduce_latency_seconds:p99
+        expr: |
+          histogram_quantile(0.99, sum by (le, tp_group, model) (
+            rate(nccl_allreduce_latency_seconds_bucket[5m])
+          ))
+
+      # AllReduce p50 latency (median, indicates typical operation).
+      - record: hydra:gpu:allreduce_latency_seconds:p50
+        expr: |
+          histogram_quantile(0.50, sum by (le, tp_group, model) (
+            rate(nccl_allreduce_latency_seconds_bucket[5m])
+          ))
+
+      # AllReduce bus bandwidth (Gbps) — low busbw indicates RDMA degradation.
+      - record: hydra:gpu:allreduce_busbw_gbps
+        expr: |
+          avg by (tp_group, model) (nccl_allreduce_busbw_gbps)
+
+      # ── Alerts ──────────────────────────────────────────────────────────
+
+      # Warning: p99 > 20 ms = 2.5× the RDMA SLO (8 ms for 32B model).
+      # Indicates RDMA fabric is congested or a PFC pause storm is active.
+      # Cross-correlate with rdma-fabric.rules.yml: hydra:rdma:tx_pause_frames:rate1m.
+      - alert: AllReduceLatencyElevated
+        expr: hydra:gpu:allreduce_latency_seconds:p99 > 0.020
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          category: rdma
+        annotations:
+          summary: "AllReduce p99 latency elevated on tp_group={{ $labels.tp_group }} ({{ $labels.model }})"
+          description: |
+            NCCL AllReduce p99 latency is {{ $value | humanizeDuration }}
+            (SLO: 8 ms RDMA target, warning threshold: 20 ms) for
+            tp_group={{ $labels.tp_group }}, model={{ $labels.model }}.
+
+            Check RDMA fabric health:
+            - hydra:rdma:tx_pause_frames:rate1m  (PFC pause storm?)
+            - hydra:rdma:cnp_sent:rate1m         (ECN congestion?)
+            - hydra:rdma:out_of_buffer:rate5m    (packet loss?)
+            - roce_hardware_present{pool="large"} (RDMA NIC present?)
+          runbook_url: "https://wiki.company.internal/runbooks/allreduce-latency"
+
+      # Critical: p99 > 100 ms strongly suggests TCP fallback (no RDMA).
+      # Inference throughput is ~160× below the RDMA design target.
+      - alert: AllReduceLatencyCritical
+        expr: hydra:gpu:allreduce_latency_seconds:p99 > 0.100
+        for: 2m
+        labels:
+          severity: critical
+          team: sre
+          category: rdma
+          pagerduty: trigger
+        annotations:
+          summary: "AllReduce latency critical — likely TCP fallback on tp_group={{ $labels.tp_group }}"
+          description: |
+            NCCL AllReduce p99 latency is {{ $value | humanizeDuration }}
+            (critical threshold: 100 ms) for tp_group={{ $labels.tp_group }},
+            model={{ $labels.model }}.
+
+            Latency is consistent with TCP fallback (~1,280 ms for 32B).
+            LargePool tensor-parallel inference is severely degraded.
+
+            Immediate actions:
+            1. Check roce_hardware_present{pool="large"} — NIC present?
+            2. Check ibv_devices on both LargePool nodes in the tp_group
+            3. Verify RDMA QP state: ibv_rc_pingpong between the pair
+            4. Check PFC/ECN: rdma-fabric.rules.yml alerts
+          runbook_url: "https://wiki.company.internal/runbooks/allreduce-tcp-fallback"
+
+      # Regression alert: busbw drops to below 20% of the 10 GbE theoretical max.
+      # 10 GbE bus BW limit for AllReduce (bidirectional) ≈ 10 * 2 / 4 = 5 Gbps
+      # (ring algorithm); 20% ≈ 1 Gbps — effectively at 1 GbE parity.
+      - alert: AllReduceBandwidthLow
+        expr: hydra:gpu:allreduce_busbw_gbps < 1.0
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          category: rdma
+        annotations:
+          summary: "AllReduce bus bandwidth low on tp_group={{ $labels.tp_group }}"
+          description: |
+            NCCL AllReduce bus bandwidth is {{ $value | printf "%.2f" }} Gbps
+            (threshold: 1.0 Gbps) for tp_group={{ $labels.tp_group }}.
+
+            Expected: ≥5 Gbps (RDMA) or ≥1 Gbps (10 GbE TCP).
+            Values below 1 Gbps indicate a severe fabric degradation.
+          runbook_url: "https://wiki.company.internal/runbooks/allreduce-bandwidth"

@@ -1,0 +1,222 @@
+# monitoring/prometheus/rules/slo-burn-rate.rules.yml
+#
+# SRE-7: Multi-window multi-burn-rate SLO alerts for LLM availability and latency.
+#
+# ── SLO Definitions ──────────────────────────────────────────────────────────
+# Availability SLO: 99.5% over rolling 30d (≤0.5% error budget)
+#   Good event:   hydra:llm:up == 1
+#   Error budget: 0.005 (0.5%)
+#
+# Latency SLO: 95% of requests complete TTFT < 5s over rolling 30d
+#   Good event:   hydra:llm:ttft_seconds:p95 <= 5s
+#   Error budget: 0.05 (5%)
+#
+# ── Multi-window burn-rate method ────────────────────────────────────────────
+# Based on Google SRE Workbook chapter 5 (Alerting on SLOs).
+# Two alert tiers per SLO:
+#   FAST  (page immediately): 5m + 1h window, burn_rate > 14.4  → consumes 2% budget/hour
+#   SLOW  (ticket):           30m + 6h window, burn_rate > 6     → consumes 5% budget/hour
+#
+# burn_rate thresholds:
+#   14.4 = (1 / 0.005) * (1h/30d) * (1 - 0.99)^-1 → simplified: 1/(1-SLO) * (window/month)
+#   For availability 99.5%: 1h_rate > 14.4 * (1 - 0.995) = 0.072  error_rate/hour
+#   For latency 95%:        1h_rate > 14.4 * (1 - 0.95) = 0.72    bad_request_fraction
+#
+# Practical thresholds used below (tuned for 99.5% avail SLO):
+#   Fast burn: error_rate_1h > 0.01  (≥1% errors in 1h window with 5m confirmation)
+#   Slow burn: error_rate_6h > 0.005 (≥0.5% errors in 6h window with 30m confirmation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+groups:
+
+  # ── Availability SLO Error Rate Recording Rules ──────────────────────────
+  - name: slo_availability_recording
+    interval: 30s
+    rules:
+
+      # Error rate: fraction of scrape intervals where the engine was down.
+      # 1 - avg = fraction of time hydra:llm:up was 0.
+      - record: hydra:llm:availability_error_rate:5m
+        expr: |
+          1 - avg by (provider, model, node_id) (
+            avg_over_time(hydra:llm:up[5m])
+          )
+
+      - record: hydra:llm:availability_error_rate:1h
+        expr: |
+          1 - avg by (provider, model, node_id) (
+            avg_over_time(hydra:llm:up[1h])
+          )
+
+      - record: hydra:llm:availability_error_rate:30m
+        expr: |
+          1 - avg by (provider, model, node_id) (
+            avg_over_time(hydra:llm:up[30m])
+          )
+
+      - record: hydra:llm:availability_error_rate:6h
+        expr: |
+          1 - avg by (provider, model, node_id) (
+            avg_over_time(hydra:llm:up[6h])
+          )
+
+  # ── Latency SLO Error Rate Recording Rules ───────────────────────────────
+  - name: slo_latency_recording
+    interval: 30s
+    rules:
+
+      # Latency SLO good-event fraction: fraction of 5-minute intervals where
+      # p95 TTFT was within the 5-second SLO target.
+      # We use a step-function: 1 when p95<=5s, 0 when p95>5s.
+      - record: hydra:llm:ttft_slo_good_ratio:5m
+        expr: |
+          clamp_max(
+            (hydra:llm:ttft_seconds:p95 <= bool 5),
+            1
+          )
+
+      - record: hydra:llm:ttft_error_rate:1h
+        expr: |
+          1 - avg by (provider, model, node_id) (
+            avg_over_time(hydra:llm:ttft_slo_good_ratio:5m[1h])
+          )
+
+      - record: hydra:llm:ttft_error_rate:30m
+        expr: |
+          1 - avg by (provider, model, node_id) (
+            avg_over_time(hydra:llm:ttft_slo_good_ratio:5m[30m])
+          )
+
+      - record: hydra:llm:ttft_error_rate:6h
+        expr: |
+          1 - avg by (provider, model, node_id) (
+            avg_over_time(hydra:llm:ttft_slo_good_ratio:5m[6h])
+          )
+
+  # ── Availability SLO Burn-Rate Alerts ────────────────────────────────────
+  - name: slo_availability_alerts
+    rules:
+
+      # FAST BURN: page immediately.
+      # Condition: 5m AND 1h error rates both exceed fast-burn threshold (1%).
+      # Dual-window prevents false pages from momentary blips: the 5m window
+      # ensures the alert fires promptly; the 1h window confirms the trend.
+      - alert: LLMAvailabilitySLOFastBurn
+        expr: |
+          hydra:llm:availability_error_rate:5m > 0.01
+          AND
+          hydra:llm:availability_error_rate:1h > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: slo
+          slo: availability
+          burn_rate: fast
+          pagerduty: trigger
+        annotations:
+          summary: "LLM availability SLO fast burn on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            LLM availability SLO fast burn detected.
+            Error rate (last 5m): {{ $value | humanizePercentage }}
+            SLO target: 99.5% availability
+
+            At this error rate the monthly error budget will be consumed within
+            ~2 hours.  Immediate investigation required.
+
+            engine: {{ $labels.provider }}, model: {{ $labels.model }},
+            node: {{ $labels.node_id }}
+
+            Check:
+            1. hydra:llm:up for the affected node
+            2. Engine process logs for crash/restart loops
+            3. Hardware health (thermal, memory) on the node
+          runbook_url: "https://wiki.company.internal/runbooks/slo-llm-availability"
+
+      # SLOW BURN: ticket/notification.
+      # Condition: 30m AND 6h error rates both exceed slow-burn threshold (0.5%).
+      # This fires before budget is exhausted but allows time for non-urgent response.
+      - alert: LLMAvailabilitySLOSlowBurn
+        expr: |
+          hydra:llm:availability_error_rate:30m > 0.005
+          AND
+          hydra:llm:availability_error_rate:6h > 0.005
+        for: 15m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: slo
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "LLM availability SLO slow burn on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            LLM availability SLO slow burn detected over 6h window.
+            Error rate (last 6h): {{ $value | humanizePercentage }}
+            SLO target: 99.5% availability
+
+            At this rate the monthly error budget will be consumed within ~5 days.
+            Non-urgent investigation needed.
+          runbook_url: "https://wiki.company.internal/runbooks/slo-llm-availability"
+
+  # ── Latency SLO Burn-Rate Alerts ─────────────────────────────────────────
+  - name: slo_latency_alerts
+    rules:
+
+      # FAST BURN: p95 TTFT SLO violation at high burn rate.
+      # Threshold: >7% of 1h intervals violated the 5s TTFT target.
+      # (14.4× burn rate × 0.05 budget = 0.72; using 0.07 for practical sensitivity)
+      - alert: LLMLatencySLOFastBurn
+        expr: |
+          hydra:llm:ttft_error_rate:1h > 0.07
+          AND
+          hydra:llm:ttft_error_rate:30m > 0.07
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: slo
+          slo: latency
+          burn_rate: fast
+          pagerduty: trigger
+        annotations:
+          summary: "LLM TTFT latency SLO fast burn on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            LLM TTFT latency SLO fast burn: >7% of the last hour had p95 TTFT > 5s.
+            SLO target: 95% of requests must have TTFT ≤ 5s
+
+            Current p95 TTFT: check hydra:llm:ttft_seconds:p95 for the node.
+
+            engine: {{ $labels.provider }}, model: {{ $labels.model }},
+            node: {{ $labels.node_id }}
+
+            Check:
+            1. GPU utilisation and thermal state
+            2. KV cache fill (hydra:llm:kv_cache_usage_ratio)
+            3. Preemption rate (hydra:llm:preemption:rate5m)
+            4. Concurrent request depth
+          runbook_url: "https://wiki.company.internal/runbooks/slo-llm-latency"
+
+      # SLOW BURN: latency SLO degrading gradually over 6h window.
+      - alert: LLMLatencySLOSlowBurn
+        expr: |
+          hydra:llm:ttft_error_rate:6h > 0.03
+          AND
+          hydra:llm:ttft_error_rate:30m > 0.03
+        for: 15m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: slo
+          slo: latency
+          burn_rate: slow
+        annotations:
+          summary: "LLM TTFT latency SLO slow burn on {{ $labels.node_id }} ({{ $labels.provider }}/{{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            LLM TTFT latency SLO slow burn: >3% of the last 6h had p95 TTFT > 5s.
+            At this rate the monthly latency error budget will be consumed within ~7 days.
+          runbook_url: "https://wiki.company.internal/runbooks/slo-llm-latency"

@@ -1,0 +1,225 @@
+# monitoring/prometheus/rules/rdma-fabric.rules.yml
+#
+# SRE-3: RDMA/RoCE fabric monitoring for the LargePool tensor-parallel groups.
+# LargePool (hydra-large-01..04) uses RoCE v2 over 10 GbE with PFC/ECN for
+# lossless collective communications (NCCL AllReduce).
+#
+# ── Metric sources ───────────────────────────────────────────────────────────
+# Linux nodes (infiniband / RoCE NIC via node-exporter --collector.infiniband):
+#   node_infiniband_port_data_transmitted_bytes_total
+#   node_infiniband_port_data_received_bytes_total
+#   roce_tx_pause_frames_total     (sysfs: /sys/class/infiniband/*/ports/*/counters/*)
+#   roce_rx_pause_frames_total
+#   roce_np_cnp_sent_total         (Notification Point — CNP sent to reduce sender rate)
+#   roce_rp_cnp_handled_total      (Reaction Point — CNP received and rate reduced)
+#   roce_out_of_buffer_total       (RX ring buffer overflow = packet drop)
+#   roce_rnr_nak_retry_err_total   (Remote Not Ready — send queue stall)
+# macOS LargePool nodes (Thunderbolt ConnectX sidecar):
+#   roce_hardware_present          (gauge: 1=RDMA NIC present, 0=absent/unhealthy)
+# Switch SNMP (snmp_exporter, job="snmp"):
+#   ifHCInOctets, ifHCOutOctets    (per-port byte counters, SNMP OID 1.3.6.1.2.1.31.1.1.1.6/10)
+#   dot3StatsPauseFramesReceived   (PFC pause frames per port)
+#   dot3StatsPauseFramesTransmitted
+# ─────────────────────────────────────────────────────────────────────────────
+
+groups:
+
+  # ── PFC Pause Storm ──────────────────────────────────────────────────────
+  - name: rdma_pause_storm
+    interval: 15s
+    rules:
+
+      # Recording rule: TX pause frame rate (frames/s) per node, 1-minute window.
+      # Sustained non-zero rate = RDMA sender is being throttled by PFC backpressure.
+      - record: hydra:rdma:tx_pause_frames:rate1m
+        expr: |
+          sum by (node_id, instance, device) (
+            rate(roce_tx_pause_frames_total[1m])
+          )
+
+      # Recording rule: RX pause frame rate (frames/s) — frames received from switch,
+      # telling this node to stop sending.
+      - record: hydra:rdma:rx_pause_frames:rate1m
+        expr: |
+          sum by (node_id, instance, device) (
+            rate(roce_rx_pause_frames_total[1m])
+          )
+
+      # Alert: any sustained TX pause activity indicates a pause storm in progress.
+      # Even a low rate blocks RDMA sends and stalls AllReduce, adding ~1280ms latency.
+      - alert: RDMAPauseStorm
+        expr: hydra:rdma:tx_pause_frames:rate1m > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: sre
+          category: rdma
+          pagerduty: trigger
+        annotations:
+          summary: "RDMA PFC pause storm on {{ $labels.node_id }} ({{ $labels.device }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            PFC TX pause frames detected at {{ $value | printf "%.1f" }} frames/s
+            on node={{ $labels.node_id }}, device={{ $labels.device }}.
+
+            A PFC pause storm throttles RDMA sends and degrades AllReduce from
+            ~8 ms to ~1,280 ms for the 32B LargePool model.  All tensor-parallel
+            inference on {{ $labels.node_id }} will be severely degraded.
+
+            Immediate actions:
+            1. Check switch queue-3 (RDMA priority) utilisation
+            2. Verify ECN thresholds: if queue fills before ECN triggers, PFC fires
+            3. Inspect for buffer bloat: mismatch between ECN mark threshold and PFC threshold
+            4. Check all LargePool nodes — pause storms are fabric-wide
+          runbook_url: "https://wiki.company.internal/runbooks/rdma-pause-storm"
+
+  # ── CNP Rate ─────────────────────────────────────────────────────────────
+  - name: rdma_ecn_cnp
+    interval: 15s
+    rules:
+
+      # Recording rule: CNP (Congestion Notification Packet) send rate.
+      # NP (Notification Point) sends CNPs to the RP (Reaction Point, i.e. the sender)
+      # to request rate reduction.  Rising CNP rate = fabric congestion.
+      - record: hydra:rdma:cnp_sent:rate1m
+        expr: |
+          sum by (node_id, instance, device) (
+            rate(roce_np_cnp_sent_total[1m])
+          )
+
+      # Recording rule: CNP handled (received and acted on) by the reaction point.
+      - record: hydra:rdma:cnp_handled:rate1m
+        expr: |
+          sum by (node_id, instance, device) (
+            rate(roce_rp_cnp_handled_total[1m])
+          )
+
+      # Alert on CNP spike: sharp increase in congestion notifications indicates
+      # the fabric is under stress and RDMA senders are being rate-limited.
+      - alert: RDMACNPRateSpike
+        expr: |
+          hydra:rdma:cnp_sent:rate1m
+            > 2 * avg_over_time(hydra:rdma:cnp_sent:rate1m[10m])
+          AND hydra:rdma:cnp_sent:rate1m > 10
+        for: 2m
+        labels:
+          severity: warning
+          team: sre
+          category: rdma
+        annotations:
+          summary: "RDMA CNP rate spike on {{ $labels.node_id }} — fabric congestion"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            CNP send rate is {{ $value | printf "%.0f" }}/s on node={{ $labels.node_id }},
+            which is >2× the 10-minute baseline.
+
+            The switch is signaling congestion on the RDMA fabric.  NCCL AllReduce
+            latency is elevated.  If CNP rate continues rising and PFC fires,
+            expect full pause-storm degradation.
+
+            Check switch ECN configuration and queue-3 occupancy.
+          runbook_url: "https://wiki.company.internal/runbooks/rdma-cnp-spike"
+
+  # ── RX Buffer Overflow ───────────────────────────────────────────────────
+  - name: rdma_buffer
+    interval: 15s
+    rules:
+
+      # Recording rule: out-of-buffer (RX ring overflow) event rate.
+      # An out_of_buffer event means a packet was dropped because the NIC RX ring
+      # was full.  Any sustained rate with RoCE = packet loss = RDMA retransmit
+      # storm (since RoCE v2 does not guarantee lossless without PFC).
+      - record: hydra:rdma:out_of_buffer:rate5m
+        expr: |
+          sum by (node_id, instance, device) (
+            rate(roce_out_of_buffer_total[5m])
+          )
+
+      - alert: RDMAOutOfBufferIncreasing
+        expr: hydra:rdma:out_of_buffer:rate5m > 0
+        for: 3m
+        labels:
+          severity: critical
+          team: sre
+          category: rdma
+          pagerduty: trigger
+        annotations:
+          summary: "RDMA RX buffer overflow on {{ $labels.node_id }} — packet loss"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            RoCE out_of_buffer counter is increasing at {{ $value | printf "%.3f" }}/s
+            on node={{ $labels.node_id }}, device={{ $labels.device }}.
+
+            RX ring overflow = packet loss on the RDMA fabric.  Under RoCE v2 this
+            triggers NCCL retransmit storms and may stall AllReduce indefinitely.
+
+            Actions:
+            1. Verify PFC is enabled on switch port for priority-3 traffic
+            2. Check NIC RX ring size: ethtool -g <dev> → increase rx ring
+            3. Verify DSCP-to-priority mapping: CS3 (DSCP 24) → queue 3
+          runbook_url: "https://wiki.company.internal/runbooks/rdma-out-of-buffer"
+
+  # ── Hardware Presence (macOS LargePool) ──────────────────────────────────
+  - name: rdma_hardware_presence
+    interval: 30s
+    rules:
+
+      # Alert: roce_hardware_present == 0 means the Thunderbolt ConnectX NIC
+      # sidecar cannot see the RDMA hardware.  The node falls back to ~1280ms
+      # TCP AllReduce — inference is 160× slower per collective op.
+      # Target: nodes labeled pool="large" (LargePool only — only pool requiring RDMA).
+      - alert: RDMAHardwareAbsent
+        expr: roce_hardware_present{pool="large"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: sre
+          category: rdma
+          pagerduty: trigger
+        annotations:
+          summary: "RDMA hardware absent on LargePool node {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            roce_hardware_present == 0 on node={{ $labels.node_id }} (pool=large).
+
+            The Thunderbolt ConnectX RDMA NIC is not detected.  This node will
+            fall back to TCP-based AllReduce (~1,280 ms vs ~8 ms for 32B model),
+            making tensor-parallel inference ~160× slower.
+
+            Actions:
+            1. Check Thunderbolt connection: system_profiler SPThunderboltDataType
+            2. Check MLNX_OFED driver: ibv_devices (should show mlx5_0)
+            3. Verify PCIe enclosure power and cable seating
+            4. Check roce sidecar service: launchctl list | grep roce
+          runbook_url: "https://wiki.company.internal/runbooks/rdma-hardware-absent"
+
+  # ── RNR NAK (Remote Not Ready) ───────────────────────────────────────────
+  - name: rdma_rnr_nak
+    interval: 30s
+    rules:
+
+      - record: hydra:rdma:rnr_nak_retry_err:rate5m
+        expr: |
+          sum by (node_id, instance, device) (
+            rate(roce_rnr_nak_retry_err_total[5m])
+          )
+
+      - alert: RDMARNRNakRetryErrors
+        expr: hydra:rdma:rnr_nak_retry_err:rate5m > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+          category: rdma
+        annotations:
+          summary: "RDMA RNR NAK retry errors on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            RNR (Remote Not Ready) NAK retry error counter is increasing at
+            {{ $value | printf "%.3f" }}/s on node={{ $labels.node_id }}.
+
+            The remote QP (queue pair) is not ready to receive — the send queue
+            is stalling and retrying.  This can cause NCCL to spin on retransmits.
+
+            Check remote node RDMA health and QP state.
+          runbook_url: "https://wiki.company.internal/runbooks/rdma-rnr-nak"

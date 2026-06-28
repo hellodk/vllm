@@ -27,7 +27,7 @@
       }
     ]
   },
-  "description": "MLX inference telemetry — TTFT, throughput, queue depth, Metal failures, unified-memory pressure, and KV/scheduler health for vllm-mlx nodes. All vLLM metrics use the canonical vllm: prefix (vLLM-MLX 0.4.0rc1+ mirrors upstream vLLM metric names). Cross-engine rollup panels use hydra:llm:* recording rules (hydra-llm-normalization.yml).",
+  "description": "SGLang inference telemetry — TTFT, generation throughput, running/waiting requests, and prefix cache hit rate. Per-engine panels use sglang:* native metrics; cross-engine rollup panels use hydra:llm:* recording rules (hydra-llm-normalization.yml). Layout mirrors mlx-inference.json. TODO(LLM-7): add llm-sglang Ansible role and wire sglang:* into hydra:llm:* normalization recording rules.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -45,6 +45,7 @@
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "SGLang time-to-first-token p95 from native sglang:time_to_first_token_seconds histogram. For fleet-wide comparison use the hydra:llm:ttft_seconds:p99 panel in the Normalized row below.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -94,12 +95,12 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "TTFT p95 by Node",
+      "title": "TTFT p95 by Node (sglang native)",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{node_id=~\"$node\"}[5m])) by (le, node_id))",
+          "expr": "histogram_quantile(0.95, sum(rate(sglang:time_to_first_token_seconds_bucket{node_id=~\"$node\"}[5m])) by (le, node_id))",
           "legendFormat": "{{node_id}}",
           "refId": "A"
         }
@@ -116,6 +117,7 @@
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "SGLang generation throughput from sglang:gen_throughput_toks_per_s gauge.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -161,12 +163,12 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Tokens/sec by Node",
+      "title": "Tokens / s by Node (sglang native)",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(rate(vllm:generation_tokens_total{node_id=~\"$node\"}[1m])) by (node_id)",
+          "expr": "sglang:gen_throughput_toks_per_s{node_id=~\"$node\"}",
           "legendFormat": "{{node_id}}",
           "refId": "A"
         }
@@ -177,12 +179,13 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
       "id": 20,
-      "title": "Queue & Failures",
+      "title": "Queue & Cache",
       "type": "row"
     },
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "Running and waiting requests from native SGLang metrics. sglang:num_running_reqs = actively decoded requests; sglang:num_waiting_reqs = queued pending a free slot.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -219,7 +222,14 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "waiting" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }
+            ]
+          }
+        ]
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
       "id": 21,
@@ -232,60 +242,79 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Request Queue Depth by Node",
+      "title": "Running vs Waiting Requests",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(vllm:num_requests_waiting{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "{{node_id}}",
+          "expr": "sglang:num_running_reqs{node_id=~\"$node\"}",
+          "legendFormat": "running — {{node_id}}",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "sglang:num_waiting_reqs{node_id=~\"$node\"}",
+          "legendFormat": "waiting — {{node_id}}",
+          "refId": "B"
         }
       ]
     },
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "SGLang prefix cache hit rate from sglang:cache_hit_rate. High values indicate efficient KV prefix reuse; drops may indicate context-length changes or cache eviction pressure.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [
-            { "options": { "0": { "text": "0" } }, "type": "value" }
-          ],
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Ratio",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 5 }
-            ]
+            "steps": [{ "color": "green", "value": null }]
           },
-          "unit": "short"
+          "unit": "percentunit"
         },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
       "id": 22,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
         },
-        "showPercentChange": false,
-        "textMode": "auto"
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Metal Failures (1h)",
-      "type": "stat",
+      "title": "Prefix Cache Hit Rate",
+      "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "increase(mlx_metal_failures_total{node_id=~\"$node\"}[1h])",
-          "instant": true,
+          "expr": "sglang:cache_hit_rate{node_id=~\"$node\"}",
           "legendFormat": "{{node_id}}",
           "refId": "A"
         }
@@ -296,12 +325,13 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
       "id": 30,
-      "title": "Memory",
+      "title": "Normalized — hydra:llm:*",
       "type": "row"
     },
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "Fleet-unified TTFT p99 from hydra:llm:ttft_seconds:p99 recording rule. Aggregates vLLM, SGLang, and MLX backends using the same metric for cross-engine SLO comparison.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -309,7 +339,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Seconds",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
@@ -327,21 +357,20 @@
             "thresholdsStyle": { "mode": "line+area" }
           },
           "mappings": [],
-          "max": 1,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 0.75 },
-              { "color": "red", "value": 0.90 }
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 3 }
             ]
           },
-          "unit": "percentunit"
+          "unit": "s"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
       "id": 31,
       "options": {
         "legend": {
@@ -352,29 +381,81 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Unified-Memory Pressure by Node",
+      "title": "TTFT p99 — hydra:llm:* (all engines)",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "apple_gpu_memory_used_bytes{node_id=~\"$node\"} / apple_gpu_memory_total_bytes{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
+          "expr": "hydra:llm:ttft_seconds:p99{node_id=~\"$node\"}",
+          "legendFormat": "{{node_id}} ({{provider}})",
           "refId": "A"
         }
       ]
     },
 
     {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
-      "id": 40,
-      "title": "KV & Scheduler",
-      "type": "row"
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "Fleet-unified tokens per second from hydra:llm:tokens_per_second recording rule. Covers vLLM, SGLang, MLX backends for direct performance comparison.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Tokens/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "Tokens / s — hydra:llm:* (all engines)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "hydra:llm:tokens_per_second{node_id=~\"$node\"}",
+          "legendFormat": "{{node_id}} ({{provider}})",
+          "refId": "A"
+        }
+      ]
     },
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "KV cache fill ratio from hydra:llm:kv_cache_usage_ratio recording rule (source: vllm:gpu_cache_usage_perc). Thresholds: 0.85 = warning (paged-attention pressure), 0.95 = critical (imminent preemptions).",
+      "description": "Fleet-unified KV cache usage ratio from hydra:llm:kv_cache_usage_ratio. Normalized across engine types for consistent alerting.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -414,8 +495,8 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
-      "id": 41,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "id": 33,
       "options": {
         "legend": {
           "calcs": ["mean", "max", "lastNotNull"],
@@ -425,13 +506,13 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "KV Cache Usage %",
+      "title": "KV Cache Usage — hydra:llm:* (all engines)",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
           "expr": "hydra:llm:kv_cache_usage_ratio{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
+          "legendFormat": "{{node_id}} ({{provider}})",
           "refId": "A"
         }
       ]
@@ -439,7 +520,7 @@
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Prefix/radix cache hit ratio from hydra:llm:prefix_cache_hit_ratio. Low values on 16 GB M4 nodes indicate cold cache or working-set churn.",
+      "description": "Fleet-unified prefix cache hit ratio from hydra:llm:prefix_cache_hit_ratio. Normalized across engine types.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -475,8 +556,8 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
-      "id": 42,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "id": 34,
       "options": {
         "legend": {
           "calcs": ["mean", "max", "lastNotNull"],
@@ -486,151 +567,14 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Prefix Cache Hit Rate",
+      "title": "Prefix Cache Hit Rate — hydra:llm:* (all engines)",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
           "expr": "hydra:llm:prefix_cache_hit_ratio{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
+          "legendFormat": "{{node_id}} ({{provider}})",
           "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Paged-attention preemptions per second from hydra:llm:preemption:rate5m recording rule (source: rate(vllm:num_preemptions_total[5m])). Sustained values > 0 indicate KV thrashing.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Preemptions/s",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 20,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "line+area" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 0.1 },
-              { "color": "red", "value": 1 }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
-      "id": 43,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Preemptions / s",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "hydra:llm:preemption:rate5m{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Running vs waiting requests from hydra:llm:requests_running and hydra:llm:requests_waiting. A growing waiting queue with a flat running queue signals scheduler saturation.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Requests",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "stepAfter",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
-          "unit": "short"
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "waiting" },
-            "properties": [
-              { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }
-            ]
-          }
-        ]
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
-      "id": 44,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Running vs Waiting Requests",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(hydra:llm:requests_running{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "running — {{node_id}}",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(hydra:llm:requests_waiting{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "waiting — {{node_id}}",
-          "refId": "B"
         }
       ]
     }
@@ -638,32 +582,13 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["mlx", "llm", "inference", "hydra"],
+  "tags": ["sglang", "llm", "inference", "hydra"],
   "templating": {
     "list": [
       {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-        "definition": "label_values(apple_gpu_utilization_percent, pool)",
-        "hide": 0,
-        "includeAll": true,
-        "label": "Pool",
-        "multi": true,
-        "name": "pool",
-        "options": [],
-        "query": {
-          "query": "label_values(apple_gpu_utilization_percent, pool)",
-          "refId": "StandardVariableQuery"
-        },
-        "refresh": 2,
-        "regex": "",
-        "sort": 1,
-        "type": "query"
-      },
-      {
-        "current": {},
-        "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-        "definition": "label_values(apple_gpu_utilization_percent{pool=~\"$pool\"}, node_id)",
+        "definition": "label_values(sglang:num_running_reqs, node_id)",
         "hide": 0,
         "includeAll": true,
         "label": "Node",
@@ -671,7 +596,7 @@
         "name": "node",
         "options": [],
         "query": {
-          "query": "label_values(apple_gpu_utilization_percent{pool=~\"$pool\"}, node_id)",
+          "query": "label_values(sglang:num_running_reqs, node_id)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -684,8 +609,8 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "MLX Inference — vllm-mlx",
-  "uid": "mlx-inference",
+  "title": "SGLang Inference",
+  "uid": "sglang-inference",
   "version": 1,
   "weekStart": ""
 }

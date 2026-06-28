@@ -1,0 +1,266 @@
+# apple-silicon-monitoring/alerts/sglang-inference.yaml
+#
+# LLM-7: SGLang inference alerts.
+# Mirrors the vLLM alert structure in llm-inference.yaml, adapted for SGLang's
+# native metric namespace (sglang:*) and the hydra:llm:* normalization layer.
+#
+# ── SGLang metric mapping ─────────────────────────────────────────────────────
+# Availability:  up{job=~"llm-sglang.*"}   → hydra:llm:up{provider="sglang"}
+# TTFT p95:      sglang:time_to_first_token_seconds_bucket → hydra:llm:ttft_seconds:p95
+# Throughput:    sglang:num_generated_tokens_total → hydra:llm:tokens_generated:rate1m
+# Running:       sglang:num_running_reqs           → hydra:llm:requests_running
+# Waiting:       sglang:num_waiting_reqs            → hydra:llm:requests_waiting
+# KV cache:      sglang:token_usage (0–1 fraction) → hydra:llm:kv_cache_usage_ratio
+# Prefix cache:  sglang:cache_hit_rate (gauge 0–1) → hydra:llm:prefix_cache_hit_ratio
+# Throughput gp: sglang:gen_throughput             (tokens/s, direct gauge)
+#
+# ⚠ SGLang metrics requiring live-node confirmation:
+#   sglang:e2e_request_latency_seconds_bucket — some builds emit only _sum/_count.
+#     Confirm: curl -s http://<node>:30000/metrics | grep e2e_request_latency
+#   sglang:num_aborted_requests_total — candidate for error rate; not yet standard.
+#     Confirm: curl -s http://<node>:30000/metrics | grep aborted
+#   sglang:num_waiting_reqs — available in SGLang ≥0.3; confirm field name.
+# ─────────────────────────────────────────────────────────────────────────────
+
+groups:
+  - name: sglang-inference
+    interval: 15s
+    rules:
+
+      # -----------------------------------------------------------------------
+      # Meta-alert: SGLang metrics absent
+      # -----------------------------------------------------------------------
+      - alert: SGLangMetricsMissing
+        expr: absent(hydra:llm:up{provider="sglang"})
+        for: 10m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: availability
+          provider: sglang
+          pagerduty: trigger
+        annotations:
+          summary: "hydra:llm:up{provider=sglang} absent — SGLang scrape pipeline may be broken"
+          description: |
+            No hydra:llm:up series with provider="sglang" has been seen for
+            10 minutes.  Either:
+            - SGLang is not registered in the LLM discovery catalog (LLM-7/ANS-6)
+            - The sglang:* metrics are not reaching the normalization layer
+            - The OTEL agent on the SGLang node is not scraping :30000/metrics
+
+            Actions:
+            1. Check that the SGLang node is in discovered.yml (llm-discovery)
+            2. Verify: curl -s http://<node>:30000/metrics | grep sglang:
+            3. Confirm recording rule hydra-llm-normalization.yml covers sglang:num_running_reqs
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-metrics-missing"
+
+      # -----------------------------------------------------------------------
+      # SGLang Engine Availability
+      # -----------------------------------------------------------------------
+      - alert: SGLangEngineDown
+        expr: hydra:llm:up{provider="sglang"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: availability
+          provider: sglang
+        annotations:
+          summary: "SGLang engine down on {{ $labels.node_id }} (model={{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            hydra:llm:up == 0 for SGLang on node={{ $labels.node_id }},
+            model={{ $labels.model }}.
+
+            The SGLang inference server is not responding to scrapes.
+            Port: :30000/metrics (default SGLang metrics endpoint).
+
+            Actions:
+            1. Check process: ps aux | grep sglang
+            2. Check port: curl -s http://{{ $labels.node_id }}:30000/health
+            3. Check logs: journalctl -u sglang or launchctl log
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-engine-down"
+
+      # -----------------------------------------------------------------------
+      # SGLang Inference Stalled
+      # -----------------------------------------------------------------------
+      - alert: SGLangInferenceStalled
+        expr: |
+          hydra:llm:tokens_generated:rate1m{provider="sglang"} == 0
+          AND hydra:llm:up{provider="sglang"} == 1
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: inference
+          provider: sglang
+          pagerduty: trigger
+        annotations:
+          summary: "SGLang inference stalled on {{ $labels.node_id }} (model={{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            SGLang is up but generating zero tokens for 2 minutes on
+            node={{ $labels.node_id }}.  The engine may be deadlocked or
+            the request pipeline broken.
+
+            Actions:
+            1. Check active requests: curl -s http://{{ $labels.node_id }}:30000/metrics | grep num_running_reqs
+            2. Check logs for CUDA/Metal errors
+            3. Consider restarting: launchctl kickstart -k or systemctl restart sglang
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-stalled"
+
+      # -----------------------------------------------------------------------
+      # SGLang TTFT (Time-To-First-Token) Alerts
+      # -----------------------------------------------------------------------
+      - alert: SGLangTTFTHigh
+        expr: hydra:llm:ttft_seconds:p95{provider="sglang"} > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: latency
+          provider: sglang
+        annotations:
+          summary: "SGLang P95 TTFT high on {{ $labels.node_id }} (model={{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            SGLang P95 time-to-first-token is {{ $value | printf "%.1f" }}s
+            (threshold: 5s) on node={{ $labels.node_id }}.
+
+            Possible causes:
+            - Long prefill phase from large context lengths
+            - KV cache thrashing (check sglang:token_usage)
+            - Prefix cache cold (check sglang:cache_hit_rate)
+            - GPU thermal throttling
+
+            ⚠ sglang:time_to_first_token_seconds_bucket may not be available
+            on all SGLang builds; verify before trusting this alert.
+          dashboard: "https://grafana.internal/d/llm-latency?var-provider=sglang"
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-ttft-high"
+
+      - alert: SGLangTTFTCritical
+        expr: hydra:llm:ttft_seconds:p95{provider="sglang"} > 30
+        for: 3m
+        labels:
+          severity: critical
+          team: ml-platform
+          category: latency
+          provider: sglang
+          pagerduty: trigger
+        annotations:
+          summary: "SGLang P95 TTFT critical (>30s) on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            SGLang P95 TTFT is {{ $value | printf "%.1f" }}s (critical threshold: 30s).
+            Users will experience timeout failures.
+
+            Immediate investigation required on node={{ $labels.node_id }}.
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-ttft-high"
+
+      # -----------------------------------------------------------------------
+      # SGLang KV Cache Saturation
+      # -----------------------------------------------------------------------
+      - alert: SGLangKVCacheSaturation
+        expr: hydra:llm:kv_cache_usage_ratio{provider="sglang"} > 0.9
+        for: 2m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: memory
+          provider: sglang
+        annotations:
+          summary: "SGLang KV cache >90% on {{ $labels.node_id }} (model={{ $labels.model }})"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            SGLang token_usage (KV cache fill fraction) is {{ $value | humanizePercentage }}
+            on node={{ $labels.node_id }}.
+
+            SGLang source metric: sglang:token_usage (0–1 fraction).
+            When the cache is >90% full, new requests with large contexts will
+            be rejected or delayed.  On 16 GB M4 nodes the margin is narrow.
+
+            Actions:
+            1. Check concurrent request depth: sglang:num_running_reqs
+            2. Reduce --max-total-tokens or context window size
+            3. Drain long-running sessions to another node
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-kv-cache"
+
+      # -----------------------------------------------------------------------
+      # SGLang Prefix Cache Hit Rate
+      # -----------------------------------------------------------------------
+      - alert: SGLangPrefixCacheColdspot
+        expr: |
+          hydra:llm:prefix_cache_hit_ratio{provider="sglang"} < 0.2
+          AND hydra:llm:requests_running{provider="sglang"} > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: performance
+          provider: sglang
+        annotations:
+          summary: "SGLang prefix cache hit rate low on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            SGLang cache_hit_rate is {{ $value | humanizePercentage }}
+            (threshold: 20%) on node={{ $labels.node_id }} under load.
+
+            SGLang source metric: sglang:cache_hit_rate (direct gauge 0–1).
+
+            Requests are not reusing cached KV prefix blocks — every request
+            re-processes its full context, increasing TTFT and consuming more
+            KV cache.
+
+            Check whether --enable-flashinfer-sampling and prefix sharing
+            are configured correctly for the workload.
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-prefix-cache"
+
+      # -----------------------------------------------------------------------
+      # SGLang Request Queue
+      # -----------------------------------------------------------------------
+      - alert: SGLangQueueBacklog
+        expr: hydra:llm:requests_waiting{provider="sglang"} > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: capacity
+          provider: sglang
+        annotations:
+          summary: "SGLang request queue building up on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            {{ $value | printf "%.0f" }} requests are queued (sglang:num_waiting_reqs)
+            on node={{ $labels.node_id }}.
+
+            ⚠ Metric availability: sglang:num_waiting_reqs may vary by SGLang build.
+            Verify: curl -s http://{{ $labels.node_id }}:30000/metrics | grep waiting
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-queue-backlog"
+
+      # -----------------------------------------------------------------------
+      # SGLang Generation Throughput
+      # -----------------------------------------------------------------------
+      - alert: SGLangThroughputDegraded
+        expr: |
+          sglang:gen_throughput < 10
+          AND hydra:llm:up{provider="sglang"} == 1
+          AND hydra:llm:requests_running{provider="sglang"} > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          category: throughput
+          provider: sglang
+        annotations:
+          summary: "SGLang generation throughput below 10 tok/s on {{ $labels.node_id }}"
+          node_id: "{{ $labels.node_id }}"
+          description: |
+            SGLang gen_throughput is {{ $value | printf "%.1f" }} tokens/s
+            with active requests on node={{ $labels.node_id }}.
+            Expected minimum: 10+ tok/s.
+
+            Possible causes:
+            - Thermal throttling (check apple_thermal_pressure)
+            - Memory pressure (check sglang:token_usage)
+            - Long context lengths with low batch efficiency
+          runbook_url: "https://wiki.company.internal/runbooks/sglang-throughput"

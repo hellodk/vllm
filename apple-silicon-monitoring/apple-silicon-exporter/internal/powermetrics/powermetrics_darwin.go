@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -44,29 +45,78 @@ type powermetricsJSON struct {
 	} `json:"thermal_pressure"`
 }
 
-// Collector collects metrics via powermetrics.
+// Collector collects metrics via powermetrics and caches results to avoid
+// spawning a root subprocess on every Prometheus scrape.
 type Collector struct {
 	logger   *zap.Logger
 	path     string
 	samples  int
 	interval time.Duration
+
+	// Cache protects against repeated subprocess spawns when multiple
+	// scrapers are active or when scrape intervals are short.
+	mu        sync.Mutex
+	cached    *Metrics
+	cacheTime time.Time
+	cacheTTL  time.Duration
 }
 
 // NewCollector creates a new powermetrics collector.
 func NewCollector(logger *zap.Logger, path string, samples int, interval time.Duration) *Collector {
+	// TTL = time one powermetrics call takes + a small buffer, minimum 5 s.
+	ttl := interval*time.Duration(samples) + 2*time.Second
+	if ttl < 5*time.Second {
+		ttl = 5 * time.Second
+	}
 	return &Collector{
 		logger:   logger,
 		path:     path,
 		samples:  samples,
 		interval: interval,
+		cacheTTL: ttl,
 	}
 }
 
-// Collect runs powermetrics and parses the output.
+// Collect returns cached power metrics when fresh; otherwise calls
+// powermetrics, updates the cache, and returns the result. On subprocess
+// failure a stale cache entry is returned (if available) to avoid metric gaps.
 func (c *Collector) Collect() (*Metrics, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.cached != nil && time.Since(c.cacheTime) < c.cacheTTL {
+		m := *c.cached
+		return &m, nil
+	}
+
+	metrics, err := c.runPowermetrics()
+	if err != nil {
+		if c.cached != nil {
+			c.logger.Warn("powermetrics failed; serving stale cache",
+				zap.Error(err),
+				zap.Duration("cache_age", time.Since(c.cacheTime)))
+			m := *c.cached
+			return &m, nil
+		}
+		// No cache at all — try alternative collection methods.
+		return c.collectFallback()
+	}
+
+	c.cached = metrics
+	c.cacheTime = time.Now()
+	return metrics, nil
+}
+
+// runPowermetrics executes powermetrics once and parses the JSON output.
+func (c *Collector) runPowermetrics() (*Metrics, error) {
 	metrics := &Metrics{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Cap subprocess runtime to a generous multiple of the sample interval.
+	timeout := c.interval*time.Duration(c.samples)*2 + 5*time.Second
+	if timeout < 10*time.Second {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	intervalMs := int(c.interval.Milliseconds())
@@ -86,16 +136,19 @@ func (c *Collector) Collect() (*Metrics, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		c.logger.Debug("powermetrics failed",
+		c.logger.Debug("powermetrics subprocess failed",
 			zap.Error(err),
 			zap.String("stderr", stderr.String()),
 		)
-		return c.collectFallback()
+		return nil, fmt.Errorf("powermetrics: %w", err)
 	}
 
 	output := stdout.Bytes()
+	if len(output) == 0 {
+		return nil, fmt.Errorf("powermetrics: empty output")
+	}
 
-	// powermetrics outputs multiple JSON objects; find the last complete one.
+	// powermetrics emits one JSON object per sample; use the last complete one.
 	lines := bytes.Split(output, []byte("\n"))
 	var lastValid []byte
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -110,8 +163,7 @@ func (c *Collector) Collect() (*Metrics, error) {
 
 	var pm powermetricsJSON
 	if err := json.Unmarshal(lastValid, &pm); err != nil {
-		c.logger.Debug("Failed to parse powermetrics JSON", zap.Error(err))
-		return c.collectFallback()
+		return nil, fmt.Errorf("powermetrics: JSON parse: %w", err)
 	}
 
 	if pm.Elapsed > 0 {
@@ -151,19 +203,19 @@ func (c *Collector) Collect() (*Metrics, error) {
 	return metrics, nil
 }
 
-// collectFallback tries alternative methods when powermetrics isn't available.
+// collectFallback tries alternative methods when powermetrics is unavailable
+// (e.g. not running as root, binary absent). Returns empty metrics (no Has*
+// flags set) rather than an error so the exporter stays up.
 func (c *Collector) collectFallback() (*Metrics, error) {
-	metrics := &Metrics{}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if output, err := exec.CommandContext(ctx, "pmset", "-g", "batt").Output(); err == nil {
-		_ = output // limited battery/power info; not currently parsed
+		_ = output
 	}
 	if output, err := exec.CommandContext(ctx, "ioreg", "-rn", "AppleSmartBattery").Output(); err == nil {
 		_ = output
 	}
 
-	return metrics, nil
+	return &Metrics{}, nil
 }

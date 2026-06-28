@@ -27,7 +27,7 @@
       }
     ]
   },
-  "description": "MLX inference telemetry — TTFT, throughput, queue depth, Metal failures, unified-memory pressure, and KV/scheduler health for vllm-mlx nodes. All vLLM metrics use the canonical vllm: prefix (vLLM-MLX 0.4.0rc1+ mirrors upstream vLLM metric names). Cross-engine rollup panels use hydra:llm:* recording rules (hydra-llm-normalization.yml).",
+  "description": "RDMA/RoCE fabric telemetry — PFC pause frames per priority, ECN/CNP counters, per-port bandwidth, queue-3 drops, and hardware presence. Metrics sourced from node-exporter --collector.infiniband, sysfs sidecar, and snmp_exporter switch scrapes. TODO(SRE-3): wire snmp_exporter role for switch per-priority pause/ECN when ANS role is available.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -39,12 +39,75 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 1,
-      "title": "Latency",
+      "title": "Hardware Presence",
       "type": "row"
     },
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "roce_hardware_present=1 means a RoCE-capable NIC (e.g. Thunderbolt ConnectX) is detected on this node. 0 = no RDMA hardware; panels below will show no data for that node.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "options": {
+                "0": { "color": "red", "index": 0, "text": "Absent" },
+                "1": { "color": "green", "index": 1, "text": "Present" }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name"
+      },
+      "title": "RoCE Hardware Present",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "roce_hardware_present{node_id=~\"$node\"}",
+          "instant": true,
+          "legendFormat": "{{node_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 10,
+      "title": "PFC Pause Frames",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "Priority Flow Control RX pause frames per port per priority class. A sustained pause rate on priority 3 (RoCE lossless class) indicates switch buffer exhaustion or misconfigured ECN thresholds.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -52,11 +115,11 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "Seconds",
+            "axisLabel": "Frames/s",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 15,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
@@ -75,82 +138,15 @@
             "mode": "absolute",
             "steps": [
               { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 3 }
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
             ]
           },
-          "unit": "s"
+          "unit": "pps"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 1 },
-      "id": 2,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "TTFT p95 by Node",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{node_id=~\"$node\"}[5m])) by (le, node_id))",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
-      "id": 10,
-      "title": "Throughput",
-      "type": "row"
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Tokens/s",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 20,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "id": 11,
       "options": {
         "legend": {
@@ -161,28 +157,21 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Tokens/sec by Node",
+      "title": "PFC RX Pause Frames / s (by priority)",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(rate(vllm:generation_tokens_total{node_id=~\"$node\"}[1m])) by (node_id)",
-          "legendFormat": "{{node_id}}",
+          "expr": "rate(rdma_port_pfc_rx_pause_total{node_id=~\"$node\", port=~\"$port\", priority=~\"$priority\"}[1m])",
+          "legendFormat": "{{node_id}} p{{priority}} rx",
           "refId": "A"
         }
       ]
     },
 
     {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
-      "id": 20,
-      "title": "Queue & Failures",
-      "type": "row"
-    },
-
-    {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "Priority Flow Control TX pause frames generated by this host per port per priority. Non-zero TX pauses mean this host is back-pressuring its upstream switch.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -190,7 +179,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "Requests",
+            "axisLabel": "Frames/s",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
@@ -198,7 +187,79 @@
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
-            "lineInterpolation": "stepAfter",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          },
+          "unit": "pps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "PFC TX Pause Frames / s (by priority)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "rate(rdma_port_pfc_tx_pause_total{node_id=~\"$node\", port=~\"$port\", priority=~\"$priority\"}[1m])",
+          "legendFormat": "{{node_id}} p{{priority}} tx",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 20,
+      "title": "ECN / CNP",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "Congestion Notification Packets sent by this node's RoCE NIC. High CNP sent rate with low AllReduce throughput is the signature of a PFC pause storm propagating into the fabric.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "CNPs/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
@@ -214,14 +275,14 @@
             "steps": [
               { "color": "transparent", "value": null },
               { "color": "yellow", "value": 10 },
-              { "color": "red", "value": 50 }
+              { "color": "red", "value": 100 }
             ]
           },
-          "unit": "short"
+          "unit": "pps"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
       "id": 21,
       "options": {
         "legend": {
@@ -232,13 +293,13 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Request Queue Depth by Node",
+      "title": "CNP Sent / s",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(vllm:num_requests_waiting{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "{{node_id}}",
+          "expr": "rate(rdma_cnp_sent_total{node_id=~\"$node\", port=~\"$port\"}[1m])",
+          "legendFormat": "{{node_id}} {{port}} sent",
           "refId": "A"
         }
       ]
@@ -246,62 +307,7 @@
 
     {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [
-            { "options": { "0": { "text": "0" } }, "type": "value" }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 5 }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
-      "id": 22,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto"
-      },
-      "title": "Metal Failures (1h)",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "increase(mlx_metal_failures_total{node_id=~\"$node\"}[1h])",
-          "instant": true,
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
-      "id": 30,
-      "title": "Memory",
-      "type": "row"
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "CNP packets handled (received and acted upon) by the RoCE NIC. Mismatch between sent and handled indicates CNP drops in the fabric.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -309,7 +315,75 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "CNPs/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "pps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "CNP Handled / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "rate(rdma_cnp_handled_total{node_id=~\"$node\", port=~\"$port\"}[1m])",
+          "legendFormat": "{{node_id}} {{port}} handled",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 30,
+      "title": "Per-Port RoCE Bandwidth",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "Per-port RoCE RX and TX byte throughput. For TP AllReduce operations, expect near-line-rate utilisation (~25 Gbps per Thunderbolt 5 port) during training steps.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "bytes/s",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
@@ -324,24 +398,19 @@
             "showPoints": "never",
             "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "line+area" }
+            "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "max": 1,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
-            "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 0.75 },
-              { "color": "red", "value": 0.90 }
-            ]
+            "steps": [{ "color": "green", "value": null }]
           },
-          "unit": "percentunit"
+          "unit": "Bps"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "id": 31,
       "options": {
         "legend": {
@@ -352,29 +421,21 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "Unified-Memory Pressure by Node",
+      "title": "RoCE RX Bandwidth",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "apple_gpu_memory_used_bytes{node_id=~\"$node\"} / apple_gpu_memory_total_bytes{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
+          "expr": "rate(rdma_port_rx_bytes_total{node_id=~\"$node\", port=~\"$port\"}[1m])",
+          "legendFormat": "{{node_id}} {{port}} rx",
           "refId": "A"
         }
       ]
     },
 
     {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
-      "id": 40,
-      "title": "KV & Scheduler",
-      "type": "row"
-    },
-
-    {
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "KV cache fill ratio from hydra:llm:kv_cache_usage_ratio recording rule (source: vllm:gpu_cache_usage_perc). Thresholds: 0.85 = warning (paged-attention pressure), 0.95 = critical (imminent preemptions).",
+      "description": "Per-port RoCE TX byte throughput.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -382,11 +443,79 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "Ratio",
+            "axisLabel": "bytes/s",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "RoCE TX Bandwidth",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+          "expr": "rate(rdma_port_tx_bytes_total{node_id=~\"$node\", port=~\"$port\"}[1m])",
+          "legendFormat": "{{node_id}} {{port}} tx",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 40,
+      "title": "Queue Drops",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "description": "Queue-3 (RoCE lossless priority) drop rate. Any drops on queue 3 break the lossless guarantee and will cause RNR NAKs, retransmissions, and AllReduce latency spikes. Source: rdma_port_q3_drops_total from sysfs or SNMP switch counter.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "drops/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 25,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
@@ -400,21 +529,19 @@
             "thresholdsStyle": { "mode": "line+area" }
           },
           "mappings": [],
-          "max": 1,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 0.85 },
-              { "color": "red", "value": 0.95 }
+              { "color": "red", "value": 1 }
             ]
           },
-          "unit": "percentunit"
+          "unit": "pps"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
       "id": 41,
       "options": {
         "legend": {
@@ -425,212 +552,14 @@
         },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "KV Cache Usage %",
+      "title": "Queue-3 Drop Rate (RoCE lossless priority)",
       "type": "timeseries",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "hydra:llm:kv_cache_usage_ratio{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
+          "expr": "rate(rdma_port_q3_drops_total{node_id=~\"$node\", port=~\"$port\"}[1m])",
+          "legendFormat": "{{node_id}} {{port}}",
           "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Prefix/radix cache hit ratio from hydra:llm:prefix_cache_hit_ratio. Low values on 16 GB M4 nodes indicate cold cache or working-set churn.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Ratio",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 15,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "max": 1,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
-      "id": 42,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Prefix Cache Hit Rate",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "hydra:llm:prefix_cache_hit_ratio{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Paged-attention preemptions per second from hydra:llm:preemption:rate5m recording rule (source: rate(vllm:num_preemptions_total[5m])). Sustained values > 0 indicate KV thrashing.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Preemptions/s",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 20,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "line+area" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "yellow", "value": 0.1 },
-              { "color": "red", "value": 1 }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
-      "id": 43,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Preemptions / s",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "hydra:llm:preemption:rate5m{node_id=~\"$node\"}",
-          "legendFormat": "{{node_id}}",
-          "refId": "A"
-        }
-      ]
-    },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-      "description": "Running vs waiting requests from hydra:llm:requests_running and hydra:llm:requests_waiting. A growing waiting queue with a flat running queue signals scheduler saturation.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Requests",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "stepAfter",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
-          "unit": "short"
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "waiting" },
-            "properties": [
-              { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }
-            ]
-          }
-        ]
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
-      "id": 44,
-      "options": {
-        "legend": {
-          "calcs": ["mean", "max", "lastNotNull"],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "title": "Running vs Waiting Requests",
-      "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(hydra:llm:requests_running{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "running — {{node_id}}",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-          "expr": "sum(hydra:llm:requests_waiting{node_id=~\"$node\"}) by (node_id)",
-          "legendFormat": "waiting — {{node_id}}",
-          "refId": "B"
         }
       ]
     }
@@ -638,21 +567,21 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["mlx", "llm", "inference", "hydra"],
+  "tags": ["rdma", "roce", "network", "fabric", "hydra"],
   "templating": {
     "list": [
       {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-        "definition": "label_values(apple_gpu_utilization_percent, pool)",
+        "definition": "label_values(roce_hardware_present, node_id)",
         "hide": 0,
         "includeAll": true,
-        "label": "Pool",
+        "label": "Node",
         "multi": true,
-        "name": "pool",
+        "name": "node",
         "options": [],
         "query": {
-          "query": "label_values(apple_gpu_utilization_percent, pool)",
+          "query": "label_values(roce_hardware_present, node_id)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -663,15 +592,34 @@
       {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
-        "definition": "label_values(apple_gpu_utilization_percent{pool=~\"$pool\"}, node_id)",
+        "definition": "label_values(rdma_port_rx_bytes_total{node_id=~\"$node\"}, port)",
         "hide": 0,
         "includeAll": true,
-        "label": "Node",
+        "label": "Port",
         "multi": true,
-        "name": "node",
+        "name": "port",
         "options": [],
         "query": {
-          "query": "label_values(apple_gpu_utilization_percent{pool=~\"$pool\"}, node_id)",
+          "query": "label_values(rdma_port_rx_bytes_total{node_id=~\"$node\"}, port)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+        "definition": "label_values(rdma_port_pfc_rx_pause_total{node_id=~\"$node\"}, priority)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Priority",
+        "multi": true,
+        "name": "priority",
+        "options": [],
+        "query": {
+          "query": "label_values(rdma_port_pfc_rx_pause_total{node_id=~\"$node\"}, priority)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -684,8 +632,8 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "MLX Inference — vllm-mlx",
-  "uid": "mlx-inference",
+  "title": "RDMA Fabric — RoCE / InfiniBand",
+  "uid": "rdma-fabric",
   "version": 1,
   "weekStart": ""
 }
