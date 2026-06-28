@@ -22,6 +22,13 @@ skip_list:
   - command-instead-of-module
   # role vars/main.yml files set vars without task — false-positive on var files
   - var-naming[no-role-prefix]
+  # Fleet roles use hyphenated names by convention (otel-mac-agent, llm-mlx, …)
+  - role-name
+  # Handler/task names follow the "restart <svc>" lower-case idiom fleet-wide
+  - name[casing]
+  # launchctl bootstrap returns non-zero when a domain already exists; the
+  # bootout/bootstrap tasks intentionally tolerate it (see service.yml notes)
+  - ignore-errors
 
 warn_list:
   - experimental
