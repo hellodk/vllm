@@ -1,0 +1,312 @@
+# /etc/hydra/otel-agent-config.yaml
+# managed-by: monitoring-common
+# Unified OTEL agent config (ANS-3) — rendered by BOTH otel-mac-agent (macOS) and
+# monitoring-cfg (Linux). Do not edit on the host; re-render via Ansible.
+#
+# Toggles (see roles/monitoring-common/defaults/main.yml):
+#   enable_hostmetrics  {{ enable_hostmetrics }}
+#   enable_apple_hw     {{ enable_apple_hw }}
+#   enable_llm_scrape   {{ enable_llm_scrape }}
+#   enable_otlp_ingest  {{ enable_otlp_ingest }}
+#   enable_rdma_scrape  {{ enable_rdma_scrape }}
+#   enable_fleet_otlp   {{ enable_fleet_otlp }}
+#   os={{ mc_os }} gpu_provider={{ mc_gpu_provider }} tls_insecure={{ otel_tls_insecure }}
+{% set is_darwin = (ansible_os_family | default('')) == 'Darwin' or (mc_os | default('')) == 'macos' %}
+{% set providers = (discovered.providers | default([])) %}
+{# Compute tensor-parallel rank/group for this node (LLM-8) #}
+{% set tp = namespace(group='', rank='') %}
+{% for _g, _members in (tensor_parallel_groups | default({})).items() %}
+{%   if mc_node_id in _members %}
+{%     set tp.group = _g %}
+{%     set tp.rank = _members.index(mc_node_id) %}
+{%   endif %}
+{% endfor %}
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:{{ mc_health_port }}"
+
+receivers:
+{% if enable_hostmetrics | bool %}
+  # ── Host/OS metrics — CPU, memory, disk, filesystem, network, load, paging ──
+  # OS-specific network scraper (SRE-5): Mac en0/Thunderbolt, Linux eth/en/ib.
+  hostmetrics:
+    collection_interval: {{ mc_collection_interval }}
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      load: {}
+      disk: {}
+      filesystem:
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+      paging:
+        metrics:
+          system.paging.utilization:
+            enabled: true
+      network:
+        include:
+{% if is_darwin %}
+          # macOS: en0 (built-in 10GbE), en1+ / bridge0 (Thunderbolt RoCE bridge)
+          interfaces: ["^en[0-9]+$", "^bridge[0-9]+$"]
+{% else %}
+          # Linux: eth*/en* plus InfiniBand/RoCE ib* uplinks (SRE-3)
+          interfaces: ["^(eth|en)[0-9].*$", "^ib[0-9].*$"]
+{% endif %}
+          match_type: regexp
+{% endif %}
+{% if (enable_apple_hw | bool) and mc_gpu_provider == 'apple' %}
+
+  # ── Apple Silicon hardware — GPU%, ANE%, thermal, power ─────────────────────
+  # Scraped from apple-silicon-exporter (owned by the apple-silicon-exporter role).
+  prometheus/apple_hw:
+    config:
+      scrape_configs:
+        - job_name: apple-silicon-hardware
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["127.0.0.1:{{ mc_apple_exporter_port }}"]
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: '^apple_(gpu|ane|thermal|system|cpu)_.*'
+              action: keep
+{% elif mc_gpu_provider in ['nvidia', 'amd', 'none'] %}
+
+  # ── Linux hardware exporter — dcgm (nvidia) / amdgpu / node_exporter ─────────
+  prometheus/hw_exporter:
+    config:
+      scrape_configs:
+        - job_name: hw-exporter
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["127.0.0.1:{{ mc_hw_exporter_port }}"]
+{% endif %}
+{% if enable_rdma_scrape | bool %}
+
+  # ── RDMA/RoCE fabric — mlx-rdma-exporter (SRE-3) ────────────────────────────
+  prometheus/rdma:
+    config:
+      scrape_configs:
+        - job_name: mlx-rdma
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["127.0.0.1:{{ mc_rdma_exporter_port }}"]
+{% endif %}
+{% if (enable_llm_scrape | bool) and providers | length > 0 %}
+
+  # ── Discovered LLM engines (ANS-6: per-endpoint path + scheme + auth) ────────
+{% for p in providers %}
+  prometheus/llm_{{ p.name }}:
+    config:
+      scrape_configs:
+        - job_name: "llm-{{ p.name }}"
+          scrape_interval: 15s
+          metrics_path: "{{ p.metrics_path | default('/metrics') }}"
+          scheme: "{{ p.scheme | default('http') }}"
+          static_configs:
+            - targets: ["127.0.0.1:{{ p.port }}"]
+{% if p.api_key is defined and p.api_key %}
+          authorization:
+            type: Bearer
+            credentials: "{{ p.api_key }}"
+{% endif %}
+          metric_relabel_configs:
+            - target_label: provider
+              replacement: "{{ p.name }}"
+            - target_label: node_id
+              replacement: "{{ mc_node_id }}"
+{% endfor %}
+{% endif %}
+{% if enable_otlp_ingest | bool %}
+
+  # ── OTLP ingest — local apps/engines push metrics + traces (LLM-6) ──────────
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "127.0.0.1:{{ mc_grpc_port }}"
+        max_recv_msg_size_mib: 4
+      http:
+        endpoint: "127.0.0.1:{{ mc_http_port }}"
+{% endif %}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: {{ mc_memory_limit_mib }}
+    spike_limit_mib: {{ mc_memory_spike_mib }}
+
+  # ── Resource attributes stamped on every metric/span ────────────────────────
+  # node_id == salt.minion_id — the Fleet Platform join key in Grafana.
+  resource:
+    attributes:
+      - { key: node_id,        value: "{{ mc_node_id }}",     action: upsert }
+      - { key: salt.minion_id, value: "{{ mc_node_id }}",     action: upsert }
+      - { key: host.name,      value: "{{ mc_hostname }}",    action: upsert }
+      - { key: hostname,       value: "{{ mc_hostname }}",    action: upsert }
+      - { key: cluster,        value: "{{ mc_cluster }}",     action: upsert }
+      - { key: environment,    value: "{{ mc_environment }}", action: upsert }
+      - { key: os,             value: "{{ mc_os }}",          action: upsert }
+      - { key: gpu_provider,   value: "{{ mc_gpu_provider }}", action: upsert }
+      - { key: chip,           value: "{{ mc_chip }}",        action: upsert }
+      - { key: pool,           value: "{{ mc_pool }}",        action: upsert }
+{% if tp.group %}
+      # Tensor-parallel topology labels (LLM-8)
+      - { key: tp_group,       value: "{{ tp.group }}",       action: upsert }
+      - { key: rank,           value: "{{ tp.rank }}",        action: upsert }
+{% endif %}
+
+  transform/quantization:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["quantization"],
+              ExtractPatterns(attributes["model"],
+                "[-_](q[0-9]+[_k_msx0-9]*|f16|f32|f64|mxfp4|gguf)")[0])
+              where attributes["model"] != nil
+
+  filter/noise:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - ".*_debug_.*"
+          - "go_.*"
+          - "process_.*"
+
+  batch:
+    send_batch_size: 200
+    send_batch_max_size: 1000
+    timeout: 5s
+
+exporters:
+  # ── OTLP gateway (kube-prometheus-stack / hydra gateway) ────────────────────
+  otlp/gateway:
+    endpoint: "{{ mc_gateway_endpoint }}"
+    tls:
+{% if otel_tls_insecure | bool %}
+      insecure: true
+{% else %}
+      insecure: false
+      ca_file: "{{ otel_tls_ca_file }}"
+      cert_file: "{{ otel_tls_cert_file }}"
+      key_file: "{{ otel_tls_key_file }}"
+{% endif %}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      num_consumers: 4
+      queue_size: 1000
+{% if mc_victoria_url | length > 0 %}
+
+  # ── Victoria Metrics remote write ───────────────────────────────────────────
+  prometheusremotewrite/victoriametrics:
+    endpoint: "{{ mc_victoria_url }}/api/v1/write"
+    tls:
+{% if otel_tls_insecure | bool %}
+      insecure: true
+{% else %}
+      insecure: false
+      ca_file: "{{ otel_tls_ca_file }}"
+      cert_file: "{{ otel_tls_cert_file }}"
+      key_file: "{{ otel_tls_key_file }}"
+{% endif %}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 2000
+    resource_to_telemetry_conversion:
+      enabled: true
+{% endif %}
+{% if enable_fleet_otlp | bool %}
+
+  # ── Fleet Platform — node-context enrichment ────────────────────────────────
+  otlp/fleet_platform:
+    endpoint: "{{ mc_fleet_otlp }}"
+    tls:
+{% if otel_tls_insecure | bool %}
+      insecure: true
+{% else %}
+      insecure: false
+      ca_file: "{{ otel_tls_ca_file }}"
+      cert_file: "{{ otel_tls_cert_file }}"
+      key_file: "{{ otel_tls_key_file }}"
+{% endif %}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+{% endif %}
+
+  # ── Local Prometheus scrape endpoint (optional federation) ──────────────────
+  prometheus:
+    endpoint: "0.0.0.0:{{ mc_prometheus_port }}"
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_expiration: 5m
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers:
+{% if enable_hostmetrics | bool %}
+        - hostmetrics
+{% endif %}
+{% if (enable_apple_hw | bool) and mc_gpu_provider == 'apple' %}
+        - prometheus/apple_hw
+{% elif mc_gpu_provider in ['nvidia', 'amd', 'none'] %}
+        - prometheus/hw_exporter
+{% endif %}
+{% if enable_rdma_scrape | bool %}
+        - prometheus/rdma
+{% endif %}
+{% if (enable_llm_scrape | bool) and providers | length > 0 %}
+{% for p in providers %}
+        - prometheus/llm_{{ p.name }}
+{% endfor %}
+{% endif %}
+{% if enable_otlp_ingest | bool %}
+        - otlp
+{% endif %}
+      processors:
+        - memory_limiter
+        - resource
+        - transform/quantization
+        - filter/noise
+        - batch
+      exporters:
+        - otlp/gateway
+{% if mc_victoria_url | length > 0 %}
+        - prometheusremotewrite/victoriametrics
+{% endif %}
+{% if enable_fleet_otlp | bool %}
+        - otlp/fleet_platform
+{% endif %}
+        - prometheus
+{% if enable_otlp_ingest | bool %}
+
+    # Traces from local engines → gateway → Tempo/Opik (LLM-6)
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters:
+        - otlp/gateway
+{% if enable_fleet_otlp | bool %}
+        - otlp/fleet_platform
+{% endif %}
+{% endif %}

@@ -1,0 +1,74 @@
+# ansible/group_vars/all/monitoring.yml
+# Shared vars for the unified OTEL agent config template (ANS-3). Defined at GROUP
+# scope (not role defaults) so BOTH otel-mac-agent (macOS) and monitoring-cfg
+# (Linux) — which render roles/monitoring-common/templates/otel-agent-config.yaml.j2
+# without loading a monitoring-common role — resolve every toggle and mc_* value.
+---
+
+# ── Feature toggles ───────────────────────────────────────────────────────────
+# hostmetrics: OS/network/mem/fs/load/paging via the built-in receiver.
+#   On macOS this closes the SRE-5 "Mac agent has no hostmetrics" gap.
+#   On Linux it adds host-network parity (eth/en/ib interfaces).
+enable_hostmetrics: true
+
+# apple_hw: scrape the apple-silicon-exporter (GPU%, ANE%, thermal, power).
+#   Only meaningful on Apple Silicon nodes.
+enable_apple_hw: "{{ (mc_gpu_provider | default('none')) == 'apple' }}"
+
+# llm_scrape: render one prometheus/llm_<provider> receiver per discovered
+#   endpoint (closes the macOS LLM-scrape gap — ANS-3 / LLM-5).
+enable_llm_scrape: true
+
+# otlp_ingest: accept OTLP from local apps/engines (traces + metrics).
+enable_otlp_ingest: true
+
+# rdma_scrape: scrape the mlx-rdma-exporter (RoCE counters / roce_hardware_present).
+#   Enabled per-host by the SRE-3 mlx-rdma-exporter role.
+enable_rdma_scrape: false
+
+# fleet_otlp: fan-out to the Fleet Platform OTLP endpoint (node-context join).
+enable_fleet_otlp: "{{ (mc_fleet_otlp | default('')) | length > 0 }}"
+
+# ── TLS (ANS-5) ───────────────────────────────────────────────────────────────
+# Secure by default. The otel-tls role stages these PEM files from air-gapped
+# files/. Set otel_tls_insecure: true only in dev/lab (never in production).
+otel_tls_insecure: false
+otel_tls_dir: /etc/hydra/tls
+otel_tls_ca_file: "{{ otel_tls_dir }}/ca.crt"
+otel_tls_cert_file: "{{ otel_tls_dir }}/agent.crt"
+otel_tls_key_file: "{{ otel_tls_dir }}/agent.key"
+
+# ── Normalised node identity (resource processor stamps) ──────────────────────
+# Defaults derive from inventory_plugin.py facts; each consumer role may override.
+mc_node_id: "{{ hydra_node_id | default(inventory_hostname) }}"
+mc_hostname: "{{ hydra_hostname | default(inventory_hostname) }}"
+mc_cluster: "{{ hydra_cluster_name | default('hydra') }}"
+mc_environment: "{{ hydra_environment | default('production') }}"
+mc_os: "{{ hydra_os | default(ansible_system | default('linux') | lower) }}"
+mc_gpu_provider: "{{ hydra_gpu_provider | default('none') }}"
+mc_chip: "{{ hydra_chip | default('unknown') }}"
+mc_pool: "{{ hydra_pools | default([]) | join(',') }}"
+
+# ── Fan-out destinations ──────────────────────────────────────────────────────
+# Gateway is required; victoria/fleet are optional ("" disables that exporter).
+mc_gateway_endpoint: "{{ hydra_monitoring_gateway | default(hydra_otel_gateway_primary | default('')) }}"
+mc_victoria_url: "{{ hydra_monitoring_victoria | default('') }}"
+mc_fleet_otlp: "{{ hydra_monitoring_fleet_otlp | default('') }}"
+mc_collection_interval: "{{ hydra_monitoring_interval | default('30s') }}"
+
+# ── Listen ports ──────────────────────────────────────────────────────────────
+mc_health_port: 13133
+mc_grpc_port: 4317
+mc_http_port: 4318
+mc_prometheus_port: 8889
+
+# Hardware-exporter scrape port for non-Apple providers (apple uses 9101 below).
+mc_hw_exporter_port: "{{ hw_exporter_ports[mc_gpu_provider] | default(9100) }}"
+# Apple-silicon-exporter scrape port (kept in sync with apple_exporter_port).
+mc_apple_exporter_port: "{{ apple_exporter_port | default(9101) }}"
+# mlx-rdma-exporter scrape port (SRE-3).
+mc_rdma_exporter_port: "{{ mlx_rdma_exporter_port | default(9105) }}"
+
+# memory_limiter sizing (SRE-8 raised the floor off the silent-drop 100MiB).
+mc_memory_limit_mib: 256
+mc_memory_spike_mib: 64

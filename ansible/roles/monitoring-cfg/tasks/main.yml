@@ -1,35 +1,35 @@
 # ansible/roles/monitoring-cfg/tasks/main.yml
+# Linux-only OTEL agent config (ANS-1). macOS nodes are owned exclusively by the
+# otel-mac-agent role via mac-monitoring.yml. Renders the unified template
+# (roles/monitoring-common) so both OS paths share one source of truth (ANS-3).
 ---
+- name: Assert this role runs on Linux only (macOS → otel-mac-agent)
+  ansible.builtin.assert:
+    that: hydra_os == "linux"
+    fail_msg: >-
+      monitoring-cfg is Linux-only. macOS nodes are provisioned by
+      mac-monitoring.yml (otel-mac-agent). Got hydra_os={{ hydra_os }}.
+
 - name: Load discovered.yml from remote node
-  slurp:
+  ansible.builtin.slurp:
     src: /etc/hydra/discovered.yml
   register: _discovered_raw
   become: true
 
 - name: Parse discovered.yml
-  set_fact:
+  ansible.builtin.set_fact:
     _discovered: "{{ _discovered_raw.content | b64decode | from_yaml }}"
 
 - name: Render otel-agent.env
-  template:
+  ansible.builtin.template:
     src: otel-agent.env.j2
     dest: /etc/hydra/otel-agent.env
     mode: "0640"
   become: true
 
-- name: Re-render LaunchDaemon plist with env vars (macOS)
-  template:
-    src: "{{ playbook_dir }}/roles/base/templates/otel-agent.plist.j2"
-    dest: /Library/LaunchDaemons/com.hydra.otel-agent.plist
-    mode: "0644"
-    owner: root
-    group: wheel
-  become: true
-  when: hydra_os == "macos"
-
-- name: Render otel-agent-config.yaml
-  template:
-    src: otel-agent-config.yaml.j2
+- name: Render unified otel-agent-config.yaml (managed-by monitoring-common)
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/roles/monitoring-common/templates/otel-agent-config.yaml.j2"
     dest: /etc/hydra/otel-agent-config.yaml
     mode: "0640"
   vars:
@@ -38,10 +38,10 @@
   notify: validate and restart otel agent
 
 - name: Flush handlers immediately
-  meta: flush_handlers
+  ansible.builtin.meta: flush_handlers
 
 - name: Wait for OTEL agent health check
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:13133"
     status_code: 200
     timeout: 5
