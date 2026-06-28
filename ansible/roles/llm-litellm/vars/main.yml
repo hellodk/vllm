@@ -2,8 +2,9 @@
 ---
 litellm_dir: /opt/hydra/litellm
 litellm_venv: /opt/hydra/litellm/venv
-litellm_port: 8080
-litellm_master_key: sk-hydra-master-changeme   # rotate before prod
+# ANS-9: litellm_port is the single source of truth in group_vars/all/main.yml
+# (8080). Intentionally NOT redefined here to avoid the previous three-way drift.
+litellm_master_key: "{{ vault_litellm_master_key }}"   # ansible-vault — group_vars/all/vault.yml
 litellm_db_url: ""                              # optional: postgres for persistence
 litellm_config: /opt/hydra/litellm/litellm_config.yml
 litellm_packages:

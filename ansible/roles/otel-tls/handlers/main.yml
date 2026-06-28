@@ -1,0 +1,20 @@
+# ansible/roles/otel-tls/handlers/main.yml
+# Self-contained restart so otel-tls can run independently of the agent roles
+# (handler names are play-global; this avoids depending on another role's handler).
+---
+- name: restart otel agent for tls
+  block:
+    - name: Restart OTEL agent (Linux)
+      ansible.builtin.systemd:
+        name: otel-agent
+        state: restarted
+      become: true
+      when: ansible_system == "Linux"
+
+    - name: Bootout + bootstrap OTEL LaunchDaemon (macOS)
+      ansible.builtin.shell: |
+        launchctl bootout system/com.hydra.otel-agent 2>/dev/null || true
+        launchctl bootstrap system /Library/LaunchDaemons/com.hydra.otel-agent.plist
+      become: true
+      changed_when: false
+      when: ansible_system == "Darwin"

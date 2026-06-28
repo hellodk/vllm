@@ -4,10 +4,10 @@ minio_port: 9000
 minio_console_port: 9001
 minio_data_dir: /data/minio
 minio_access_key: "hydra-admin"
-minio_secret_key: "changeme-v2"   # set in cluster.yml model_registry section
+minio_secret_key: "{{ vault_minio_secret_key }}"   # ansible-vault — group_vars/all/vault.yml
 minio_bucket: "hydra-models"
 
 model_registry_port: 8100
 model_registry_dir: /opt/hydra/model-registry
 model_registry_db_url: "postgresql://fleet:fleetpass@192.168.10.13:5432/fleet"
-model_registry_admin_token: "changeme-admin"  # set via vault/cluster.yml in production
+model_registry_admin_token: "{{ vault_model_registry_admin_token }}"  # ansible-vault

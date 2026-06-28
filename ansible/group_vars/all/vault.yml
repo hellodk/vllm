@@ -1,0 +1,38 @@
+# ansible/group_vars/all/vault.yml
+# ──────────────────────────────────────────────────────────────────────────────
+# SECRETS — ENCRYPT THIS FILE BEFORE COMMITTING REAL VALUES:
+#     ansible-vault encrypt ansible/group_vars/all/vault.yml
+# Run playbooks with --ask-vault-pass (or --vault-password-file).
+#
+# This committed copy is an UNENCRYPTED TEMPLATE with non-secret placeholders so
+# CI (syntax-check / lint) can resolve the variable names. Replace every
+# REPLACE_ME_* value, then `ansible-vault encrypt` — never commit live secrets in
+# clear text. All keys are prefixed `vault_` per ansible-vault best practice; the
+# real variables (minio_secret_key, litellm_master_key, …) indirect to these.
+# ──────────────────────────────────────────────────────────────────────────────
+---
+# MinIO object store (model-registry role)
+vault_minio_secret_key: "REPLACE_ME_minio_secret_key"
+
+# Model Registry admin API token
+vault_model_registry_admin_token: "REPLACE_ME_model_registry_admin_token"
+
+# JFrog Artifactory access token (PyPI/binary mirror)
+vault_jfrog_token: "REPLACE_ME_jfrog_token"
+
+# Fleet Platform admin password (salt onboarding)
+vault_fleet_admin_password: "REPLACE_ME_fleet_admin_password"
+
+# LiteLLM proxy master key (gateway nodes)
+vault_litellm_master_key: "REPLACE_ME_litellm_master_key"
+
+# Per-engine / per-provider API keys consumed by llm-discovery (ANS-6) and the
+# unified OTEL scrape jobs (bearer auth). Keyed by provider name; "" = no auth.
+vault_llm_provider_api_keys:
+  ollama: ""
+  llamacpp: ""
+  vllm: ""
+  vllm-mlx: ""
+  mlx: ""
+  sglang: ""
+  litellm: "REPLACE_ME_litellm_internal_key"

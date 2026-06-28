@@ -31,14 +31,13 @@ cluster:
     minio_url: "http://192.168.10.12:9000"
     minio_bucket: "hydra-models"
     minio_access_key: "hydra-admin"
-    minio_secret_key: "changeme-v2"   # override before production use
+    minio_secret_key: "{{ vault_minio_secret_key }}"   # ansible-vault (ANS-5)
 
 # ── JFrog Artifactory (on-prem package mirror) ───────────────────────────────
 jfrog:
   pypi_index: "https://artifactory.hydra.local/artifactory/api/pypi/pypi-remote/simple"
   pypi_trusted_host: "artifactory.hydra.local"
-  # TODO v2: move token to vault
-  token: "changeme-jfrog-token"
+  token: "{{ vault_jfrog_token }}"   # ansible-vault (ANS-5)
 
 # ── OTEL monitoring fan-out destinations ─────────────────────────────────────
 # Used by ansible/mac-monitoring.yml (otel-mac-agent role)
@@ -76,7 +75,7 @@ salt:
   config:
     fleet_api_url: "http://192.168.10.13:8000"
     fleet_admin_email: "admin@fleet.local"
-    fleet_admin_password: "changeme123"      # plain text v1 — move to vault in v2
+    fleet_admin_password: "{{ vault_fleet_admin_password }}"   # ansible-vault (ANS-5)
     auto_accept_keys: true
     sbom_schedule_time: "02:00am"
     sbom_scan_timeout: 600
@@ -111,7 +110,7 @@ production_nodes:
     pools: [gateway]
     models_dir: ~
     llm_endpoints: []
-    role_note: "LiteLLM GW 1 :4000 · HAProxy active · dnsmasq (hydra.local)"
+    role_note: "LiteLLM GW 1 :8080 · HAProxy active · dnsmasq (hydra.local)"
 
   - id: hydra-gw-02
     hostname: hydra-gw-02
@@ -120,7 +119,7 @@ production_nodes:
     pools: [gateway]
     models_dir: ~
     llm_endpoints: []
-    role_note: "LiteLLM GW 2 :4000 · HAProxy passive"
+    role_note: "LiteLLM GW 2 :8080 · HAProxy passive"
 
   - id: hydra-store-01
     hostname: hydra-store-01
