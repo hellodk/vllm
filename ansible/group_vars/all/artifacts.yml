@@ -1,0 +1,38 @@
+# ansible/group_vars/all/artifacts.yml
+# Supply-chain integrity (ANS-4): sha256 of every binary artifact installed on
+# the fleet, keyed by artifact then arch. Roles refuse to install a staged file
+# whose sha256 is missing or does not match (air-gapped path), and pass
+# "sha256:<value>" to get_url's checksum: on the online path.
+#
+# HOW TO POPULATE (per arch, on a connected build/stage machine):
+#   shasum -a 256 <artifact>          # macOS
+#   sha256sum  <artifact>             # Linux
+# then paste the 64-hex digest below. The all-zero placeholders are intentional
+# tripwires — they WILL fail verification until replaced with real digests.
+---
+hydra_artifact_checksums:
+
+  # otelcol-contrib release tarballs (versioned by hydra_versions.otel_agent)
+  otel_agent:
+    darwin_arm64: "0000000000000000000000000000000000000000000000000000000000000000"
+    linux_arm64: "0000000000000000000000000000000000000000000000000000000000000000"
+    linux_amd64: "0000000000000000000000000000000000000000000000000000000000000000"
+
+  # prometheus node_exporter tarballs (hydra_versions.node_exporter)
+  node_exporter:
+    linux_arm64: "0000000000000000000000000000000000000000000000000000000000000000"
+    linux_amd64: "0000000000000000000000000000000000000000000000000000000000000000"
+
+  # apple-silicon-exporter prebuilt binaries (hydra_versions.apple_silicon_exporter)
+  apple_silicon_exporter:
+    darwin_arm64: "0000000000000000000000000000000000000000000000000000000000000000"
+    linux_arm64: "0000000000000000000000000000000000000000000000000000000000000000"
+    linux_amd64: "0000000000000000000000000000000000000000000000000000000000000000"
+
+  # dcgm-exporter ships as a container image. In the air-gapped path it is staged
+  # as a `docker save` tarball whose sha256 we verify before `docker load`
+  # (hw-exporter/tasks/nvidia.yml). image_digest documents the canonical repo
+  # digest for the online path.
+  dcgm_exporter:
+    tarball: "0000000000000000000000000000000000000000000000000000000000000000"
+    image_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"

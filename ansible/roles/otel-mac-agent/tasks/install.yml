@@ -7,6 +7,8 @@
   local_action:
     module: stat
     path: "{{ role_path }}/files/otelcol-contrib_darwin_arm64.tar.gz"
+    checksum_algorithm: sha256
+    get_checksum: true
   register: _otel_tarball
   run_once: true
 
@@ -16,6 +18,17 @@
       Missing: {{ role_path }}/files/otelcol-contrib_darwin_arm64.tar.gz
       See ansible/roles/otel-mac-agent/files/README.md for download instructions.
   when: not _otel_tarball.stat.exists
+  run_once: true
+
+- name: Verify otelcol-contrib tarball sha256 against hydra_artifact_checksums (ANS-4)
+  assert:
+    that:
+      - hydra_artifact_checksums['otel_agent']['darwin_arm64'] is defined
+      - _otel_tarball.stat.checksum == hydra_artifact_checksums['otel_agent']['darwin_arm64']
+    fail_msg: >-
+      sha256 mismatch for otelcol-contrib_darwin_arm64.tar.gz:
+      staged={{ _otel_tarball.stat.checksum | default('<missing>') }}
+      expected={{ hydra_artifact_checksums['otel_agent']['darwin_arm64'] | default('<unpinned>') }}
   run_once: true
 
 - name: Copy otelcol-contrib tarball to target (no internet needed)
@@ -50,6 +63,13 @@
   command: "{{ otel_binary_path }} --version"
   register: _otel_ver
   changed_when: false
+
+- name: Assert otelcol-contrib version matches the pin (ANS-4)
+  assert:
+    that: (hydra_versions.otel_agent | default(otel_version)) in _otel_ver.stdout
+    fail_msg: >-
+      otelcol-contrib reports '{{ _otel_ver.stdout | trim }}',
+      expected pin {{ hydra_versions.otel_agent | default(otel_version) }}.
 
 - name: Show otelcol-contrib version
   debug:
