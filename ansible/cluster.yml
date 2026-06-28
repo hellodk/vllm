@@ -10,6 +10,8 @@ cluster:
   versions:
     otel_agent: "0.96.0"
     apple_silicon_exporter: "1.0.0"
+    node_exporter: "1.8.1"
+    dcgm_exporter: "3.3.5-3.4.0"
 
   # ── Network (10 GbE + RDMA) ────────────────────────────────────────────────
   network:

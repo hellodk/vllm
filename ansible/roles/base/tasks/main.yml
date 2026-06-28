@@ -22,19 +22,64 @@
     mode: "0755"
   become: true
 
-- name: Set OTEL agent download URL (Linux aarch64)
+# ── OTEL agent: Linux — air-gapped installation (pre-staged tarball) ─────────
+# Operator must pre-stage the tarball in ansible/roles/base/files/ before run.
+# See ansible/roles/base/files/README.md for download instructions.
+
+- name: Set OTEL agent tarball name (Linux aarch64)
   set_fact:
-    otel_download_url: >-
-      {{ otel_agent_download_base }}/v{{ hydra_versions.otel_agent }}/otelcol-contrib_{{ hydra_versions.otel_agent }}_linux_arm64.tar.gz
+    otel_tarball: "otelcol-contrib_{{ hydra_versions.otel_agent }}_linux_arm64.tar.gz"
     otel_binary_path: /usr/local/bin/otelcol-contrib
   when: hydra_os == "linux" and ansible_architecture in ["aarch64", "arm64"]
 
-- name: Set OTEL agent download URL (Linux x86_64)
+- name: Set OTEL agent tarball name (Linux x86_64)
   set_fact:
-    otel_download_url: >-
-      {{ otel_agent_download_base }}/v{{ hydra_versions.otel_agent }}/otelcol-contrib_{{ hydra_versions.otel_agent }}_linux_amd64.tar.gz
+    otel_tarball: "otelcol-contrib_{{ hydra_versions.otel_agent }}_linux_amd64.tar.gz"
     otel_binary_path: /usr/local/bin/otelcol-contrib
   when: hydra_os == "linux" and ansible_architecture == "x86_64"
+
+- name: Assert OTEL agent tarball is pre-staged (Linux)
+  local_action:
+    module: stat
+    path: "{{ role_path }}/files/{{ otel_tarball }}"
+  register: _otel_tarball_stat
+  when: hydra_os == "linux"
+
+- name: Fail if OTEL agent tarball is missing (Linux)
+  fail:
+    msg: |
+      Missing pre-staged tarball: {{ role_path }}/files/{{ otel_tarball }}
+      Download from:
+        https://github.com/open-telemetry/opentelemetry-collector-releases/releases/tag/v{{ hydra_versions.otel_agent }}
+      Place the tarball in ansible/roles/base/files/ then re-run.
+  when: hydra_os == "linux" and not _otel_tarball_stat.stat.exists
+
+- name: Copy OTEL agent tarball to target (Linux)
+  copy:
+    src: "{{ otel_tarball }}"
+    dest: "/tmp/{{ otel_tarball }}"
+    mode: "0644"
+  become: true
+  when: hydra_os == "linux"
+
+- name: Extract OTEL agent binary from tarball (Linux)
+  unarchive:
+    src: "/tmp/{{ otel_tarball }}"
+    dest: /usr/local/bin
+    remote_src: true
+    creates: "{{ otel_binary_path }}"
+    extra_opts: [--strip-components=0]
+  become: true
+  when: hydra_os == "linux"
+
+- name: Clean up OTEL agent tarball from /tmp (Linux)
+  file:
+    path: "/tmp/{{ otel_tarball }}"
+    state: absent
+  become: true
+  when: hydra_os == "linux"
+
+# ── OTEL agent: macOS — internet fetch (air-gap fix tracked in separate ticket) ──
 
 - name: Set OTEL agent download URL (macOS arm64)
   set_fact:
@@ -43,7 +88,7 @@
     otel_binary_path: /usr/local/bin/otelcol-contrib
   when: hydra_os == "macos"
 
-- name: Download and extract OTEL agent
+- name: Download and extract OTEL agent (macOS)
   unarchive:
     src: "{{ otel_download_url }}"
     dest: /usr/local/bin
@@ -51,6 +96,9 @@
     creates: "{{ otel_binary_path }}"
     extra_opts: [--strip-components=0]
   become: true
+  when: hydra_os == "macos"
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 - name: Ensure OTEL binary is executable
   file:
@@ -90,4 +138,3 @@
     daemon_reload: true
   become: true
   when: hydra_os == "linux"
-

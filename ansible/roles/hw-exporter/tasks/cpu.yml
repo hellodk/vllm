@@ -1,22 +1,46 @@
 # ansible/roles/hw-exporter/tasks/cpu.yml
 ---
-- name: Set node_exporter download URL (Linux x86_64)
+
+# ── node_exporter: air-gapped installation (pre-staged tarball) ───────────────
+# Operator must pre-stage the tarball in ansible/roles/hw-exporter/files/.
+# See ansible/roles/hw-exporter/files/README.md for download instructions.
+
+- name: Set node_exporter tarball name (Linux x86_64)
   set_fact:
-    node_exporter_url: >-
-      {{ node_exporter_download_base }}/v{{ hydra_versions.node_exporter }}/node_exporter-{{ hydra_versions.node_exporter }}.linux-amd64.tar.gz
+    node_exporter_tarball: "node_exporter-{{ hydra_versions.node_exporter }}.linux-amd64.tar.gz"
     node_exporter_dir: "node_exporter-{{ hydra_versions.node_exporter }}.linux-amd64"
   when: ansible_architecture == "x86_64"
 
-- name: Set node_exporter download URL (Linux aarch64)
+- name: Set node_exporter tarball name (Linux aarch64)
   set_fact:
-    node_exporter_url: >-
-      {{ node_exporter_download_base }}/v{{ hydra_versions.node_exporter }}/node_exporter-{{ hydra_versions.node_exporter }}.linux-arm64.tar.gz
+    node_exporter_tarball: "node_exporter-{{ hydra_versions.node_exporter }}.linux-arm64.tar.gz"
     node_exporter_dir: "node_exporter-{{ hydra_versions.node_exporter }}.linux-arm64"
   when: ansible_architecture in ["aarch64", "arm64"]
 
-- name: Download and extract node_exporter
+- name: Assert node_exporter tarball is pre-staged
+  local_action:
+    module: stat
+    path: "{{ role_path }}/files/{{ node_exporter_tarball }}"
+  register: _node_exporter_tarball_stat
+
+- name: Fail if node_exporter tarball is missing
+  fail:
+    msg: |
+      Missing pre-staged tarball: {{ role_path }}/files/{{ node_exporter_tarball }}
+      Download from:
+        https://github.com/prometheus/node_exporter/releases/tag/v{{ hydra_versions.node_exporter }}
+      Place the tarball in ansible/roles/hw-exporter/files/ then re-run.
+  when: not _node_exporter_tarball_stat.stat.exists
+
+- name: Copy node_exporter tarball to target
+  copy:
+    src: "{{ node_exporter_tarball }}"
+    dest: "/tmp/{{ node_exporter_tarball }}"
+    mode: "0644"
+
+- name: Extract node_exporter archive
   unarchive:
-    src: "{{ node_exporter_url }}"
+    src: "/tmp/{{ node_exporter_tarball }}"
     dest: /tmp/
     remote_src: true
     creates: "/tmp/{{ node_exporter_dir }}/node_exporter"
@@ -28,6 +52,14 @@
     mode: "0755"
     remote_src: true
   become: true
+
+- name: Clean up node_exporter tarball and extracted directory from /tmp
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/{{ node_exporter_tarball }}"
+    - "/tmp/{{ node_exporter_dir }}"
 
 - name: Install node_exporter systemd unit
   template:
