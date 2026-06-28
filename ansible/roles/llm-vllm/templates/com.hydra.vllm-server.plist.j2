@@ -28,6 +28,9 @@
     <string>0.0.0.0</string>
     <string>--port</string>
     <string>{{ vllm_port }}</string>
+    <!-- LLM-6: export prefill/decode/queue spans to the local OTEL agent → gateway -->
+    <string>--otlp-traces-endpoint</string>
+    <string>{{ otel_traces_grpc_endpoint | default('127.0.0.1:4317') }}</string>
   </array>
 
   <key>WorkingDirectory</key>
