@@ -18,3 +18,13 @@ results/
 # IDE / tool config
 .continue/
 .worktrees/
+
+# Ad-hoc MLX load-test / benchmark scratch (kept locally, not versioned)
+/mlx_loadtest.py
+/mlx_loadtest_report.html
+/mlx_loadtest_results.json
+/mlx_engine_comparison.html
+/mlx23_results.json
+/mlx23_sweep.log
+/mlx_sweep.log
+/*.jpeg
