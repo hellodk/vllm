@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "mlx-dist": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MLX Distributed (2x Mac mini, __MLX_MODEL__)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8080/v1",
+        "apiKey": "no-key"
+      },
+      "models": {
+        "__MLX_MODEL__": {
+          "name": "__MLX_MODEL__ (distributed)",
+          "tool_call": true
+        }
+      }
+    }
+  },
+  "model": "mlx-dist/__MLX_MODEL__"
+}

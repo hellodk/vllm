@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+cluster/logs/
+*.pid
+cluster/*.plist
+tools/bench-reports/
+observability/data/
+observability/vm-scrape.yml
+opencode.json
+.DS_Store
+graphify-out/
+sglang/logs/*.log
+test-reports/
+.pytest_cache/
+opencode-session
