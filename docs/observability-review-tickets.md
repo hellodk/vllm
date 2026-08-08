@@ -121,7 +121,7 @@
 
 ---
 
-## C. Platform / Ansible Architect — Diego Ramirez 🍩×9
+## C. Platform / Ansible Architect — Diego Ramirez 🍩×10
 
 ### ANS-1 · Two divergent, conflicting provisioning paths for the same macOS nodes · **P0** · L 🍩
 - **Problem:** `site.yml` (base+hw-exporter+monitoring-cfg on `all`) and `mac-monitoring.yml` (otel-mac-agent on `os_macos`) both render `/etc/hydra/otel-agent-config.yaml` from **different templates** and both install the same LaunchDaemons from different templates → last-run-wins, nondeterministic drift.
@@ -168,6 +168,43 @@
 - **Fix:** One source of truth (recommend `cluster.yml`/`inventory_plugin.py`); derive the other or add a CI parity check; reconcile LiteLLM port.
 - **Files:** `inventories/llm/hosts.yml`, `cluster.yml`, `inventory_plugin.py`, `group_vars/all.yml`.
 
+### ANS-10 · Distributed sharded `mlx_lm.server` via `mlx.launch` + hostfile (`llm-mlx` role + salt pillar) · **P1** · L 🍩
+- **Problem:** `ansible/roles/llm-mlx` only provisions a **single-node** `mlx_lm.server` LaunchDaemon (`com.hydra.mlx-server.plist.j2`). There is no path to serve one model sharded across several M4 nodes, so with the ~9.6 GB/node weight ceiling (16 GB unified memory, 60% rule) any model above that is unrunnable on the fleet. Meanwhile the launcher is already deployed and trusted — `salt/pillar/llm.sls:102` points at `/opt/hydra/llm/mlx/venv/bin/mlx.launch`, and `mlx-allreduce-probe` already drives it across `tensor_parallel_groups` over passwordless SSH. Launcher, SSH trust and group membership all exist; **only the serving path is missing.** Upstream supports it: `mlx_lm.server` runs under `mlx.launch` with rank 0 owning the `ThreadingHTTPServer` and broadcasting to peers, and `sharded_load()` shards tensor-parallel (default) or pipeline-parallel (`--pipeline`) — reference `mlx_lm/examples/sharded_generate.py`.
+- **Fix — provisioning:**
+  - New vars/pillar block: `mlx_distributed_enabled`, `mlx_distributed_backend` (`ring`|`jaccl`), `mlx_distributed_shard_mode` (`tensor`|`pipeline`), `mlx_hostfile_path`, `mlx_distributed_starting_port`. Reuse the existing `tensor_parallel_groups` as the group source (already consumed by the probe and by `otel-agent-config.yaml.j2:161-162`).
+  - Render the hostfile (`[{"ssh": <host>, "ips": [<ip>]}, …]`) from group membership, or shell out to `mlx.distributed_config --backend <b> --hosts <…> --over ethernet --output <path>` on the leader.
+  - Leader-only LaunchDaemon variant execing `mlx.launch --hostfile … --backend … <venv>/bin/mlx_lm.server --model <local-path> --host 0.0.0.0 --port {{ mlx_internal_port }} [--pipeline]`. Non-leader ranks must **not** also run the existing single-node daemon.
+  - **Air-gap:** `--model` must be a local path present at an *identical* path on every rank; same for the venv python and the `mlx_lm.server` entrypoint (`mlx.launch` resolves one path across all hosts). No `mlx-community/…` HF refs.
+  - **Ports:** never 11434 (Ollama). Keep 11500 public / 11510 engine. Ring assigns ports from `--starting-port` incrementing per rank — must be disjoint from the allreduce probe's range.
+  - `--pipeline` is the default on Ethernet: tensor-parallel does an `all_reduce` per layer and will be fabric-bound. `jaccl` requires macOS 26.2+ and Thunderbolt RDMA — **verify node OS version before selecting it.**
+- **Fix — observability (day-one rule; the deploy is not complete without these):**
+  - **(a) Rank-aware crash attribution.** `salt/states/llm-mlx/mlx_log_exporter.py` tails `/var/log/hydra/mlx-server-error.log` — the daemon's `StandardErrorPath` (`com.hydra.mlx-server.plist.j2:74-75`). Under `mlx.launch` remote ranks are SSH'd children whose stderr is forwarded to the launcher, so a rank-N Metal fault increments `mlx_metal_failures_total` **on the leader** and the Salt reactor drains the wrong node; ranks 1..N-1 have no such log at all and report permanent zeros. Add a `source_rank` label parsed from mlx.launch's per-rank output prefix. **Blocked on capturing the real prefix format from a live run — currently unverified.**
+  - **(b) Scrape-target correctness.** `ansible/roles/llm-discovery/tasks/main.yml:98-110` registers the `mlx_perf` target on *every* node with `mlx_sidecar_enabled`. Only rank 0 serves HTTP, so a 4-node group yields 3 permanent `up == 0` targets that will bury real outages. Gate on rank 0.
+  - **(c) Group-degraded alert.** Every current MLX alert is per-node, but one dead rank hangs the whole ring. Add a `tp_group`-scoped alert comparing live serving ranks to `world_size`. `MLXAllReduceProbeStale` does **not** cover this — a hung ring also stops the probe, so that alert fires with no attribution.
+  - **(d) Probe/server arbitration.** `salt/states/mlx-allreduce-probe/run-allreduce-probe.sh.j2:28` launches a second ring across the same peers on a schedule. Give it a disjoint `--starting-port` range, or disable it on serving groups and read fabric health off TPOT instead. A 256 MB × `world_size` payload alongside loaded weights is also an OOM risk on 16 GB.
+  - **(e) Document the trace scope.** `llm_perf_proxy.py`'s `traces_endpoint` yields one rank-0 span per request; `mlx.launch` propagates no trace context and mlx-lm does not broadcast a trace id, so **no per-rank spans exist**. Document the limit and rely on `hydra:fabric:tp_gpu_util:stddev` for rank attribution rather than implying traces will cover it.
+- **Acceptance criteria:**
+  - [ ] `mlx_distributed_enabled: true` on a `tensor_parallel_groups` member provisions a hostfile and a leader-only `mlx.launch` daemon; peers get no single-node daemon
+  - [ ] `mlx_distributed_enabled: false` leaves current single-node behaviour byte-identical (no regression)
+  - [ ] Sharded server answers `POST /v1/chat/completions` on the group leader with tool-calling intact
+  - [ ] No `--model` value resolves to a network URL; role asserts the path exists on every rank
+  - [ ] Serving ports and probe ports provably disjoint; nothing binds 11434
+  - [ ] `mlx_metal_failures_total` carries `source_rank`, and a fault injected on a non-leader is attributed to that rank
+  - [ ] `mlx_perf` scrape target registered on rank 0 only — zero `up == 0` targets in a healthy group
+  - [ ] Group-degraded alert fires within 2 min of killing one non-leader rank
+  - [ ] `deploy/README.md` + `docs/mlx-node-onboarding.md` cover all three deployment modes for the sharded path
+- **Tests required:**
+  - [ ] `pytest ansible/tests/` unit test: hostfile JSON rendering from `tensor_parallel_groups`
+  - [ ] Unit test: leader/peer daemon selection is mutually exclusive
+  - [ ] Unit test: `mlx_log_exporter` parses a rank-prefixed line into the right `source_rank`
+  - [ ] Unit test: discovery emits exactly one `mlx_perf` target per group
+  - [ ] Port-disjointness assertion test (serving range vs probe range vs 11434)
+  - [ ] `ansible-lint` clean on `roles/llm-mlx`, `roles/llm-discovery`
+  - [ ] `promtool test rules` for the new group-degraded alert
+  - [ ] Idempotency: second run reports zero changes
+- **Files:** `ansible/roles/llm-mlx/{vars,tasks,templates}`, new `com.hydra.mlx-distributed.plist.j2` + `hosts.json.j2`, `salt/pillar/llm.sls`, `salt/states/llm-mlx/*`, `salt/states/llm-mlx/mlx_log_exporter.py`, `ansible/roles/llm-discovery/tasks/main.yml`, `salt/states/mlx-allreduce-probe/run-allreduce-probe.sh.j2`, `monitoring/prometheus/rules/mlx-fabric.rules.yml`, `docs/mlx-node-onboarding.md`.
+- **Prerequisites (verify on a live node before implementing (a) and (d)):** mlx.launch per-rank output prefix format; ring-backend port allocation behaviour under two concurrent rings; installed `mlx-lm` version's continuous-batching support (affects whether concurrent agent requests serialize).
+
 ---
 
 ## Priority rollup
@@ -175,7 +212,7 @@
 | Priority | Tickets |
 |---|---|
 | **P0** | LLM-1 / SRE-1 (joint), SRE-2, ANS-1, ANS-2 |
-| **P1** | LLM-2, LLM-3, LLM-4, LLM-5, SRE-3, SRE-4, SRE-5, SRE-6, ANS-3, ANS-4, ANS-5 |
+| **P1** | LLM-2, LLM-3, LLM-4, LLM-5, SRE-3, SRE-4, SRE-5, SRE-6, ANS-3, ANS-4, ANS-5, ANS-10 |
 | **P2** | LLM-6, LLM-7, LLM-10, SRE-7, SRE-8, ANS-6, ANS-7, ANS-8 |
 | **P3** | LLM-8, LLM-9, ANS-9 |
 
@@ -187,5 +224,5 @@
 |---|---|
 | Priya Nair (LLM) | 🍩🍩🍩🍩🍩🍩🍩🍩🍩🍩 (10) |
 | Marcus Chen (SRE) | 🍩🍩🍩🍩🍩🍩🍩🍩 (8) |
-| Diego Ramirez (Ansible) | 🍩🍩🍩🍩🍩🍩🍩🍩🍩 (9) |
-| **Total** | **27 🍩** |
+| Diego Ramirez (Ansible) | 🍩🍩🍩🍩🍩🍩🍩🍩🍩🍩 (10) |
+| **Total** | **28 🍩** |
