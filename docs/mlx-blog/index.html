@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLX Observability — Field Notes</title>
+<style>
+  :root{
+    --bg:#f7f7fa;--card:#ffffff;--ink:#1d1f2b;--muted:#5b6072;--line:#e5e7f0;
+    --accent:#4f46e5;--accent-soft:#eef0ff;--teal:#0f766e;--teal-soft:#e6f6f4;
+    --amber:#b45309;--amber-soft:#fef3d7;--pink:#db2777;--pink-soft:#fde8f1;
+    --code-bg:#f4f4f8;--radius:14px;
+    --shadow:0 1px 2px rgba(16,18,32,.06),0 8px 24px rgba(16,18,32,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;line-height:1.65;font-size:16px}
+  .wrap{max-width:900px;margin:0 auto;padding:0 24px}
+  header.hero{padding:64px 0 40px;background:radial-gradient(1200px 420px at 80% -10%, rgba(219,39,119,.10), transparent 60%),radial-gradient(900px 380px at 10% -20%, rgba(15,118,110,.09), transparent 55%);border-bottom:1px solid var(--line)}
+  .kicker{display:inline-block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid #dfe1ff;padding:5px 12px;border-radius:999px}
+  h1{font-size:clamp(28px,5vw,44px);line-height:1.15;margin:18px 0 12px;letter-spacing:-.02em}
+  .sub{font-size:18px;color:var(--muted);max-width:680px}
+  .meta{margin-top:18px;font-size:13.5px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+  .meta b{color:var(--ink)}
+  main{padding:48px 0 80px}
+  .post{display:flex;gap:20px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;margin:18px 0;text-decoration:none;color:inherit;transition:transform .15s ease,box-shadow .15s ease}
+  .post:hover{transform:translateY(-2px);box-shadow:var(--shadow),0 14px 34px rgba(16,18,32,.10)}
+  .num{flex:0 0 auto;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff}
+  .n1{background:linear-gradient(135deg,#4f46e5,#818cf8)}
+  .n2{background:linear-gradient(135deg,#0f766e,#14b8a6)}
+  .n3{background:linear-gradient(135deg,#db2777,#f472b6)}
+  .n4{background:linear-gradient(135deg,#b45309,#f59e0b)}
+  .n5{background:linear-gradient(135deg,#7c3aed,#a78bfa)}
+  .n6{background:linear-gradient(135deg,#0f766e,#d97706)}
+  .n7{background:linear-gradient(135deg,#0e7490,#22d3ee)}
+  .n8{background:linear-gradient(135deg,#b91c1c,#f59e0b)}
+  .n9{background:linear-gradient(135deg,#334155,#64748b)}
+  .n10{background:linear-gradient(135deg,#0f766e,#22d3ee)}
+  .n11{background:linear-gradient(135deg,#7c3aed,#22d3ee)}
+  .n12{background:linear-gradient(135deg,#b45309,#f59e0b)}
+  .n13{background:linear-gradient(135deg,#334155,#e11d48)}
+  .n14{background:linear-gradient(135deg,#4f46e5,#db2777)}
+  .n15{background:linear-gradient(135deg,#ea580c,#0f766e)}
+  .n16{background:linear-gradient(135deg,#b45309,#4f46e5)}
+  .n17{background:linear-gradient(135deg,#4f46e5,#0f766e)}
+  .n18{background:linear-gradient(135deg,#1a1a3e,#444CE7)}
+  .n19{background:linear-gradient(135deg,#334155,#0f766e)}
+  .n20{background:linear-gradient(135deg,#b45309,#4f46e5)}
+  .post h2{margin:0 0 6px;font-size:20px;color:var(--ink)}
+  .post p{margin:0;color:var(--muted);font-size:14.5px}
+  .tag{display:inline-block;font-size:11px;font-weight:700;color:var(--muted);background:var(--code-bg);border:1px solid var(--line);border-radius:999px;padding:2px 9px;margin:10px 4px 0 0}
+  footer{border-top:1px solid var(--line);padding:26px 0 48px;color:var(--muted);font-size:13.5px}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">MLX Observability &middot; Field Notes</span>
+    <h1>Making Two Mac minis<br>Actually Observable</h1>
+    <p class="sub">Nineteen deep-dives into the observability layer of the distributed MLX cluster: reading Apple Silicon GPU/power without root, alerting on 46 rules, Grafana dashboards, what an external audit found, self-hosted LLM tracing with Opik, a feedback loop that scores every chat completion, a performance dashboard that finally shows the KV cache and context window, a head-to-head with hydra&rsquo;s push-first fleet stack, how a real GPU crash exposed the missing process-level truth &mdash; now fixed with a supervising watchdog, serving-status metrics, an alert dashboard, and load tests that stress the cluster like an agent &mdash; the streamed server runtime log that finally carries an incident&rsquo;s server-side context into Opik, a per-reason fault ledger in Grafana, the forensics that found the fault lives on the remote rank, and the consolidated decision ledger we now choose from &mdash; an experimental SGLang scaffold with an unverified Apple Silicon backend, the tuning lever table measured on the ring, and now the Opik-native dashboard that renders the mlx project&rsquo;s traces and judge scores in place &mdash; and the reference map: every metric, log, trace, feedback score and alert in tables, with the files and configurations behind each, and how the four load-test rigs and forty unit tests drive the cluster.</p>
+    <div class="meta">
+      <span><b>Stack</b> VictoriaMetrics + vmalert + Alertmanager + Grafana</span>
+      <span><b>Agents</b> mlx_metrics_proxy :8080 &middot; mlx_hw_telemetry :9102 &middot; mlx_kv_cache_agent :9104</span>
+      <span><b>Rules</b> 46 &middot; <b>Dashboards</b> 10</span>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <a class="post" href="1-hardware-telemetry.html">
+    <div class="num n1">1</div>
+    <div>
+      <h2>Reading Apple Silicon GPU &amp; Power Without Root</h2>
+      <p>ioreg for GPU memory (no sudo), powermetrics for utilization/power/ANE (passwordless sudo, ~15s), pmset for thermal pressure. How three zero-API data sources become a Prometheus exporter on both nodes.</p>
+      <span class="tag">GPU memory</span><span class="tag">powermetrics</span><span class="tag">thermal pressure</span><span class="tag">scrape :9102</span>
+    </div>
+  </a>
+  <a class="post" href="2-alerting.html">
+    <div class="num n2">2</div>
+    <div>
+      <h2>28 Alert Rules and the Full Loop to Alertmanager</h2>
+      <p>vmalert + Alertmanager with inhibit rules. Hardware, inference, quality and stack-down groups — and the end-to-end test where a full disk actually went firing.</p>
+      <span class="tag">vmalert</span><span class="tag">Alertmanager</span><span class="tag">inhibit_rules</span><span class="tag">end-to-end</span>
+    </div>
+  </a>
+  <a class="post" href="3-dashboards.html">
+    <div class="num n3">3</div>
+    <div>
+      <h2>Three Dashboards, a GPU Heatmap, and Anonymous Kiosk Rendering</h2>
+      <p>Cluster / Node / GPU &amp; Power dashboards, the RdYlGn utilization heatmap, ALERTS annotations — and the Grafana 13 DTO-namespace quirk that was blanking every headless screenshot.</p>
+      <span class="tag">Grafana 13</span><span class="tag">heatmap</span><span class="tag">kiosk</span><span class="tag">screenshots</span>
+    </div>
+  </a>
+  <a class="post" href="4-observability-audit.html">
+    <div class="num n4">4</div>
+    <div>
+      <h2>What an External Observability Audit Found</h2>
+      <p>Two criticals accepted, nine findings fixed: double-counted OTel metrics, NaN gauges, missing model labels, stale series, activity-gated hallucination rules, and dashboard provisioning drift.</p>
+      <span class="tag">audit</span><span class="tag">fixes</span><span class="tag">series cleanup</span><span class="tag">provisioning</span>
+    </div>
+  </a>
+  <a class="post" href="5-opik-llm-tracing.html">
+    <div class="num n5">5</div>
+    <div>
+      <h2>Self-Hosted LLM Tracing: the MLX Proxy Talks to Opik</h2>
+      <p>Opik via helm on k0s, and every chat completion logged twice &mdash; over the opik SDK and over OTLP with OpenInference attributes. Includes the write-ordering race that silently stripped names from traces.</p>
+      <span class="tag">Opik</span><span class="tag">LLM tracing</span><span class="tag">OpenInference</span><span class="tag">helm</span>
+    </div>
+  </a>
+  <a class="post" href="6-opik-feedback-loop.html">
+    <div class="num n6">6</div>
+    <div>
+      <h2>The Feedback Loop: Every Chat Completion Gets Scored</h2>
+      <p>Heuristic scores logged in-band by the proxy plus an LLM-as-judge that uses the cluster itself to rate answers &mdash; five feedback scores per trace. Includes the self-tracing judge bug and the PUT-not-POST gotcha.</p>
+      <span class="tag">Opik</span><span class="tag">feedback scores</span><span class="tag">LLM-as-judge</span>
+    </div>
+  </a>
+  <a class="post" href="7-mlx-inference-performance.html">
+    <div class="num n7">7</div>
+    <div>
+      <h2>The Performance Dashboard: KV Cache and Context, Finally Visible</h2>
+      <p>A log-tailing agent on :9104 plus new proxy gauges put the prompt (KV) cache and per-request context length into VictoriaMetrics &mdash; and a fourth dashboard shows cached bytes, utilization, TTFT/generation quantiles and throughput together. Includes the rate()-without-samples trap.</p>
+      <span class="tag">KV cache</span><span class="tag">context length</span><span class="tag">mlx_kv_cache_agent</span><span class="tag">dashboard</span>
+    </div>
+  </a>
+  <a class="post" href="8-hydra-vs-mlx-oc.html">
+    <div class="num n8">8</div>
+    <div>
+      <h2>Hydra vs mlx-oc: Two Monitoring Architectures, One Metric Contract</h2>
+      <p>Push-first OTLP (hydra) vs pull-first direct scrape (mlx-oc), where the Go apple-silicon-exporter actually runs, and the metric-name drift that had a production dashboard panel silently dead &mdash; fixed in one commit with a pinned schema doc.</p>
+      <span class="tag">hydra</span><span class="tag">apple-silicon-exporter</span><span class="tag">metric drift</span><span class="tag">OTLP vs scrape</span>
+    </div>
+  </a>
+  <a class="post" href="9-model-serving-resilience.html">
+    <div class="num n9">9</div>
+    <div>
+      <h2>The Night the GPU Crashed: Serving Health, Supervision &amp; Load Testing</h2>
+      <p>A Metal command-buffer fault killed mlx_lm.server while the proxy kept serving 503s &mdash; the alert fired but nothing restarted anything and no metric said "model loaded." Now: a supervising watchdog with backoff, serving-status metrics, an alert signal-to-noise dashboard, and load tests for both plain and agentic traffic.</p>
+      <span class="tag">mlx_server_supervisor</span><span class="tag">crash recovery</span><span class="tag">alert dashboard</span><span class="tag">load testing</span><span class="tag">agentic</span>
+    </div>
+  </a>
+  <a class="post" href="10-opik-log-streaming.html">
+    <div class="num n10">10</div>
+    <div>
+      <h2>The Other Half of the Story: Streaming Server Logs into Opik</h2>
+      <p>Tracing was wired but switched off, and the server's runtime log had never left the machine. Now: the OTLP trace path is on by default (one trace per request), and a filtered, flood-protected log tailer ships crash and generation lines to the collector's durable JSONL &mdash; verified when a Metal fault fired mid-test and every line landed.</p>
+      <span class="tag">Opik</span><span class="tag">log streaming</span><span class="tag">OTLP</span><span class="tag">mlx_server_log_tailer</span><span class="tag">correlation</span>
+    </div>
+  </a>
+  <a class="post" href="11-agentic-edge-cases.html">
+    <div class="num n11">11</div>
+    <div>
+      <h2>Edge Cases Are the Load: Tools, Streaming, and the Zero-Completion Traces</h2>
+      <p>Agentic benchmark runs uncovered the real load shape &mdash; and the token ledger exposed 63% of traces ending with zero completion tokens. Cause found: streaming + tools is a reproducible metal_gpu_error trigger on this 4B-8bit ring. Full metrics review, a tuning plan for edge scenarios, a containment + 10-candidate fix list for the Metal fault, and a prioritized recommendation table.</p>
+      <span class="tag">agentic</span><span class="tag">metal_gpu_error</span><span class="tag">zero-completion traces</span><span class="tag">tuning</span><span class="tag">recommendations</span>
+    </div>
+  </a>
+  <a class="post" href="12-fault-error-restart-analysis.html">
+    <div class="num n12">12</div>
+    <div>
+      <h2>The Fault Ledger: Detailed Restart &amp; Error Analysis in Grafana</h2>
+      <p>A bare restarts counter and a last-crash gauge could not answer "how many, of what kind, when." New: a per-reason mlx_server_crashes_total counter (zero-initialized for all five reasons), a nine-panel Faults, Errors &amp; Restart Counts row (18&rarr;28 panels), and apply-dashboards.sh &mdash; because the live k8s Grafana is provisioned by a sidecar from labeled ConfigMaps, and editing the repo JSON did nothing until that path was scripted. Plus an idle-cluster status snapshot and a live demo of the counter-reset problem.</p>
+      <span class="tag">fault analysis</span><span class="tag">mlx_server_crashes_total</span><span class="tag">Grafana provisioning</span><span class="tag">sidecar</span><span class="tag">restart counts</span>
+    </div>
+  </a>
+  <a class="post" href="13-agentic-forensics.html">
+    <div class="num n13">13</div>
+    <div>
+      <h2>The Fault Is Remote: Why rank1 Dies First</h2>
+      <p>A five-token request crashed the box minutes after two agentic requests did &mdash; so the trigger was never just streaming+tools. macOS crash reports exist only on rank1 (an M4 16&nbsp;GB paired with the M2 8&nbsp;GB on the ring), the faulting thread is mlx&rsquo;s own GPU stream thread, and the fatal pattern is a heterogeneous ring whose faster GPU faults, then poisons the device so the next request dies too &mdash; a readiness check of /v1/models cannot see it. Version skew is ruled out: both nodes run mlx 0.32.0 / mlx-lm 0.31.3. Decision 08-05: the ring stays &mdash; the plan moves to recovery hardening and load shaping.</p>
+      <span class="tag">rank1</span><span class="tag">crash reports</span><span class="tag">heterogeneous ring</span><span class="tag">GPU stream thread</span><span class="tag">poisoned device</span>
+    </div>
+  </a>
+  <a class="post" href="14-recommendations-decision.html">
+    <div class="num n14">14</div>
+    <div>
+      <h2>The Decision Ledger: Tuning, metal_gpu_error, and Every Recommendation in One Place</h2>
+      <p>The cluster&rsquo;s knowledge consolidated into the three artifacts we now choose from: a tuning guide for edge scenarios (streaming, tools, concurrency, long transcripts &mdash; across model, proxy and client), a prevent/respond/recover plan for metal_gpu_error, and the complete recommendation ledger &mdash; 21 items with priority, effort, dependency and a live status column. Decision 08-05: the ring stays &mdash; no single-node serving &mdash; so the plan is supervisor recovery hardening + the containment P0s + load shaping. The rest of the ledger is still a menu.</p>
+      <span class="tag">tuning</span><span class="tag">metal_gpu_error plan</span><span class="tag">recommendation ledger</span><span class="tag">decision</span><span class="tag">ring retained</span>
+    </div>
+  </a>
+  <a class="post" href="15-sglang-on-two-mac-minis.html">
+    <div class="num n15">15</div>
+    <div>
+      <h2>SGLang on Two Mac Minis: A Scaffold, Not a Benchmark</h2>
+      <p>A third engine joins the MLX-vs-vllm-metal comparison &mdash; two independent replicas (no ring, no NCCL), native <code>sglang:*</code> Prometheus metrics already scraped, and an unverified Apple Silicon device backend stated plainly instead of glossed over.</p>
+      <span class="tag">SGLang</span><span class="tag">experimental</span><span class="tag">unverified backend</span><span class="tag">independent replicas</span>
+    </div>
+  </a>
+  <a class="post" href="16-mlx-distributed-options-tuning.html">
+    <div class="num n16">16</div>
+    <div>
+      <h2>Distributed MLX Tuning: The Lever Table, Applied and Measured</h2>
+      <p>Before any tuning, the network premise died: the ring was already on dedicated Gigabit Ethernet (<code>10.0.0.0/24</code> on <code>en0</code>, 0.48&nbsp;ms RTT) &mdash; there was no WireGuard to remove. Then the lever table went from theory to implementation: decode/prefill concurrency, prefill step size, and prompt cache + a decode cap, each restarted and measured. Four levers, five restarts, zero errors and zero new <code>metal_gpu_error</code> crashes &mdash; with the structural options (pipeline, Thunderbolt, homogeneous pair) still deferred.</p>
+      <span class="tag">tuning</span><span class="tag">decode-concurrency</span><span class="tag">ring</span><span class="tag">Gigabit Ethernet</span><span class="tag">benchmarked</span>
+    </div>
+  </a>
+  <a class="post" href="17-opik-dashboards.html">
+    <div class="num n17">17</div>
+    <div>
+      <h2>Opik Custom Dashboards: The mlx Project Gets a Live Health &amp; Quality View</h2>
+      <p>Can Opik itself turn the traces and judge scores into a dashboard we keep and version &mdash; no Grafana import needed? Yes. A 120-line idempotent script (<code>tools/opik_dashboards.py</code>) provisions a project-scoped dashboard for <code>mlx</code> &mdash; an Overview of latency p50/p90/p99, errors, tokens, cost and the feedback-score cards, plus six Trends time series including LLM spans broken down by model &mdash; with the two gotchas that only running it reveals: the self-hosted base URL needs an <code>/api</code> suffix (or nginx answers with the SPA&rsquo;s index.html), and every widget id must appear in its section&rsquo;s layout.</p>
+      <span class="tag">Opik</span><span class="tag">dashboards</span><span class="tag">feedback scores</span><span class="tag">create_dashboard</span><span class="tag">idempotent</span>
+    </div>
+  </a>
+  <a class="post" href="18-token-confidence-logprobs.html">
+    <div class="num n18">18</div>
+    <div>
+      <h2>The Sampler Doesn&rsquo;t Lie: Entropy, Perplexity and Confidence from Logprobs</h2>
+      <p>Every quality signal so far read the model&rsquo;s <em>text</em>, which means it fires after the model has already written something wrong. Logprobs read the <em>sampler</em>, and the sampler goes flat first. The blocker: <code>mlx_lm.server</code> returns logprobs on non-streaming responses only &mdash; and everything real here streams &mdash; so the proxy injects them upstream and strips them back out, and de-streams a sampled 5% of streaming requests to score real traffic at no extra GPU cost. Eight metrics, five alerts (including one that fires when scoring itself stops), a Grafana row that leads with coverage, and 39 tests proving tool calls survive the rewrite.</p>
+      <span class="tag">logprobs</span><span class="tag">perplexity</span><span class="tag">entropy</span><span class="tag">confidence</span><span class="tag">39 tests</span>
+    </div>
+  </a>
+  <a class="post" href="19-observability-telemetry-and-testing.html">
+    <div class="num n19">19</div>
+    <div>
+      <h2>Every Signal, One Map: Telemetry and Test Tooling in Tables</h2>
+      <p>The reference atlas &mdash; tabbed, so each concern gets its own panel. Metrics: five Prometheus exporters scraped by VictoriaMetrics every 10s (36 families on the proxy alone, from TTFT to the post-18 confidence set). Logs: two producers pushing OTLP to one collector and a durable JSONL tail. Traces: one span fanned out to the collector and Opik, with three in-band feedback scores plus a three-score judge loop. Alerts: 46 rules to Alertmanager and webhooks, ten Grafana dashboards (including the new SRE, HTTP, call-type, model and tool-call dashboards). Tests: the four load-test rigs against the proxy, the 40 unit tests behind the stub-upstream rewrite path &mdash; and every file with the configuration value that makes it run.</p>
+      <span class="tag">telemetry map</span><span class="tag">tabs</span><span class="tag">metrics</span><span class="tag">logs</span><span class="tag">traces</span><span class="tag">load tests</span><span class="tag">configs</span>
+    </div>
+  </a>
+  <a class="post" href="20-k8s-grafana-data-path.html">
+    <div class="num n20">20</div>
+    <div>
+      <h2>The Same Dashboards, Any Grafana: Shipping mlx-oc Data to the k8s Stack</h2>
+      <p>Three disjoint problems &mdash; metrics into a reachable VictoriaMetrics, dashboards as labeled ConfigMaps, and a matching datasource uid &mdash; and one SVG that shows all of them: the LAN exporters on the two Mac minis, VM as the only shared component, the kiwigrid sidecar that provisions the twelve dashboards from ConfigMaps in the monitoring namespace, and the vmalert &rarr; Alertmanager alert path that stays on the LAN. With the exact scrape config, the apply-dashboards.sh commands, and the six-things-must-be-true checklist.</p>
+      <span class="tag">k8s Grafana</span><span class="tag">sidecar</span><span class="tag">ConfigMap</span><span class="tag">SVG diagram</span><span class="tag">VictoriaMetrics</span>
+    </div>
+  </a>
+</main>
+<footer class="wrap">
+  mlx-oc &middot; a two-Mac-mini distributed MLX inference cluster with full observability &middot; <a href="../README.md">repo README</a>
+</footer>
+</body>
+</html>

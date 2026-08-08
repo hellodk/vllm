@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>19 — Every Signal, One Map: Telemetry and Test Tooling in Tables</title>
+<style>
+  :root{
+    --bg:#f7f7fa;--card:#ffffff;--ink:#1d1f2b;--muted:#5b6072;--line:#e5e7f0;
+    --accent:#4f46e5;--accent-soft:#eef0ff;--teal:#0f766e;--teal-soft:#e6f6f4;
+    --amber:#b45309;--amber-soft:#fef3d7;--pink:#db2777;--pink-soft:#fde8f1;
+    --code-bg:#f4f4f8;--radius:14px;
+    --shadow:0 1px 2px rgba(16,18,32,.06),0 8px 24px rgba(16,18,32,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;line-height:1.65;font-size:16px}
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px}
+  nav{position:sticky;top:0;z-index:10;background:rgba(247,247,250,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;gap:16px;overflow-x:auto;padding:12px 24px;font-size:13.5px}
+  nav a{color:var(--muted);text-decoration:none;white-space:nowrap}
+  nav a:hover{color:var(--accent)}
+  header.hero{padding:56px 0 36px;background:radial-gradient(1200px 420px at 80% -10%, rgba(79,70,229,.10), transparent 60%),radial-gradient(900px 380px at 10% -20%, rgba(15,118,110,.10), transparent 55%);border-bottom:1px solid var(--line)}
+  .kicker{display:inline-block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid #dfe1ff;padding:5px 12px;border-radius:999px}
+  h1{font-size:clamp(26px,4.5vw,38px);line-height:1.15;margin:18px 0 12px;letter-spacing:-.02em}
+  .sub{font-size:17px;color:var(--muted);max-width:720px}
+  .meta{margin-top:16px;font-size:13.5px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+  .meta b{color:var(--ink)}
+  main{padding:40px 0 80px}
+  section{padding:26px 0}
+  h2{font-size:24px;letter-spacing:-.01em;margin:8px 0 6px}
+  h2 .num{font-size:13px;font-weight:800;color:#fff;background:var(--accent);width:24px;height:24px;border-radius:7px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;margin-right:10px;transform:translateY(-2px)}
+  h3{font-size:18px;margin:24px 0 8px}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--code-bg);border:1px solid var(--line);padding:1px 6px;border-radius:6px;font-size:.86em;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  pre{background:var(--code-bg);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;overflow-x:auto;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.6;margin:14px 0}
+  pre code{background:none;border:none;padding:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 22px;margin:16px 0}
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:#f1f2fa;font-weight:700}
+  tr:nth-child(even) td{background:#fbfbfe}
+  .callout{display:flex;gap:12px;align-items:flex-start;border-radius:var(--radius);padding:14px 18px;margin:16px 0;font-size:15px}
+  .callout.warn{background:var(--amber-soft);border:1px solid #f4ddb3}
+  .callout.ok{background:var(--teal-soft);border:1px solid #c7e9e4}
+  .callout.info{background:#eef0ff;border:1px solid #c7d2fe}
+  .callout .ic{font-weight:800;line-height:1.4}
+  .pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:1px 9px;margin-right:4px}
+  .p0{background:#fde8f1;color:#9d174d;border:1px solid #fbcfe8}
+  .p1{background:#fef3d7;color:#92400e;border:1px solid #fde68a}
+  .p2{background:#e6f6f4;color:#065f46;border:1px solid #a7f3d0}
+  /* --- tabs --- */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:22px 0 6px;padding:10px 0;position:sticky;top:52px;z-index:5;background:rgba(247,247,250,.94);backdrop-filter:blur(8px);border-radius:var(--radius)}
+  .tab{font-size:13px;font-weight:700;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 15px;cursor:pointer;transition:all .15s ease;font-family:inherit}
+  .tab:hover{color:var(--accent);border-color:#c7d2fe}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .tabpane{display:none;padding-top:6px}
+  .tabpane.active{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  /* --- animated flow diagrams --- */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin:20px 0;overflow:hidden}
+  .diagram .cap{font-size:11.5px;letter-spacing:.10em;text-transform:uppercase;font-weight:700;color:var(--muted);padding:12px 18px;border-bottom:1px solid var(--line);background:#fbfbfe}
+  .diagram svg{display:block;width:100%;height:auto;padding:6px 0}
+  .dbox{fill:#fff;stroke:#c7d2fe;stroke-width:1.5;rx:10}
+  .dbox span,.dbox tspan{fill:#1d1f2b}
+  .dbox .port{fill:#4f46e5}
+  .dflow{fill:none;stroke:#818cf8;stroke-width:2}
+  .dflow.idle{stroke:#c7cbd9;stroke-dasharray:5 4}
+  .dot{fill:#db2777}
+  .dot2{fill:#0f766e}
+  .label{font-size:11.5px;fill:#5b6072;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif}
+  .bigname{font-size:12.5px;fill:#1d1f2b;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif}
+  .portbadge{fill:#eef0ff;stroke:#c7d2fe;stroke-width:1}
+  .porttext{font-size:10px;fill:#4f46e5;font-weight:700;font-family:ui-monospace,Menlo,monospace}
+  footer{border-top:1px solid var(--line);padding:26px 0 48px;color:var(--muted);font-size:13.5px}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <a href="index.html">&larr; All posts</a>
+  <a href="1-hardware-telemetry.html">Hardware</a>
+  <a href="2-alerting.html">Alerting</a>
+  <a href="3-dashboards.html">Dashboards</a>
+  <a href="4-observability-audit.html">Audit</a>
+  <a href="5-opik-llm-tracing.html">Opik</a>
+  <a href="6-opik-feedback-loop.html">Feedback</a>
+  <a href="7-mlx-inference-performance.html">Performance</a>
+  <a href="8-hydra-vs-mlx-oc.html">Hydra vs mlx-oc</a>
+  <a href="9-model-serving-resilience.html">Serving health</a>
+  <a href="10-opik-log-streaming.html">Server logs</a>
+  <a href="11-agentic-edge-cases.html">Edge cases</a>
+  <a href="12-fault-error-restart-analysis.html">Fault ledger</a>
+  <a href="13-agentic-forensics.html">Agentic forensics</a>
+  <a href="14-recommendations-decision.html">Decision ledger</a>
+  <a href="15-sglang-on-two-mac-minis.html">SGLang</a>
+  <a href="16-mlx-distributed-options-tuning.html">Distributed MLX</a>
+  <a href="17-opik-dashboards.html">Opik dashboards</a>
+  <a href="18-token-confidence-logprobs.html">Token confidence</a>
+  <a href="19-observability-telemetry-and-testing.html" style="color:var(--accent);font-weight:700">Telemetry &amp; tests</a>
+</div></nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">19 of 19 &middot; the atlas</span>
+    <h1>Every Signal, One Map: Telemetry and Test Tooling in Tables</h1>
+    <p class="sub">This stack generates a lot of artifacts &mdash; 36 metric families on the proxy alone, another 40-odd on four exporters, spans, log streams, feedback scores, and alerts. And it is tested with four different rigs. This post is the reference map: <em>what</em> is generated, <em>where</em> each thing goes, and <em>how</em> the load and unit tests run. Each section is a tab.</p>
+    <div class="meta">
+      <span><b>Exporters</b> 5 (Prometheus)</span>
+      <span><b>OTLP pushes</b> 3</span>
+      <span><b>Opik scores</b> 3 + 3 judge</span>
+      <span><b>Alerts</b> 46</span>
+      <span><b>Test rigs</b> 4 + 40 unit tests</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<div class="tabs" role="tablist">
+  <button class="tab active" data-tab="metrics">Metrics</button>
+  <button class="tab" data-tab="logs">Logs</button>
+  <button class="tab" data-tab="traces">Traces &amp; Opik</button>
+  <button class="tab" data-tab="alerts">Alerts &amp; Dashboards</button>
+  <button class="tab" data-tab="load">Load tests</button>
+  <button class="tab" data-tab="tests">Unit tests</button>
+  <button class="tab" data-tab="flow">Flow &amp; ports</button>
+  <button class="tab" data-tab="files">Files &amp; configs</button>
+</div>
+
+<!-- ============================ METRICS ============================ -->
+<section id="metrics" class="tabpane active">
+  <h2><span class="num">1</span>Metrics: five Prometheus exporters, scraped not pushed</h2>
+  <p>Every <code>mlx_*</code> metric is served as a Prometheus text endpoint and <b>scraped</b> by VictoriaMetrics every 10&nbsp;s &mdash; nothing is pushed over OTLP. That split was an explicit audit decision (post&nbsp;4): the OTLP metrics path was removed from the proxy so each series exists exactly once.</p>
+  <table>
+    <tr><th>Exporter</th><th>Port</th><th>What it reports (families)</th><th>Scraped at</th></tr>
+    <tr><td><code>mlx_metrics_proxy.py</code> (the inference front door)</td><td><code>:8080</code></td><td>36 <code>mlx_*</code> families &mdash; volume (<code>mlx_requests_total</code>, tokens), latency (<code>mlx_ttft_seconds</code>, <code>mlx_generation_seconds</code>, <code>mlx_token_rate_*</code> histograms), tool calls, finish reasons, temperature, hallucination heuristics (<code>mlx_hallucination_risk</code>, <code>mlx_heuristic_*</code>), context/KV gauges, model info (<code>mlx_model_info{attr}</code>, <code>mlx_model_arch</code>), and the confidence set (<code>mlx_output_perplexity</code>, <code>mlx_token_entropy_nats</code>, <code>mlx_token_confidence_*</code>, <code>mlx_token_margin_mean</code>, <code>mlx_low_confidence_*</code>, <code>mlx_confidence_scored_total{source}</code>); volume/errors/tokens/calls/finish/temperature/risk carry a <code>kind</code> label (<code>reasoning</code> when <code>enable_thinking</code> is set, else <code>chat</code>)</td><td><code>192.168.1.64:8080</code></td></tr>
+    <tr><td><code>mlx_hw_telemetry.py</code> (both nodes)</td><td><code>:9102</code></td><td>24 gauges &mdash; CPU/mem/disk/temp, GPU util/freq/power/mem, ANE &amp; package power, thermal, per-worker CPU/RSS</td><td><code>192.168.1.64:9102</code> (rank0), <code>10.0.0.2:9102</code> (rank1, over Ethernet)</td></tr>
+    <tr><td><code>mlx_kv_cache_agent.py</code></td><td><code>:9104</code></td><td><code>mlx_kv_cache_sequences/bytes{type}</code>, <code>mlx_kv_cache_utilization</code>, <code>mlx_context_*</code>, <code>mlx_kv_bytes_per_token</code>, <code>mlx_kv_est_bytes_max_context</code></td><td><code>192.168.1.64:9104</code></td></tr>
+    <tr><td><code>mlx_server_supervisor.py</code></td><td><code>:9105</code></td><td>Serving truth &mdash; <code>mlx_server_state/up/ready</code>, <code>mlx_model_loaded</code>, <code>mlx_server_restarts_total</code>, <code>mlx_server_crashes_total{reason}</code>, <code>mlx_server_uptime_seconds</code>, <code>mlx_server_health_checks_total{result}</code></td><td><code>192.168.1.64:9105</code></td></tr>
+    <tr><td><code>mlx_server_log_tailer.py</code></td><td><code>:9106</code></td><td>Log-pipeline health &mdash; <code>mlx_log_tailer_up</code>, <code>lines/shipped/dropped/errors</code>, <code>file_bytes</code>, <code>queue_depth</code></td><td><code>192.168.1.64:9106</code></td></tr>
+  </table>
+  <div class="callout info"><span class="ic">&#9432;</span><span>VM runs on this Mac (<code>victoria-metrics:8428</code> in compose). The rank1 scrape target was repointed to <code>10.0.0.2:9102</code> so node B is reachable over the direct Ethernet link even when the Wi-Fi segments are split.</span></div>
+  <h3>The proxy family detail</h3>
+  <p>The full 36-family set on <code>:8080/metrics</code> (labels in parentheses):</p>
+  <table>
+    <tr><th>Metric</th><th>Type</th><th>Meaning</th></tr>
+    <tr><td><code>mlx_requests_total</code> <span class="pill p2">model, streaming, kind</span></td><td>Counter</td><td>Completion requests (<code>kind</code> = <code>reasoning</code> when the caller sets <code>enable_thinking</code>, else <code>chat</code>)</td></tr>
+    <tr><td><code>mlx_tokens_prompt_total</code> / <code>mlx_tokens_completion_total</code> <span class="pill p2">kind</span></td><td>Counter</td><td>Token volume by call kind</td></tr>
+    <tr><td><code>mlx_ttft_seconds</code>, <code>mlx_generation_seconds</code>, <code>mlx_token_rate_tokens_per_second</code></td><td>Histogram</td><td>Latency + throughput</td></tr>
+    <tr><td><code>mlx_tool_calls_total</code> <span class="pill p2">kind, tool, type</span>, <code>mlx_finish_reason_total{reason, kind}</code></td><td>Counter</td><td>Agentic behaviour by call kind; <code>tool</code> is the function name, <code>type</code> the OpenAI call type (<code>function</code> / <code>code_interpreter</code> / &hellip;)</td></tr>
+    <tr><td><code>mlx_temperature</code> <span class="pill p2">kind</span>, <code>mlx_hallucination_risk</code> <span class="pill p2">kind</span>, <code>mlx_hallucination_risk_histogram</code>, <code>mlx_hallucination_flag_total</code></td><td>Gauge/Hist/Counter</td><td>Sampling + text heuristics</td></tr>
+    <tr><td><code>mlx_heuristic_repetition/_refusal/_hedging/_ungrounded</code></td><td>Gauge</td><td>Individual heuristic scores</td></tr>
+    <tr><td><code>mlx_up</code>, <code>mlx_in_flight</code>, <code>mlx_error_total{status, kind}</code></td><td>Gauge/Counter</td><td>Liveness + errors by status class and call kind</td></tr>
+    <tr><td><code>mlx_context_length_max_tokens</code>, <code>mlx_context_used_tokens</code>, <code>mlx_context_utilization</code>, <code>mlx_kv_bytes_per_token</code></td><td>Gauge</td><td>Context window + KV cache footprint</td></tr>
+    <tr><td><code>mlx_model_info{attr}</code>, <code>mlx_model_arch{arch, dtype}</code></td><td>Gauge</td><td>Static architecture facts from <code>config.json</code>: layers, KV heads, head dim, hidden size, attention heads, vocab, FFN intermediate, quant bits/group size (feeds the MLX Model dashboard)</td></tr>
+    <tr><td><code>mlx_output_perplexity</code> <span class="pill p2">+histogram</span>, <code>mlx_token_entropy_nats</code> <span class="pill p2">+histogram</span></td><td>Gauge</td><td>Sampler-flatness signals</td></tr>
+    <tr><td><code>mlx_token_confidence_mean/_min/_std</code>, <code>mlx_token_margin_mean</code>, <code>mlx_low_confidence_token_ratio</code></td><td>Gauge</td><td>Token confidence (post&nbsp;18)</td></tr>
+    <tr><td><code>mlx_confidence_scored_total{source}</code>, <code>mlx_low_confidence_response_total</code></td><td>Counter</td><td>Scoring coverage + low-confidence responses</td></tr>
+  </table>
+</section>
+
+<!-- ============================ LOGS ============================ -->
+<section id="logs" class="tabpane">
+  <h2><span class="num">2</span>Logs: two producers, one collector, a durable JSONL tail</h2>
+  <table>
+    <tr><th>Producer</th><th>Origin</th><th>How it leaves the host</th><th>Destination</th></tr>
+    <tr><td><code>mlx_server_log_tailer.py</code> (:9106)</td><td><code>cluster/logs/server.log</code> &mdash; the live <code>mlx_lm.server</code> log (ring, GPU, rank, generation lines; HTTP access lines excluded by default)</td><td>OTLP HTTP &rarr; <code>192.168.1.64:4318/v1/logs</code>, classified with attrs <code>mlx.log.severity/category/source/project</code>, header <code>projectName: mlx</code>, rate-limited 50 lines/s</td><td>otel-collector <code>logs</code> pipeline &rarr; durable JSONL at <code>/var/log/otelcol/mlx-server-logs.jsonl</code> (50&nbsp;MB &times; 5 backups) + debug stdout</td></tr>
+    <tr><td>proxy <code>mlx.proxy.http</code> logger</td><td>One access-log line per request</td><td>OTLP HTTP &rarr; same collector <code>/v1/logs</code> (only when <code>--otlp-endpoint</code> is set)</td><td>same JSONL file</td></tr>
+  </table>
+  <p>Local, unbuffered logs for operators (rotated by the stack, not shipped):</p>
+  <table>
+    <tr><th>File</th><th>Writes</th></tr>
+    <tr><td><code>cluster/logs/server.log</code></td><td><code>mlx_lm.server</code> / ring output (tailer also watches this)</td></tr>
+    <tr><td><code>cluster/logs/proxy.log</code>, <code>supervisor.log</code>, <code>hw0.log</code>/<code>hw1.log</code>, <code>kvagent.log</code>, <code>logtailer.log</code>, <code>bootstrap.log</code></td><td>Each component, plus the start script&rsquo;s own action log</td></tr>
+  </table>
+  <div class="callout warn"><span class="ic">&#9888;</span><span>The collector&rsquo;s <code>traces</code> pipeline only prints to debug. Durable trace storage lives in Opik (next tab); the JSONL log file is the only long-lived artifact the collector itself keeps.</span></div>
+</section>
+
+<!-- ============================ TRACES & OPIK ============================ -->
+<section id="traces" class="tabpane">
+  <h2><span class="num">3</span>Traces: one span, three sinks &mdash; and Opik&rsquo;s feedback loop</h2>
+  <p>The proxy creates one span <code>mlx.chat.completions</code> (tracer <code>mlx.proxy</code>) per request and stamps it as it passes through:</p>
+  <table>
+    <tr><th>Phase</th><th>Attributes</th></tr>
+    <tr><td>Request start</td><td><code>http.request.method</code>, <code>url.path</code>, <code>mlx.model</code>, <code>mlx.streaming</code>, <code>mlx.temperature</code>, <code>mlx.tools_provided</code></td></tr>
+    <tr><td>Completion</td><td><code>mlx.ttft_seconds</code>, <code>mlx.gen_seconds</code>, <code>mlx.tokens_prompt/completion</code>, <code>mlx.tool_calls</code>, <code>mlx.hallucination_risk</code>, <code>mlx.hallucination_flagged</code>, <code>http.response.status_code</code></td></tr>
+    <tr><td>Confidence (only when scored)</td><td><code>mlx.logprobs_source</code>, <code>mlx.perplexity</code>, <code>mlx.token_entropy</code>, <code>mlx.confidence_mean</code>, <code>mlx.confidence_min</code>, <code>mlx.low_confidence_token_ratio</code></td></tr>
+    <tr><td>OpenInference (only with <code>--opik-otlp-endpoint</code>)</td><td><code>openinference.span.kind</code>=LLM, <code>input.value</code>, <code>llm.model_name</code>, <code>llm.token_count.*</code>, <code>metadata</code> JSON (incl. <code>_conf_metadata</code>: scored_tokens, confidence_std, token_margin_mean, &hellip;)</td></tr>
+  </table>
+  <h3>Where the span goes</h3>
+  <table>
+    <tr><th>Sink</th><th>Address</th><th>Contents</th></tr>
+    <tr><td>otel-collector traces</td><td><code>192.168.1.64:4318/v1/traces</code> (gRPC <code>:4317</code> also open)</td><td>debug/stdout only</td></tr>
+    <tr><td>Opik OTLP ingestion</td><td><code>192.168.1.10:32173/api/v1/private/otel/v1/traces</code>, header <code>projectName: mlx</code></td><td>the same span with OpenInference attrs &mdash; this is what populates the <code>mlx</code> project</td></tr>
+    <tr><td>Opik SDK (when <code>OPIK_ENDPOINT</code> set)</td><td><code>192.168.1.10:32173/api</code></td><td>trace + LLM span, plus in-band feedback scores</td></tr>
+  </table>
+  <h3>Feedback scores (written by the proxy, in-band)</h3>
+  <table>
+    <tr><th>Score</th><th>Value</th><th>Category</th></tr>
+    <tr><td><code>hallucination_quality</code></td><td><code>1.0 - risk</code></td><td>quality</td></tr>
+    <tr><td><code>hallucination_flagged</code></td><td><code>0.0</code> if flagged else <code>1.0</code></td><td>safety</td></tr>
+    <tr><td><code>token_confidence</code></td><td><code>confidence_mean</code> (only when scored)</td><td>quality</td></tr>
+  </table>
+  <h3>The judge loop (post 6) &mdash; <code>cluster/opik_evaluator.py</code></h3>
+  <table>
+    <tr><th>Step</th><th>How</th></tr>
+    <tr><td>Read</td><td><code>GET 192.168.1.10:32173/api/v1/private/traces?&hellip;</code></td></tr>
+    <tr><td>Judge</td><td>LLM-as-judge &mdash; the judge model is the cluster proxy itself at <code>127.0.0.1:8080/v1</code></td></tr>
+    <tr><td>Write</td><td><code>PUT 192.168.1.10:32173/api/v1/private/traces/feedback-scores</code> with <code>correctness</code>, <code>helpfulness</code>, <code>hallucination_free</code></td></tr>
+  </table>
+  <p>Opik dashboards (<code>tools/opik_dashboards.py</code>) turn the traces + judge scores into a project-scoped &ldquo;mlx: serving health &amp; quality&rdquo; view at the same base URL (post&nbsp;17).</p>
+</section>
+
+<!-- ============================ ALERTS & DASHBOARDS ============================ -->
+<section id="alerts" class="tabpane">
+  <h2><span class="num">4</span>Alerts &amp; Dashboards: 46 rules to a webhook, ten dashboards to Grafana</h2>
+  <table>
+    <tr><th>Stage</th><th>Component</th><th>How</th></tr>
+    <tr><td>Rules</td><td>vmalert (<code>:8880</code>)</td><td>46 rules in 6 groups &mdash; <code>mlx-hardware</code> (15), <code>mlx-serving</code> (8), <code>mlx-inference</code> (7), <code>mlx-quality</code> (6), <code>mlx-confidence</code> (5, post&nbsp;18), <code>mlx-slo</code> (5: burn-rate + budget alerts for the SLOs on the SRE dashboard)</td></tr>
+    <tr><td>Evaluation</td><td>vmalert &rarr; VM</td><td>queries <code>victoria-metrics:8428</code>, writes <code>ALERTS</code> series back via remote-write</td></tr>
+    <tr><td>Routing</td><td>Alertmanager (<code>:9093</code>)</td><td><code>critical</code> &rarr; <code>host.containers.internal:9000/hooks/oncall</code>; everything else &rarr; <code>.../hooks/alert</code>; inhibit rules (e.g. ProxyDown silences UpstreamDown)</td></tr>
+    <tr><td>Dashboards</td><td>Grafana (<code>:3000</code>)</td><td>10 provisioned: MLX Cluster (50 panels), MLX Performance (29), MLX GPU &amp; Power (17), MLX Node (33), MLX Alerts &amp; Serving Health (28), + MLX SRE (SLI/SLA/SLO/error budget), MLX HTTP Requests (20), MLX Call Types (21, reasoning vs chat incl. tool breakdown), MLX Model (25, architecture dims), MLX Tool Calls (14, dynamic tool usage); datasource <code>victoria-metrics:8428</code></td></tr>
+  </table>
+  <div class="callout ok"><span class="ic">&#10003;</span><span>Every confidence alert is gated on <code>mlx_confidence_scored_total &gt; 0</code>, and <code>MLXConfidenceScoringStopped</code> fires when traffic flows but nothing is scored &mdash; so &ldquo;blind&rdquo; and &ldquo;healthy&rdquo; never look identical (post&nbsp;18).</span></div>
+</section>
+
+<!-- ============================ LOAD TESTS ============================ -->
+<section id="load" class="tabpane">
+  <h2><span class="num">5</span>Load tests: four rigs, all against the proxy</h2>
+  <p>Every bench tool targets the <b>proxy</b> (<code>127.0.0.1:8080/v1/chat/completions</code>), streams by default, uses <code>temperature: 0.0</code>, and sends <code>X-Mlx-Trace: 1</code> so every request lands in Opik. Concurrency is thread-based (stdlib <code>urllib</code> + thread pools), never async.</p>
+  <table>
+    <tr><th>Rig</th><th>Measures</th><th>How it runs</th><th>Output</th></tr>
+    <tr><td><code>tools/bench.py</code></td><td>Streaming TTFT, generation time, tok/s per request</td><td>Prompt matrix (short/medium/long) or one fixed-concurrency burst; <code>--iters</code>, <code>--concurrency</code></td><td>table + optional <code>--json</code></td></tr>
+    <tr><td><code>tools/bench_load.py</code> <span class="pill p2">main rig</span></td><td>TTFT/latency/tps p50-95-99, throughput tok/s, error rate</td><td><code>--sweep</code> ramps concurrency 1&rarr;2&rarr;4&rarr;8&rarr;16; <code>--sustain N</code> soaks while snapshotting <code>:9102</code>/<code>:9104</code>/<code>:9105</code> every interval; <code>--profile</code> stream on/off &times; prompt size. <code>--duration</code>/<code>--settle</code> control each level</td><td>JSON report &rarr; <code>tools/bench-reports/{label}-{ts}.json</code></td></tr>
+    <tr><td><code>tools/bench_agentic.py</code></td><td>Turns, per-turn TTFT, wall time, tool-call validity, completion-in-budget</td><td>Scenarios <code>calculator</code>/<code>tri_tool</code>/<code>planner</code> against a deterministic stub tool registry; streaming chat with <code>tools</code>; full transcript re-sent each turn; <code>--runs</code> &times; <code>--agents</code> concurrent loops</td><td>JSON report &rarr; <code>tools/bench-reports/</code></td></tr>
+    <tr><td><code>tools/smoke.py</code></td><td>Ring init + <code>all_sum</code> correctness across ranks</td><td>Runs <code>mlx.core</code> on the cluster nodes directly (not HTTP); <code>--backend ring</code></td><td>console</td></tr>
+  </table>
+  <h3>How a load run actually works</h3>
+  <ul>
+    <li>Each concurrency level spawns N worker threads that loop <code>run_one()</code> until a <code>stop</code> event fires after <code>--duration</code> seconds.</li>
+    <li>Each <code>run_one</code> returns per-request <code>ttft</code>, <code>total</code>, <code>gen_time</code>, <code>comp_tokens</code>, <code>tps</code>, ok/error &mdash; aggregated into percentiles and error rate.</li>
+    <li>Results are correlated against VM-scraped cluster metrics (GPU mem, KV util, supervisor state) snapshotted during <code>--sustain</code>.</li>
+    <li>No RPS controller &mdash; workers fire as fast as they can; there is no rate limiter or think time (documented gap, ghz/k6/locust are drop-in options).</li>
+  </ul>
+  <h3>Measured results (from the blogs)</h3>
+  <table>
+    <tr><th>Finding</th><th>Source</th></tr>
+    <tr><td>2-node ring is ~3&times; slower than single node at 1.7B scale (ring collectives dominate): short prompt 0.8&nbsp;s/65&nbsp;tok/s single vs 2.4&nbsp;s/~18&nbsp;tok/s ring</td><td>README Benchmarks</td></tr>
+    <tr><td>Peak ring throughput ~28 tok/s at concurrency 4; TTFT degrades linearly as it saturates</td><td>post&nbsp;9</td></tr>
+    <tr><td>18-request burst: TTFT p50 0.38&nbsp;s / p95 0.91&nbsp;s, ~8.8 decode tok/s</td><td>post&nbsp;7</td></tr>
+    <tr><td>Agentic: calculator 5 turns/4 calls 100% valid; tri_tool 2 turns/3 calls; planner 0 tool calls; 2 concurrent agents crashed the server</td><td>post&nbsp;9</td></tr>
+    <tr><td>Confidence layer: &ldquo;what is 2+2&rdquo; ppl 1.00 / conf_min 1.00 vs obscure factual ppl 1.41 / conf_min 0.119</td><td>post&nbsp;18</td></tr>
+  </table>
+</section>
+
+<!-- ============================ UNIT TESTS ============================ -->
+<section id="tests" class="tabpane">
+  <h2><span class="num">6</span>Unit &amp; integration tests: 40, in the repo venv</h2>
+  <p>Run with <code>.venv/bin/python -m pytest tests/ -q</code> (Python 3.14 venv at repo root; both modules import <code>mlx_metrics_proxy</code> directly, no network needed for the confidence tests).</p>
+  <table>
+    <tr><th>File</th><th>Tests</th><th>What it proves</th></tr>
+    <tr><td><code>tests/test_confidence.py</code></td><td>30 pure unit</td><td>perplexity, renormalised top-k entropy (lower-bound), top-2 margin, <code>confidence_stats</code>, <code>score_confidence</code> incl. malformed-input tolerance, <code>strip_logprobs</code>/<code>choice_logprobs</code>, SSE-frame synthesis round-trips (content, tool calls, identity fields), <code>_conf_metadata</code></td></tr>
+    <tr><td><code>tests/test_proxy_rewrite.py</code></td><td>10 e2e</td><td>against a <code>StubUpstream</code> that mirrors <code>mlx_lm.server</code> (logprobs on non-streaming only, SSE + <code>[DONE]</code> + connection-close framing, optional tool calls, configurable error status). The proxy runs <b>in-process</b> on an ephemeral port; real HTTP drives it. Verifies: logprobs injected upstream but stripped for the client with matching Content-Length, client-requested logprobs pass through, injection disable, tool calls survive the strip, upstream 503 passthrough, streaming untouched when sampling off, de-streamed requests still parse as SSE, de-streamed tool calls reach the client, and de-streamed requests record <b>no TTFT</b>. Metrics are read back from the in-process proxy&rsquo;s <code>/metrics</code>.</td></tr>
+  </table>
+  <div class="callout info"><span class="ic">&#9432;</span><span>The bench tools themselves are not unit-tested &mdash; only the proxy&rsquo;s confidence/rewrite layer is. The stub upstream is the trick that makes the whole injection/de-streaming path testable without a GPU.</span></div>
+</section>
+
+<!-- ============================ FLOW & PORTS ============================ -->
+<section id="flow" class="tabpane">
+  <h2><span class="num">7</span>Flow &amp; ports: how it all moves</h2>
+  <p>The four data paths in pictures. Moving dots are live traffic; dashed lines are idle by design.</p>
+
+  <div class="diagram">
+    <div class="cap">Metrics &mdash; five exporters scraped by VictoriaMetrics every 10&nbsp;s</div>
+    <svg viewBox="0 0 760 330" role="img" aria-label="Metrics scrape flow">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#818cf8"/></marker>
+      </defs>
+      <g font-family="inherit">
+        <rect class="dbox" x="20" y="28" width="250" height="42"/>
+        <text class="bigname" x="30" y="45">mlx_metrics_proxy</text>
+        <text class="label" x="30" y="61">36 mlx_* families &middot; hallucination + confidence</text>
+        <rect class="portbadge" x="225" y="34" width="36" height="16" rx="8"/><text class="porttext" x="231" y="46">8080</text>
+
+        <rect class="dbox" x="20" y="88" width="250" height="42"/>
+        <text class="bigname" x="30" y="105">mlx_hw_telemetry</text>
+        <text class="label" x="30" y="121">GPU / CPU / mem / power &mdash; rank0 + rank1</text>
+        <rect class="portbadge" x="225" y="94" width="36" height="16" rx="8"/><text class="porttext" x="231" y="106">9102</text>
+
+        <rect class="dbox" x="20" y="148" width="250" height="42"/>
+        <text class="bigname" x="30" y="165">mlx_kv_cache_agent</text>
+        <text class="label" x="30" y="181">KV cache + context-window gauges</text>
+        <rect class="portbadge" x="225" y="154" width="36" height="16" rx="8"/><text class="porttext" x="231" y="166">9104</text>
+
+        <rect class="dbox" x="20" y="208" width="250" height="42"/>
+        <text class="bigname" x="30" y="225">mlx_server_supervisor</text>
+        <text class="label" x="30" y="241">serving state / restarts / crash reasons</text>
+        <rect class="portbadge" x="225" y="214" width="36" height="16" rx="8"/><text class="porttext" x="231" y="226">9105</text>
+
+        <rect class="dbox" x="20" y="268" width="250" height="42"/>
+        <text class="bigname" x="30" y="285">mlx_server_log_tailer</text>
+        <text class="label" x="30" y="301">log-pipeline health counters</text>
+        <rect class="portbadge" x="225" y="274" width="36" height="16" rx="8"/><text class="porttext" x="231" y="286">9106</text>
+
+        <rect class="dbox" x="520" y="135" width="215" height="60" stroke="#0f766e"/>
+        <text class="bigname" x="530" y="158">VictoriaMetrics</text>
+        <text class="label" x="530" y="174">scrape every 10&nbsp;s &rarr; TSDB (30&nbsp;d)</text>
+        <rect class="portbadge" x="678" y="142" width="48" height="16" rx="8" stroke="#0f766e"/><text class="porttext" x="681" y="154" fill="#0f766e">8428</text>
+      </g>
+      <path class="dflow" id="p1" d="M270,49 C390,49 400,165 515,165"/>
+      <path class="dflow" id="p2" d="M270,109 C390,109 400,165 515,165"/>
+      <path class="dflow" id="p3" d="M270,169 C390,169 400,165 515,165"/>
+      <path class="dflow" id="p4" d="M270,229 C390,229 400,165 515,165"/>
+      <path class="dflow" id="p5" d="M270,289 C390,289 400,165 515,165"/>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" repeatCount="indefinite"><mpath href="#p1"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" begin=".6s" repeatCount="indefinite"><mpath href="#p2"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" begin="1.2s" repeatCount="indefinite"><mpath href="#p3"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" begin="1.8s" repeatCount="indefinite"><mpath href="#p4"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" begin="2.4s" repeatCount="indefinite"><mpath href="#p5"/></animateMotion></circle></g>
+    </svg>
+  </div>
+
+  <div class="diagram">
+    <div class="cap">Logs &mdash; OTLP HTTP push to the collector, then a durable JSONL tail</div>
+    <svg viewBox="0 0 760 300" role="img" aria-label="Log flow">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#818cf8"/></marker>
+      </defs>
+      <g font-family="inherit">
+        <rect class="dbox" x="20" y="50" width="260" height="44"/>
+        <text class="bigname" x="30" y="68">mlx_server_log_tailer</text>
+        <text class="label" x="30" y="84">server.log &rarr; classified lines, 50/s</text>
+        <rect class="portbadge" x="232" y="58" width="36" height="16" rx="8"/><text class="porttext" x="238" y="70">9106</text>
+
+        <rect class="dbox" x="20" y="150" width="260" height="44"/>
+        <text class="bigname" x="30" y="168">mlx_metrics_proxy</text>
+        <text class="label" x="30" y="184">one access-log line per request</text>
+        <rect class="portbadge" x="232" y="158" width="36" height="16" rx="8"/><text class="porttext" x="238" y="170">8080</text>
+
+        <rect class="dbox" x="430" y="95" width="210" height="54" stroke="#0f766e"/>
+        <text class="bigname" x="440" y="114">otel-collector</text>
+        <text class="label" x="440" y="130">OTLP HTTP :4318 / gRPC :4317</text>
+        <rect class="portbadge" x="596" y="102" width="36" height="16" rx="8" stroke="#0f766e"/><text class="porttext" x="602" y="114" fill="#0f766e">4318</text>
+
+        <rect class="dbox" x="430" y="210" width="250" height="50"/>
+        <text class="bigname" x="440" y="230">durable JSONL</text>
+        <text class="label" x="440" y="246">/var/log/otelcol/mlx-server-logs.jsonl</text>
+        <text class="label" x="440" y="258">50 MB &times; 5 rotations</text>
+
+        <rect class="dbox" x="430" y="20" width="210" height="44"/>
+        <text class="bigname" x="440" y="38">VictoriaMetrics</text>
+        <text class="label" x="440" y="54">metrics remote-write (idle)</text>
+        <rect class="portbadge" x="596" y="28" width="36" height="16" rx="8"/><text class="porttext" x="602" y="40">8428</text>
+      </g>
+      <path class="dflow" id="l1" d="M280,72 C350,72 360,118 425,122"/>
+      <path class="dflow" id="l2" d="M280,172 C350,172 360,148 425,132"/>
+      <path class="dflow" id="l3" d="M545,149 C545,170 545,182 545,205"/>
+      <path class="dflow idle" id="l4" d="M540,95 C540,72 540,62 540,52"/>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" repeatCount="indefinite"><mpath href="#l1"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3.4s" begin=".5s" repeatCount="indefinite"><mpath href="#l2"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="2.6s" begin="1s" repeatCount="indefinite"><mpath href="#l3"/></animateMotion></circle></g>
+      <text class="label" x="600" y="160">logs pipeline</text>
+      <text class="label" x="560" y="90">metrics pipeline</text>
+    </svg>
+  </div>
+
+  <div class="diagram">
+    <div class="cap">Traces &amp; Opik &mdash; one span, three sinks, and the judge loop</div>
+    <svg viewBox="0 0 760 380" role="img" aria-label="Trace and Opik flow">
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#818cf8"/></marker>
+      </defs>
+      <g font-family="inherit">
+        <rect class="dbox" x="20" y="140" width="260" height="52"/>
+        <text class="bigname" x="30" y="158">mlx_metrics_proxy</text>
+        <text class="label" x="30" y="174">span mlx.chat.completions</text>
+        <text class="label" x="30" y="186">+ 3 in-band feedback scores</text>
+        <rect class="portbadge" x="232" y="146" width="36" height="16" rx="8"/><text class="porttext" x="238" y="158">8080</text>
+
+        <rect class="dbox" x="520" y="20" width="215" height="44"/>
+        <text class="bigname" x="530" y="38">otel-collector</text>
+        <text class="label" x="530" y="54">traces &rarr; debug stdout</text>
+        <rect class="portbadge" x="678" y="28" width="36" height="16" rx="8"/><text class="porttext" x="684" y="40">4318</text>
+
+        <rect class="dbox" x="520" y="110" width="215" height="56"/>
+        <text class="bigname" x="530" y="128">Opik &middot; OTLP ingestion</text>
+        <text class="label" x="530" y="144">/api/v1/private/otel/v1/traces</text>
+        <text class="label" x="530" y="158">project &ldquo;mlx&rdquo; (OpenInference attrs)</text>
+        <rect class="portbadge" x="678" y="118" width="48" height="16" rx="8"/><text class="porttext" x="681" y="130">32173</text>
+
+        <rect class="dbox" x="520" y="220" width="215" height="56"/>
+        <text class="bigname" x="530" y="238">Opik &middot; SDK</text>
+        <text class="label" x="530" y="254">/api &mdash; trace + LLM span</text>
+        <text class="label" x="530" y="268">feedback scores flush here</text>
+        <rect class="portbadge" x="678" y="228" width="48" height="16" rx="8"/><text class="porttext" x="681" y="240">32173</text>
+
+        <rect class="dbox" x="270" y="322" width="250" height="46"/>
+        <text class="bigname" x="280" y="340">cluster/opik_evaluator.py</text>
+        <text class="label" x="280" y="356">judge = the proxy itself</text>
+      </g>
+      <path class="dflow" id="t1" d="M280,155 C380,155 430,42 515,42"/>
+      <path class="dflow" id="t2" d="M280,168 C380,168 430,138 515,138"/>
+      <path class="dflow" id="t3" d="M280,181 C380,181 430,248 515,248"/>
+      <path class="dflow" id="t4" d="M270,345 C140,345 120,170 20,170"/>
+      <path class="dflow" id="t5" d="M520,345 C640,345 650,280 520,268"/>
+      <path class="dflow" id="t6" d="M520,330 C650,330 660,168 520,166"/>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" repeatCount="indefinite"><mpath href="#t1"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3.2s" begin=".4s" repeatCount="indefinite"><mpath href="#t2"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3.4s" begin=".8s" repeatCount="indefinite"><mpath href="#t3"/></animateMotion></circle></g>
+      <g><circle class="dot2" r="5"><animateMotion dur="4s" begin="1.2s" repeatCount="indefinite"><mpath href="#t4"/></animateMotion></circle></g>
+      <g><circle class="dot2" r="5"><animateMotion dur="4s" begin="1.6s" repeatCount="indefinite"><mpath href="#t5"/></animateMotion></circle></g>
+      <g><circle class="dot2" r="5"><animateMotion dur="4s" begin="2s" repeatCount="indefinite"><mpath href="#t6"/></animateMotion></circle></g>
+      <text class="label" x="300" y="115">spans</text>
+      <text class="label" x="350" y="300">read traces / write correctness &middot; helpfulness &middot; hallucination_free</text>
+      <text class="label" x="140" y="230">judge calls</text>
+    </svg>
+  </div>
+
+  <div class="diagram">
+    <div class="cap">Alerts &amp; dashboards &mdash; 46 rules to a webhook, ten dashboards to Grafana</div>
+    <svg viewBox="0 0 760 300" role="img" aria-label="Alert and dashboard flow">
+      <defs>
+        <marker id="ar4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#818cf8"/></marker>
+      </defs>
+      <g font-family="inherit">
+        <rect class="dbox" x="20" y="25" width="200" height="44"/>
+        <text class="bigname" x="30" y="43">Grafana</text>
+        <text class="label" x="30" y="59">10 dashboards &middot; 255 panels</text>
+        <rect class="portbadge" x="176" y="33" width="36" height="16" rx="8"/><text class="porttext" x="182" y="45">3000</text>
+
+        <rect class="dbox" x="300" y="100" width="190" height="50" stroke="#0f766e"/>
+        <text class="bigname" x="310" y="120">VictoriaMetrics</text>
+        <text class="label" x="310" y="136">query + ALERTS store</text>
+        <rect class="portbadge" x="436" y="108" width="48" height="16" rx="8" stroke="#0f766e"/><text class="porttext" x="439" y="120" fill="#0f766e">8428</text>
+
+        <rect class="dbox" x="20" y="185" width="200" height="44"/>
+        <text class="bigname" x="30" y="203">vmalert</text>
+        <text class="label" x="30" y="219">46 rules &middot; 6 groups</text>
+        <rect class="portbadge" x="176" y="193" width="36" height="16" rx="8"/><text class="porttext" x="182" y="205">8880</text>
+
+        <rect class="dbox" x="520" y="185" width="215" height="44"/>
+        <text class="bigname" x="530" y="203">Alertmanager</text>
+        <text class="label" x="530" y="219">inhibit rules &middot; routing</text>
+        <rect class="portbadge" x="678" y="193" width="36" height="16" rx="8"/><text class="porttext" x="684" y="205">9093</text>
+
+        <rect class="dbox" x="520" y="25" width="215" height="50"/>
+        <text class="bigname" x="530" y="43">webhook target</text>
+        <text class="label" x="530" y="59">host.containers.internal:9000</text>
+        <text class="label" x="530" y="71">/hooks/oncall (critical) &middot; /hooks/alert</text>
+        <rect class="portbadge" x="678" y="33" width="48" height="16" rx="8"/><text class="porttext" x="681" y="45">9000</text>
+      </g>
+      <path class="dflow" id="a1" d="M220,47 C260,47 270,115 295,125"/>
+      <path class="dflow" id="a2" d="M220,207 C260,207 270,150 295,138"/>
+      <path class="dflow idle" id="a3" d="M495,150 C430,150 320,205 225,205"/>
+      <path class="dflow" id="a4" d="M220,207 C300,207 400,207 515,207"/>
+      <path class="dflow" id="a5" d="M520,185 C520,140 520,115 520,80"/>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" repeatCount="indefinite"><mpath href="#a1"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3.4s" begin=".5s" repeatCount="indefinite"><mpath href="#a2"/></animateMotion></circle></g>
+      <g><circle class="dot2" r="5"><animateMotion dur="4s" begin="1s" repeatCount="indefinite"><mpath href="#a3"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="3s" begin="1.4s" repeatCount="indefinite"><mpath href="#a4"/></animateMotion></circle></g>
+      <g><circle class="dot" r="5"><animateMotion dur="2.8s" begin="1.9s" repeatCount="indefinite"><mpath href="#a5"/></animateMotion></circle></g>
+      <text class="label" x="330" y="95">queries</text>
+      <text class="label" x="420" y="125">ALERTS</text>
+      <text class="label" x="360" y="200">fired alerts</text>
+    </svg>
+  </div>
+
+  <div class="callout info"><span class="ic">&#9432;</span><span>Pink dots are forward traffic (scrape, push, fire); teal dots are loopback/return (judge calls, ALERTS remote-write). Dashed gray = deliberately idle: the collector&rsquo;s metrics remote-write is unused because the proxy exports no OTLP metrics (post&nbsp;4 audit).</span></div>
+</section>
+
+<!-- ============================ FILES & CONFIGS ============================ -->
+<section id="files" class="tabpane">
+  <h2><span class="num">7</span>Files &amp; configurations: where everything lives</h2>
+  <table>
+    <tr><th>File</th><th>Role</th><th>Key configuration</th></tr>
+    <tr><td><code>cluster/cluster.env</code></td><td>Single source of truth for the model + knobs</td><td><code>MLX_MODEL=mlx-community/Qwen3.5-4B-MLX-8bit</code>, <code>MLX_DEFAULT_TEMP=0.0</code>, <code>MLX_LOGPROBS=3</code>, <code>MLX_LOGPROBS_STREAM_SAMPLE=0.05</code>, <code>MLX_LOW_CONFIDENCE=0.5</code></td></tr>
+    <tr><td><code>cluster/start_server.sh</code></td><td>Start/stop/status; wires flags + endpoints</td><td>Ports <code>:8081</code> server, <code>:8080</code> proxy, <code>:9102/9104/9105/9106</code> agents; <code>OTLP=192.168.1.64:4318</code>, <code>OPIK_OTLP=192.168.1.10:32173/api/v1/private/otel</code>, <code>RANK1=10.0.0.2</code> (Ethernet)</td></tr>
+    <tr><td><code>cluster/hosts.json</code></td><td>Ring hostfile</td><td>rank0 <code>ssh 127.0.0.1</code> / <code>ips 10.0.0.1</code>; rank1 <code>ssh 10.0.0.2</code> / <code>ips 10.0.0.2</code></td></tr>
+    <tr><td><code>cluster/mlx_metrics_proxy.py</code></td><td>Public OpenAI API + metrics + spans + scores</td><td>36 metric families; <code>kind</code> label (reasoning vs chat); span attrs; 3 in-band feedback scores; flags <code>--otlp-endpoint</code>/<code>--opik-otlp-endpoint</code>/<code>--opik-endpoint</code>/<code>--logprobs*</code></td></tr>
+    <tr><td><code>cluster/mlx_hw_telemetry.py</code> &middot; <code>mlx_kv_cache_agent.py</code> &middot; <code>mlx_server_supervisor.py</code> &middot; <code>mlx_server_log_tailer.py</code></td><td>Hardware / KV / serving / log exporters</td><td>Ports <code>:9102</code> / <code>:9104</code> / <code>:9105</code> / <code>:9106</code>; log tailer rate-limit 50/s, JSONL attrs</td></tr>
+    <tr><td><code>cluster/opik_evaluator.py</code></td><td>LLM-as-judge feedback loop</td><td>judge = proxy <code>127.0.0.1:8080/v1</code>; reads/writes <code>192.168.1.10:32173/api</code></td></tr>
+    <tr><td><code>observability/compose.yaml</code></td><td>The observability stack (podman)</td><td>victoria-metrics <code>:8428</code>, grafana <code>:3000</code>, otelcol <code>:4317/:4318</code>, vmalert <code>:8880</code>, alertmanager <code>:9093</code></td></tr>
+    <tr><td><code>observability/vm-scrape.yml</code></td><td>Scrape targets (generated from <code>vm-scrape.tmpl.yml</code> by <code>setup.sh</code>)</td><td>interval 10s; proxy/hw/kv/supervisor/logtailer targets; rank1 hw at <code>10.0.0.2:9102</code></td></tr>
+    <tr><td><code>observability/otelcol-config.yaml</code></td><td>Collector pipelines</td><td>receivers gRPC <code>:4317</code>/HTTP <code>:4318</code>; logs &rarr; JSONL <code>/var/log/otelcol/mlx-server-logs.jsonl</code> (50&nbsp;MB &times;5); traces &rarr; debug; metrics &rarr; VM remote-write (idle)</td></tr>
+    <tr><td><code>observability/vmalert/rules.yml</code></td><td>46 alert rules / 6 groups</td><td>hardware 15, serving 8, inference 7, quality 6, confidence 5, slo 5</td></tr>
+    <tr><td><code>observability/alertmanager/alertmanager.yml</code></td><td>Notification routing + inhibit</td><td>critical &rarr; <code>.../hooks/oncall</code>, rest &rarr; <code>.../hooks/alert</code> at <code>host.containers.internal:9000</code></td></tr>
+    <tr><td><code>observability/grafana/dashboards/*.json</code></td><td>9 provisioned dashboards</td><td>datasource <code>victoria-metrics:8428</code>; + SRE / HTTP / Call Types / Model (this post)</td></tr>
+    <tr><td><code>tools/bench.py</code> &middot; <code>tools/bench_load.py</code> &middot; <code>tools/bench_agentic.py</code> &middot; <code>tools/smoke.py</code></td><td>Test rigs</td><td>all against proxy <code>:8080/v1</code>; reports &rarr; <code>tools/bench-reports/</code> (git-ignored)</td></tr>
+    <tr><td><code>tests/test_confidence.py</code> &middot; <code>tests/test_proxy_rewrite.py</code></td><td>Unit/integration tests</td><td>run: <code>.venv/bin/python -m pytest tests/ -q</code> (40 passing)</td></tr>
+    <tr><td><code>tools/opik_dashboards.py</code></td><td>Opik dashboard provisioning</td><td>base <code>192.168.1.10:32173/api</code> (needs the <code>/api</code> suffix)</td></tr>
+  </table>
+  <div class="callout warn"><span class="ic">&#9888;</span><span>Addresses in this table are the <em>current</em> operational values (rank1 repointed to the Ethernet link after the Wi-Fi split, post&nbsp;19&rsquo;s fieldwork). If the LAN changes, <code>observability/setup.sh</code> regenerates <code>vm-scrape.yml</code>; the proxy endpoint flags live in <code>start_server.sh</code>.</span></div>
+</section>
+
+</main>
+
+<footer class="wrap">
+  mlx-oc &middot; a two-Mac-mini distributed MLX inference cluster with full observability &middot; <a href="../README.md">repo README</a>
+</footer>
+
+<script>
+  document.querySelectorAll('.tab').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+      document.querySelectorAll('.tabpane').forEach(function (x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      document.getElementById(b.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

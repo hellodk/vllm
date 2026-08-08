@@ -1,0 +1,83 @@
+# VictoriaMetrics single-node scrape config.
+# Generated from vm-scrape.tmpl.yml by ./setup.sh (substitutes __MLX_IP__ /
+# __RANK1_IP__ with your Mac addresses). Ring/rank1 talk runs over the direct
+# Ethernet link (RANK1_IP=10.0.0.2); the proxy stays on the LAN/Wi-Fi IP for
+# external clients. Targets:
+#   - proxy      <MLX_IP>:8080/metrics   (inference + hallucination metrics)
+#   - hw agents  <MLX_IP>:9102 (rank0) and <RANK1_IP>:9102 (rank1)
+#   - kv agent   <MLX_IP>:9104           (KV cache + context-length gauges)
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: mlx-proxy
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["__MLX_IP__:8080"]
+        labels:
+          service: mlx-proxy
+          node: rank0
+
+  - job_name: mlx-hw
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "__MLX_IP__:9102"
+        labels:
+          service: mlx-hw
+          node: rank0
+      - targets:
+          - "__RANK1_IP__:9102"
+        labels:
+          service: mlx-hw
+          node: rank1
+
+  - job_name: mlx-kv
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["__MLX_IP__:9104"]
+        labels:
+          service: mlx-kv
+          node: rank0
+
+  # mlx_server_supervisor.py on rank 0: process/ready/model-serving status plus
+  # restart + crash-reason counters. This is the source of truth for "is the
+  # model actually loaded and serving right now?".
+  - job_name: mlx-supervisor
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["__MLX_IP__:9105"]
+        labels:
+          service: mlx-supervisor
+          node: rank0
+
+  # mlx_server_log_tailer.py on rank 0: server.log -> Opik log streaming
+  # health (up / shipped / dropped / rate-limited). Source of truth for whether
+  # log lines are actually reaching Opik.
+  - job_name: mlx-logtailer
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["__MLX_IP__:9106"]
+        labels:
+          service: mlx-logtailer
+          node: rank0
+
+  # Experimental / unverified: two independent sglang replicas (no ring/TP
+  # backend on Apple Silicon). Native sglang:* Prometheus metrics, no proxy
+  # sidecar needed. See sglang/ and README.md "SGLang (experimental)".
+  - job_name: sglang
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "__MLX_IP__:30000"
+        labels:
+          service: sglang
+          node: rank0
+          provider: "sglang"
+      - targets:
+          - "__RANK1_IP__:30000"
+        labels:
+          service: sglang
+          node: rank1
+          provider: "sglang"
